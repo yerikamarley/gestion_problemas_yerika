@@ -930,7 +930,7 @@ def causa_raiz_incidente(row, tipificacion=None, es_alerta=None):
     if tipificacion == "NOC":
         return f"Alerta NOC - {detalle}"
 
-    if es_alerta == "Si" and detalle == "pendiente para precisar la causa raiz":
+    if es_alerta == "Si" and detalle == "Analisis pendiente para precisar la causa raiz":
         return f"Alerta operativa - {detalle}"
 
     return detalle

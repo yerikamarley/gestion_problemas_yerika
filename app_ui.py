@@ -6,6 +6,7 @@ import streamlit as st
 
 from app_logic import (
     ADMIN_EMAIL,
+    construir_alertas_incidentes,
     guardar_casos,
     guardar_incidentes,
     init_db,
@@ -443,20 +444,20 @@ def dashboard_incidentes():
         st.plotly_chart(aplicar_estilo_figura(fig, "Incidentes por tipificacion"), use_container_width=True)
 
     with fila1_col2:
-        causas = df["causa_raiz_auto"].fillna("Otros").value_counts().reset_index()
-        causas.columns = ["Causa raiz", "Cantidad"]
+        causas = df["causa_raiz_auto"].replace("", pd.NA).fillna("Sin inferencia").value_counts().reset_index()
+        causas.columns = ["Causa raiz inferida", "Cantidad"]
         causas = causas.sort_values(by="Cantidad", ascending=True)
         fig = px.bar(
             causas,
             x="Cantidad",
-            y="Causa raiz",
+            y="Causa raiz inferida",
             orientation="h",
             text="Cantidad",
             color_discrete_sequence=[UI_PALETTE["green"]],
         )
         fig.update_traces(textposition="outside")
-        fig.update_layout(title="Incidentes por causa raiz")
-        st.plotly_chart(aplicar_estilo_figura(fig, "Incidentes por causa raiz"), use_container_width=True)
+        fig.update_layout(title="Causa raiz inferida")
+        st.plotly_chart(aplicar_estilo_figura(fig, "Causa raiz inferida"), use_container_width=True)
 
     fila2_col1, fila2_col2 = st.columns(2)
 
@@ -495,7 +496,7 @@ def dashboard_incidentes():
 
     df_cliente_externo = df[df["tipificacion_auto"].fillna("Cliente Interno") == "Cliente Externo"].copy()
     if not df_cliente_externo.empty:
-        causas_externo = df_cliente_externo["causa_raiz_auto"].fillna("Otros").value_counts().reset_index()
+        causas_externo = df_cliente_externo["causa_raiz_auto"].replace("", pd.NA).fillna("Sin inferencia").value_counts().reset_index()
         causas_externo.columns = ["Afectacion", "Cantidad"]
         causas_externo = causas_externo.sort_values(by="Cantidad", ascending=True)
         principal_afectacion = causas_externo.iloc[-1]["Afectacion"]
@@ -505,7 +506,7 @@ def dashboard_incidentes():
         with externo_col1:
             st.markdown(tarjeta("Incidentes Cliente Externo", len(df_cliente_externo)), unsafe_allow_html=True)
             st.caption(f"Participacion sobre el total: {porcentaje_externo}%")
-            st.caption(f"Principal afectacion: {principal_afectacion}")
+            st.caption(f"Principal afectacion inferida: {principal_afectacion}")
 
         with externo_col2:
             fig = px.bar(
@@ -522,23 +523,22 @@ def dashboard_incidentes():
     else:
         st.info("No hay incidentes tipificados como Cliente Externo en los datos cargados.")
 
-    alertas = []
-    if len(df[df["causa_raiz_auto"].fillna("").str.contains("Servicios OCSP", case=False)]) >= 3:
-        alertas.append("Alta recurrencia asociada a servicios OCSP.")
-    if len(df[df["causa_raiz_auto"].fillna("").str.contains("Servicios Certitoken", case=False)]) >= 3:
-        alertas.append("Alta recurrencia asociada a servicios Certitoken.")
-    if porcentaje_sla < 90:
-        alertas.append("El cumplimiento de SLA de incidentes esta por debajo del 90%.")
-    if len(df[df["servicio_negocio"].fillna("").str.contains("Certificacion Digital", case=False)]) >= 5:
-        alertas.append("El servicio de negocio Certificacion Digital presenta concentracion relevante de incidentes.")
-    if alertas_tipificadas >= 5:
-        alertas.append("Se observa un volumen alto de incidentes tipificados como alerta.")
+    alertas = construir_alertas_incidentes(df, sla_horas=24)
 
     if alertas:
         st.divider()
         st.subheader("Alertas")
+        st.caption(
+            "Estas alertas se construyen solo con los incidentes cargados y documentan recurrencia, "
+            "concentracion y cumplimiento de SLA."
+        )
         for alerta in alertas:
-            st.warning(alerta)
+            st.warning(f"**{alerta['titulo']}**\n\n{alerta['detalle']}")
+            if alerta["incidentes"]:
+                relacionados = ", ".join(alerta["incidentes"])
+                if alerta["incidentes_adicionales"] > 0:
+                    relacionados += f" y {alerta['incidentes_adicionales']} mas"
+                st.caption(f"Incidentes relacionados: {relacionados}")
 
 
 def vista_cargar_casos():

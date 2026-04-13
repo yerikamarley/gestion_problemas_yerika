@@ -2,6 +2,7 @@ import re
 import sqlite3
 import unicodedata
 from datetime import timedelta
+from math import ceil
 
 import pandas as pd
 
@@ -147,6 +148,34 @@ ALERT_KEYWORDS = [
     "critico",
     "critical",
     "warning",
+]
+
+INCIDENT_COMPONENT_RULES = [
+    ("OCSP", ["ocsp"]),
+    ("Certitoken", ["certitoken", "token virtual", "token"]),
+    ("Clave Segura", ["clave segura"]),
+    ("LDAP / Directorio Activo", ["ldap", "directorio activo", "active directory"]),
+    ("Base de datos", ["base de datos", "database", "sql", "bd"]),
+    ("Correo / Notificaciones", ["correo", "smtp", "mail"]),
+    ("Certificado / cadena de confianza", ["ssl", "certificado ssl", "certificado", "cadena de confianza", "cadena de certificados"]),
+    ("Servicios TSA", ["tsa", "timestamp", "sello de tiempo"]),
+    ("Portal RPOST", ["rpost"]),
+    ("Red / Conectividad", ["red", "conexion", "conectividad", "vpn", "packet loss", "perdida de paquetes", "latencia", "enlace"]),
+    ("Infraestructura", ["cpu", "memoria", "disco", "filesystem", "espacio", "swap", "servidor"]),
+    ("Monitoreo / NOC", ["alerta", "alarma", "monitoreo", "monitor", "zabbix", "grafana", "prometheus", "solarwinds"]),
+    ("Proveedor externo", ["proveedor", "tercero", "externo"]),
+    ("Firma digital", ["firma", "firmar"]),
+]
+
+INCIDENT_SYMPTOM_RULES = [
+    ("falsa alarma", ["falsa alarma"]),
+    ("caida o indisponibilidad", ["caida", "caido", "indisponibilidad", "fuera de servicio", "down", "no responde"]),
+    ("lentitud o degradacion", ["lentitud", "degradacion", "degradado", "intermitencia", "intermitente"]),
+    ("timeout", ["timeout", "time out"]),
+    ("falla de autenticacion o acceso", ["autenticacion", "login", "acceso", "credenciales"]),
+    ("error al firmar o validar", ["firmar", "firma", "validacion", "no valida", "invalido", "rechazo de firma"]),
+    ("consumo alto de recursos", ["cpu", "memoria", "disco", "filesystem", "espacio", "swap"]),
+    ("alerta de monitoreo", ["alerta", "alarma", "monitoreo", "zabbix", "grafana", "prometheus", "solarwinds"]),
 ]
 
 CASE_USAGE_KEYWORDS = [
@@ -666,49 +695,69 @@ def es_alerta_incidente(row, tipificacion=None):
     return "No"
 
 
+def inferir_componente_incidente(texto, tipificacion=None, es_alerta=None):
+    for etiqueta, palabras in INCIDENT_COMPONENT_RULES:
+        if any(palabra in texto for palabra in palabras):
+            return etiqueta
+
+    if tipificacion == "NOC" or es_alerta == "Si":
+        return "Monitoreo / NOC"
+
+    return ""
+
+
+def inferir_sintoma_incidente(texto):
+    for etiqueta, palabras in INCIDENT_SYMPTOM_RULES:
+        if any(palabra in texto for palabra in palabras):
+            return etiqueta
+
+    tipo_error = [
+        "error",
+        "falla",
+        "problema",
+        "afectacion",
+        "afectación",
+        "incidente",
+    ]
+    if any(palabra in texto for palabra in tipo_error):
+        return "error operativo reportado"
+
+    return ""
+
+
+def causa_raiz_manual_incidente(row):
+    return safe_text(valor_fila(row, "causa_raiz_original"))
+
+
 def causa_raiz_incidente(row, tipificacion=None, es_alerta=None):
+    causa_original = causa_raiz_manual_incidente(row)
+    if causa_original:
+        return causa_original
+
     tipificacion = tipificacion or tipificacion_incidente(row)
     es_alerta = es_alerta or es_alerta_incidente(row, tipificacion)
-    texto = unir_textos(row, INCIDENT_CAUSE_FIELDS)
-    if "ocsp" in texto:
-        detalle = "Servicios OCSP con indisponibilidad o validacion intermitente"
-    elif "certitoken" in texto or "token" in texto:
-        detalle = "Servicios Certitoken con falla de autenticacion, firma o uso del token"
-    elif "clave segura" in texto:
-        detalle = "Clave Segura con falla de acceso o disponibilidad"
-    elif any(p in texto for p in ["ldap", "directorio activo", "active directory"]):
-        detalle = "LDAP o Directorio Activo con falla de autenticacion"
-    elif any(p in texto for p in ["base de datos", "bd", "database", "sql"]):
-        detalle = "Base de datos o integracion interna con errores"
-    elif any(p in texto for p in ["correo", "smtp", "mail"]):
-        detalle = "Servicio de correo o notificaciones con fallas"
-    elif any(p in texto for p in ["ssl", "certificado ssl", "certificado vencido", "cadena de certificados"]):
-        detalle = "Certificado SSL o cadena de certificados con errores"
-    elif any(p in texto for p in ["tsa", "timestamp", "sello de tiempo"]):
-        detalle = "Servicios TSA con falla de sellado de tiempo"
-    elif "portal" in texto and "rpost" in texto:
-        detalle = "Portal RPOST con falla funcional o de acceso"
-    elif any(p in texto for p in ["cpu", "memoria", "disco", "filesystem", "espacio", "swap"]):
-        detalle = "Infraestructura con consumo alto de recursos"
-    elif any(p in texto for p in ["red", "conexion", "conectividad", "vpn", "packet loss", "perdida de paquetes", "latencia", "enlace"]):
-        detalle = "Infraestructura de red o conectividad degradada"
-    elif any(p in texto for p in ["caida", "caido", "indisponibilidad", "no responde", "fuera de servicio", "down"]):
-        detalle = "Caida o indisponibilidad del servicio"
-    elif any(p in texto for p in ["lentitud", "degradacion", "timeout", "time out", "intermitencia", "intermitente"]):
-        detalle = "Degradacion o intermitencia del servicio"
-    elif any(p in texto for p in ["firma", "firmar", "rechazo de firma"]):
-        detalle = "Proceso de firma con error o rechazo"
-    elif any(p in texto for p in ["proveedor", "tercero", "externo"]):
-        detalle = "Dependencia de proveedor o tercero"
-    elif any(p in texto for p in ["alerta", "alarma", "monitoreo", "monitor", "zabbix", "grafana", "prometheus", "observabilidad"]):
-        detalle = "Monitoreo detecta comportamiento anomalo"
-    else:
-        detalle = "Analisis pendiente para precisar la causa raiz"
-    if tipificacion == "NOC":
-        return f"Alerta NOC - {detalle}"
-    if es_alerta == "Si" and detalle == "Analisis pendiente para precisar la causa raiz":
-        return f"Alerta operativa - {detalle}"
-    return detalle
+
+    texto = unir_textos(
+        row,
+        INCIDENT_CAUSE_FIELDS + ["grupo_asignacion", "servicio_negocio", "impacto", "estado"],
+    )
+
+    componente = inferir_componente_incidente(texto, tipificacion, es_alerta)
+    sintoma = inferir_sintoma_incidente(texto)
+    tipo_falla = safe_text(valor_fila(row, "tipo_falla"))
+
+    if componente and sintoma:
+        return f"{componente} - {sintoma}"
+    if componente and tipo_falla:
+        return f"{componente} - {tipo_falla}"
+    if componente:
+        return componente
+    if sintoma:
+        return f"Hallazgo detectado - {sintoma}"
+    if tipo_falla:
+        return f"Hallazgo reportado - {tipo_falla}"
+
+    return "Sin patron concluyente en descripcion y anotaciones"
 
 
 def clasificacion_incidente(row):
@@ -821,3 +870,135 @@ def load_incidentes():
         clasificaciones.columns = ["tipificacion_auto", "es_alerta_auto", "causa_raiz_auto"]
         df[["tipificacion_auto", "es_alerta_auto", "causa_raiz_auto"]] = clasificaciones
     return df
+
+
+def umbral_alerta_por_volumen(total, proporcion=0.08, minimo=2):
+    if total <= 0:
+        return minimo
+    return max(minimo, ceil(total * proporcion))
+
+
+def incidentes_relacionados(grupo, limite=6):
+    numeros = []
+    for valor in grupo.get("numero", pd.Series(dtype="object")).tolist():
+        numero = safe_text(valor)
+        if numero and numero not in numeros:
+            numeros.append(numero)
+    return numeros[:limite], max(0, len(numeros) - limite)
+
+
+def resumir_top_causas(grupo, limite=3):
+    causas = (
+        grupo["causa_raiz_auto"]
+        .replace("", pd.NA)
+        .fillna("Sin inferencia")
+        .value_counts()
+        .head(limite)
+    )
+    resumen = []
+    for causa, cantidad in causas.items():
+        resumen.append(f"{causa} ({cantidad})")
+    return ", ".join(resumen)
+
+
+def construir_alertas_incidentes(df, sla_horas=24):
+    if df is None or df.empty:
+        return []
+
+    trabajo = df.copy()
+    total = len(trabajo)
+    trabajo["numero"] = trabajo["numero"].apply(safe_text)
+    trabajo["causa_raiz_auto"] = trabajo["causa_raiz_auto"].replace("", pd.NA).fillna("Sin inferencia")
+    trabajo["servicio_negocio"] = trabajo["servicio_negocio"].replace("", pd.NA).fillna("Sin servicio informado")
+    trabajo["es_alerta_auto"] = trabajo["es_alerta_auto"].fillna("No")
+    trabajo["duracion_horas"] = pd.to_numeric(trabajo["duracion_horas"], errors="coerce")
+
+    alertas = []
+    umbral_causa = umbral_alerta_por_volumen(total, proporcion=0.08, minimo=2)
+    umbral_servicio = umbral_alerta_por_volumen(total, proporcion=0.1, minimo=3)
+
+    for causa, grupo in sorted(trabajo.groupby("causa_raiz_auto"), key=lambda item: len(item[1]), reverse=True):
+        cantidad = len(grupo)
+        if causa == "Sin inferencia" or cantidad < umbral_causa:
+            continue
+        incidentes, adicionales = incidentes_relacionados(grupo)
+        porcentaje = round((cantidad / total) * 100, 2)
+        alertas.append(
+            {
+                "tipo": "causa_recurrente",
+                "prioridad": cantidad,
+                "titulo": f"Reincidencia por causa raiz: {causa}",
+                "detalle": (
+                    f"Se identificaron {cantidad} incidentes de {total} ({porcentaje}%) con la misma "
+                    "causa raiz inferida a partir de la descripcion, anotaciones y observaciones."
+                ),
+                "incidentes": incidentes,
+                "incidentes_adicionales": adicionales,
+            }
+        )
+
+    for servicio, grupo in sorted(trabajo.groupby("servicio_negocio"), key=lambda item: len(item[1]), reverse=True):
+        cantidad = len(grupo)
+        if servicio == "Sin servicio informado" or cantidad < umbral_servicio:
+            continue
+        incidentes, adicionales = incidentes_relacionados(grupo)
+        porcentaje = round((cantidad / total) * 100, 2)
+        alertas.append(
+            {
+                "tipo": "servicio_concentrado",
+                "prioridad": cantidad,
+                "titulo": f"Concentracion de incidentes en servicio: {servicio}",
+                "detalle": (
+                    f"Este servicio acumula {cantidad} incidentes de {total} ({porcentaje}%) dentro del "
+                    "conjunto analizado, por lo que conviene revisarlo como foco recurrente."
+                ),
+                "incidentes": incidentes,
+                "incidentes_adicionales": adicionales,
+            }
+        )
+
+    df_alertas = trabajo[trabajo["es_alerta_auto"] == "Si"].copy()
+    if not df_alertas.empty:
+        cantidad = len(df_alertas)
+        incidentes, adicionales = incidentes_relacionados(df_alertas, limite=8)
+        porcentaje = round((cantidad / total) * 100, 2)
+        top_causas = resumir_top_causas(df_alertas)
+        detalle = (
+            f"Se tipificaron {cantidad} incidentes como alerta sobre {total} analizados ({porcentaje}%). "
+            "Este consolidado sale directamente de la tipificacion de incidentes cargados."
+        )
+        if top_causas:
+            detalle += f" Las causas mas repetidas dentro de este grupo son: {top_causas}."
+        alertas.append(
+            {
+                "tipo": "volumen_alertas",
+                "prioridad": cantidad,
+                "titulo": "Volumen de incidentes tipificados como alerta",
+                "detalle": detalle,
+                "incidentes": incidentes,
+                "incidentes_adicionales": adicionales,
+            }
+        )
+
+    df_cerrados = trabajo[trabajo["estado"].fillna("") == "Cerrado"].copy()
+    df_fuera_sla = df_cerrados[df_cerrados["duracion_horas"] >= sla_horas].copy()
+    if not df_fuera_sla.empty:
+        cantidad = len(df_fuera_sla)
+        base = len(df_cerrados) if len(df_cerrados) > 0 else total
+        incidentes, adicionales = incidentes_relacionados(df_fuera_sla)
+        porcentaje = round((cantidad / base) * 100, 2) if base > 0 else 0
+        alertas.append(
+            {
+                "tipo": "sla",
+                "prioridad": cantidad,
+                "titulo": f"Incidentes cerrados fuera de SLA de {sla_horas} horas",
+                "detalle": (
+                    f"Se encontraron {cantidad} incidentes cerrados con una duracion igual o superior a "
+                    f"{sla_horas} horas, equivalente al {porcentaje}% de los incidentes cerrados analizados."
+                ),
+                "incidentes": incidentes,
+                "incidentes_adicionales": adicionales,
+            }
+        )
+
+    return sorted(alertas, key=lambda alerta: alerta["prioridad"], reverse=True)
