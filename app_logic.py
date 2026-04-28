@@ -1,4 +1,7 @@
 import re
+import hashlib
+import hmac
+import os
 import sqlite3
 import unicodedata
 from datetime import timedelta
@@ -9,6 +12,7 @@ import pandas as pd
 
 DB = "data.db"
 ADMIN_EMAIL = "yerika.basto@certicamara.com"
+INITIAL_ADMIN_PASSWORD = os.environ.get("APP_ADMIN_PASSWORD", "Yerika2026!")
 
 CASE_ALIASES = {
     "numero": ["numero", "número"],
@@ -150,6 +154,74 @@ ALERT_KEYWORDS = [
     "warning",
 ]
 
+INCIDENT_CASE_REDIRECT_PHRASES = [
+    "no corresponde a un inc",
+    "no corresponde a un incidente",
+    "no es un inc",
+    "no es un incidente",
+    "canales de atencion",
+    "mesa de ayuda",
+    "mesadeayuda",
+    "para futuras solicitudes",
+    "no cuenta con la informacion suficiente",
+]
+
+INCIDENT_EXTERNAL_CASE_HINTS = [
+    "descargar",
+    "descarga",
+    "instalacion",
+    "manual",
+    "activar",
+    "activacion",
+    "pendiente por descargar",
+    "link de descarga",
+    "numero de caso",
+    "cambiar el nombre",
+    "nombre del certificado",
+    "certificado intermedio",
+    "renovacion",
+    "compra",
+    "orden ",
+    " op ",
+    "pdf",
+    "documento",
+    "vuce",
+    "firma digital",
+    "token fisico",
+]
+
+INCIDENT_EXTERNAL_CASE_STRONG_HINTS = [
+    "descargar firma",
+    "manual",
+    "instalacion",
+    "numero de caso",
+    "pendiente por descargar",
+    "link de descarga",
+    "nombre del certificado",
+    "cambiar el nombre",
+    "renovacion",
+    "compra",
+    "orden ",
+    "token fisico",
+    "vuce",
+    "activacion de una firma",
+]
+
+INCIDENT_TRUE_INCIDENT_HINTS = [
+    "caida",
+    "caido",
+    "indisponibilidad",
+    "intermitencia",
+    "lentitud",
+    "timeout",
+    "varios usuarios",
+    "masiva",
+    "interrupcion del servicio",
+    "servicio caido",
+    "portal de ventas",
+    "no se visualizan transacciones",
+]
+
 INCIDENT_COMPONENT_RULES = [
     ("OCSP", ["ocsp"]),
     ("Certitoken", ["certitoken", "token virtual", "token"]),
@@ -206,6 +278,41 @@ CASE_USAGE_KEYWORDS = [
     "validacion del proceso",
     "prueba funcional",
     "paso a paso",
+]
+
+CASE_INSTALLATION_KEYWORDS = [
+    "instalacion",
+    "instalaciones",
+    "instalar",
+    "instale",
+    "instalada",
+    "instalado",
+    "tecnico de instalacion",
+    "tecnicos de instalacion",
+    "canal de agendamiento",
+]
+
+CASE_INSTALLATION_SCHEDULING_KEYWORDS = [
+    "agendar",
+    "agendamiento",
+    "agenda",
+    "programar una cita",
+    "programar cita",
+    "programar instalacion",
+    "programar instalaciones",
+    "sesion de instalacion",
+    "sesion para instalacion",
+]
+
+CASE_INSTALLATION_CONTEXT_HINTS = [
+    "instalacion",
+    "instalaciones",
+    "instalar",
+    "activacion",
+    "firma digital",
+    "firma",
+    "token",
+    "certificado",
 ]
 
 CASE_USAGE_REQUEST_HINTS = [
@@ -278,6 +385,45 @@ CASE_STRONG_FAILURE_KEYWORDS = [
     "no responde",
     "no funciona",
     "bug",
+]
+
+CASE_INCIDENT_ESCALATION_KEYWORDS = [
+    "escalado",
+    "escalada",
+    "escalamiento",
+    "se escala",
+    "se escalo",
+    "escalado a proveedor",
+    "escalado al proveedor",
+    "escalado a desarrollo",
+    "escalado al area de desarrollo",
+    "escalado a nuestra area de desarrollo",
+]
+
+CASE_INCIDENT_CONTEXT_KEYWORDS = [
+    *CASE_FAILURE_KEYWORDS,
+    *CASE_STRONG_FAILURE_KEYWORDS,
+    "incidente",
+    "novedad",
+    "inconveniente",
+    "problema",
+    "hallazgo",
+    "causa raiz",
+    "mitigar",
+    "proveedor",
+    "desarrollo",
+    "logs",
+]
+
+CASE_ESCALATION_IGNORE_HINTS = [
+    "pqrf",
+    "canal oficial",
+    "registre su requerimiento",
+    "registre su solicitud",
+    "tramite adecuado",
+    "solicitudes",
+    "peticion",
+    "peticiones",
 ]
 
 CASE_EXTERNAL_PLATFORM_KEYWORDS = [
@@ -361,8 +507,211 @@ def caso_cerrado(row):
     return "cerrado" in estado or cerrado != ""
 
 
+def es_caso_instalacion(texto):
+    if any(palabra in texto for palabra in CASE_INSTALLATION_KEYWORDS):
+        return True
+
+    agenda_instalacion = any(
+        palabra in texto for palabra in CASE_INSTALLATION_SCHEDULING_KEYWORDS
+    )
+    contexto_instalacion = any(
+        palabra in texto for palabra in CASE_INSTALLATION_CONTEXT_HINTS
+    )
+    return agenda_instalacion and contexto_instalacion
+
+
+def es_caso_incidente(texto_apertura, texto_resolucion, texto_total):
+    if re.search(r"\binc[-\s]?\d{3,}\b", texto_total):
+        return True
+
+    if "incidente" in texto_resolucion:
+        return True
+
+    if "incidente" in texto_apertura:
+        return True
+
+    if any(frase in texto_resolucion for frase in CASE_ESCALATION_IGNORE_HINTS):
+        return False
+
+    if not any(frase in texto_resolucion for frase in CASE_INCIDENT_ESCALATION_KEYWORDS):
+        return False
+
+    contexto = " ".join([texto_apertura, texto_resolucion])
+    return any(palabra in contexto for palabra in CASE_INCIDENT_CONTEXT_KEYWORDS)
+
+
+def texto_resolucion_incidente(row):
+    return unir_textos(
+        row,
+        [
+            "observaciones_trabajo",
+            "observaciones_adicionales",
+            "actualizaciones",
+            "despues_aprobacion",
+            "despues_rechazo",
+        ],
+    )
+
+
+def es_caso_cliente_externo(row, texto=None, texto_resolucion=None):
+    texto = texto or unir_textos(row, INCIDENT_TEXT_FIELDS)
+    texto_resolucion = texto_resolucion or texto_resolucion_incidente(row)
+    impacto = normalizar_texto(valor_fila(row, "impacto"))
+
+    if any(frase in texto_resolucion for frase in INCIDENT_CASE_REDIRECT_PHRASES):
+        return True
+
+    if any(frase in texto for frase in INCIDENT_EXTERNAL_CASE_STRONG_HINTS):
+        return not any(frase in texto for frase in INCIDENT_TRUE_INCIDENT_HINTS)
+
+    if "4 - baja" not in impacto:
+        return False
+
+    if any(frase in texto for frase in INCIDENT_TRUE_INCIDENT_HINTS):
+        return False
+
+    return any(frase in texto for frase in INCIDENT_EXTERNAL_CASE_HINTS)
+
+
 def get_conn():
     return sqlite3.connect(DB, check_same_thread=False)
+
+
+def normalizar_email(email):
+    return str(email or "").strip().lower()
+
+
+def hash_password(password):
+    salt = os.urandom(16)
+    password_hash = hashlib.pbkdf2_hmac(
+        "sha256",
+        str(password).encode("utf-8"),
+        salt,
+        260000,
+    )
+    return f"pbkdf2_sha256$260000${salt.hex()}${password_hash.hex()}"
+
+
+def verificar_password(password, password_hash):
+    try:
+        algoritmo, iteraciones, salt_hex, hash_hex = str(password_hash).split("$")
+        if algoritmo != "pbkdf2_sha256":
+            return False
+        calculado = hashlib.pbkdf2_hmac(
+            "sha256",
+            str(password).encode("utf-8"),
+            bytes.fromhex(salt_hex),
+            int(iteraciones),
+        ).hex()
+        return hmac.compare_digest(calculado, hash_hex)
+    except Exception:
+        return False
+
+
+def usuario_por_email(email):
+    email = normalizar_email(email)
+    conn = get_conn()
+    row = conn.execute(
+        """
+        SELECT email, password_hash, role, active, created_at, last_login
+        FROM app_users
+        WHERE email = ?
+        """,
+        (email,),
+    ).fetchone()
+    conn.close()
+    if not row:
+        return None
+    return {
+        "email": row[0],
+        "password_hash": row[1],
+        "role": row[2],
+        "active": bool(row[3]),
+        "created_at": row[4],
+        "last_login": row[5],
+    }
+
+
+def autenticar_usuario(email, password):
+    usuario = usuario_por_email(email)
+    if not usuario or not usuario["active"]:
+        return None
+    if not verificar_password(password, usuario["password_hash"]):
+        return None
+
+    conn = get_conn()
+    conn.execute(
+        "UPDATE app_users SET last_login = CURRENT_TIMESTAMP WHERE email = ?",
+        (usuario["email"],),
+    )
+    conn.commit()
+    conn.close()
+    usuario["last_login"] = "CURRENT_TIMESTAMP"
+    usuario.pop("password_hash", None)
+    return usuario
+
+
+def listar_usuarios():
+    conn = get_conn()
+    rows = conn.execute(
+        """
+        SELECT email, role, active, created_at, last_login
+        FROM app_users
+        ORDER BY role, email
+        """
+    ).fetchall()
+    conn.close()
+    return pd.DataFrame(
+        rows,
+        columns=["email", "role", "active", "created_at", "last_login"],
+    )
+
+
+def guardar_usuario(email, password, role="viewer", active=True):
+    email = normalizar_email(email)
+    role = role if role in ("admin", "viewer") else "viewer"
+    if not email:
+        raise ValueError("El correo es obligatorio.")
+    if password is not None and len(str(password)) < 8:
+        raise ValueError("La contrasena debe tener al menos 8 caracteres.")
+
+    conn = get_conn()
+    existe = conn.execute("SELECT 1 FROM app_users WHERE email = ?", (email,)).fetchone()
+    if existe:
+        if password:
+            conn.execute(
+                """
+                UPDATE app_users
+                SET password_hash = ?, role = ?, active = ?
+                WHERE email = ?
+                """,
+                (hash_password(password), role, int(active), email),
+            )
+        else:
+            conn.execute(
+                "UPDATE app_users SET role = ?, active = ? WHERE email = ?",
+                (role, int(active), email),
+            )
+    else:
+        if not password:
+            raise ValueError("La contrasena es obligatoria para crear el usuario.")
+        conn.execute(
+            """
+            INSERT INTO app_users (email, password_hash, role, active, created_at)
+            VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+            """,
+            (email, hash_password(password), role, int(active)),
+        )
+    conn.commit()
+    conn.close()
+
+
+def eliminar_usuario(email):
+    email = normalizar_email(email)
+    conn = get_conn()
+    conn.execute("DELETE FROM app_users WHERE email = ?", (email,))
+    conn.commit()
+    conn.close()
 
 
 def ensure_table_columns(conn, table_name, columns):
@@ -374,6 +723,31 @@ def ensure_table_columns(conn, table_name, columns):
 
 def init_db():
     conn = get_conn()
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS app_users (
+            email TEXT PRIMARY KEY,
+            password_hash TEXT NOT NULL,
+            role TEXT NOT NULL DEFAULT 'viewer',
+            active INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT,
+            last_login TEXT
+        )
+        """
+    )
+    admin_email = normalizar_email(ADMIN_EMAIL)
+    admin_existe = conn.execute(
+        "SELECT 1 FROM app_users WHERE email = ?",
+        (admin_email,),
+    ).fetchone()
+    if not admin_existe:
+        conn.execute(
+            """
+            INSERT INTO app_users (email, password_hash, role, active, created_at)
+            VALUES (?, ?, 'admin', 1, CURRENT_TIMESTAMP)
+            """,
+            (admin_email, hash_password(INITIAL_ADMIN_PASSWORD)),
+        )
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS cases (
@@ -539,8 +913,8 @@ def tipificar_caso(row):
     if "phishing" in texto:
         return "1 - phishing"
 
-    if any(plataforma in texto for plataforma in CASE_EXTERNAL_PLATFORM_KEYWORDS):
-        return "6 - Plataformas Ext"
+    if es_caso_instalacion(texto):
+        return "8 - Instalaciones"
 
     texto_resolucion = " ".join(
         [
@@ -551,6 +925,12 @@ def tipificar_caso(row):
         ]
     )
     texto_apertura = " ".join([descripcion, causa])
+
+    if es_caso_incidente(texto_apertura, texto_resolucion, texto):
+        return "5 - incidente"
+
+    if any(plataforma in texto for plataforma in CASE_EXTERNAL_PLATFORM_KEYWORDS):
+        return "6 - Plataformas Ext"
 
     uso_score = (
         puntuar_texto(texto_apertura, CASE_USAGE_KEYWORDS, 1)
@@ -584,8 +964,6 @@ def tipificar_caso(row):
 
     if any(palabra in texto for palabra in ["cert", "pagar", "biometria"]):
         return "4 - solicitudes"
-    if "incidente" in texto:
-        return "5 - incidente"
     if "externo" in texto:
         return "6 - Plataformas Ext"
     return "7 - No Aplica"
@@ -666,21 +1044,29 @@ def load_casos():
 def tipificacion_incidente(row):
     categoria = normalizar_texto(valor_fila(row, "categoria"))
     texto = unir_textos(row, INCIDENT_TEXT_FIELDS)
+    texto_resolucion = texto_resolucion_incidente(row)
+    es_externo = any(p in texto for p in EXTERNAL_KEYWORDS)
+    es_interno = any(p in texto for p in INTERNAL_KEYWORDS)
+
     if "consulta" in categoria:
         return "Consulta"
     if "solicitud" in categoria:
         return "Solicitud"
     if "noc" in texto:
         return "NOC"
+
+    if es_externo and es_caso_cliente_externo(row, texto, texto_resolucion):
+        return "Caso Cliente Externo"
+
     if "incidente" in categoria:
-        if any(p in texto for p in EXTERNAL_KEYWORDS):
+        if es_externo:
             return "Cliente Externo"
-        if any(p in texto for p in INTERNAL_KEYWORDS):
+        if es_interno:
             return "Cliente Interno"
         return "Cliente Interno"
-    if any(p in texto for p in EXTERNAL_KEYWORDS):
+    if es_externo:
         return "Cliente Externo"
-    if any(p in texto for p in INTERNAL_KEYWORDS):
+    if es_interno:
         return "Cliente Interno"
     return "Cliente Interno"
 
@@ -688,6 +1074,8 @@ def tipificacion_incidente(row):
 def es_alerta_incidente(row, tipificacion=None):
     tipificacion = tipificacion or tipificacion_incidente(row)
     texto = unir_textos(row, INCIDENT_CAUSE_FIELDS + ["grupo_asignacion", "servicio_negocio", "impacto", "estado"])
+    if tipificacion == "Caso Cliente Externo":
+        return "No"
     if tipificacion == "NOC":
         return "Si"
     if any(p in texto for p in ALERT_KEYWORDS):
@@ -906,6 +1294,9 @@ def construir_alertas_incidentes(df, sla_horas=24):
         return []
 
     trabajo = df.copy()
+    trabajo = trabajo[trabajo["tipificacion_auto"].fillna("Cliente Interno") != "Caso Cliente Externo"].copy()
+    if trabajo.empty:
+        return []
     total = len(trabajo)
     trabajo["numero"] = trabajo["numero"].apply(safe_text)
     trabajo["causa_raiz_auto"] = trabajo["causa_raiz_auto"].replace("", pd.NA).fillna("Sin inferencia")

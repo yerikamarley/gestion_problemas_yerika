@@ -6,7 +6,11 @@ from datetime import timedelta
 import re
 import unicodedata
 
-st.set_page_config(page_title="Gestión de Problemas Yerika", layout="wide")
+st.set_page_config(
+    page_title="Control de casos e incidentes",
+    page_icon=":material/fact_check:",
+    layout="wide",
+)
 
 DB = "data.db"
 
@@ -1767,7 +1771,7 @@ init_db()
 if not login():
     st.stop()
 
-st.title("Gestión casos e incidentes Yerika")
+st.title("Control de casos e incidentes")
 
 if st.session_state.role == "admin":
     menu = st.sidebar.selectbox(

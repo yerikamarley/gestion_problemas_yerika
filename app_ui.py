@@ -5,44 +5,137 @@ import plotly.express as px
 import streamlit as st
 
 from app_logic import (
-    ADMIN_EMAIL,
+    autenticar_usuario,
     construir_alertas_incidentes,
+    eliminar_usuario,
     guardar_casos,
     guardar_incidentes,
+    guardar_usuario,
     init_db,
+    listar_usuarios,
     load_casos,
     load_incidentes,
+    normalizar_texto,
+    normalizar_email,
 )
 
 UI_PALETTE = {
-    "bg": "#fff8f0",
-    "bg_soft": "#fff3e0",
+    "bg": "#f7f9fb",
+    "bg_soft": "#eef4f3",
     "surface": "#ffffff",
-    "surface_alt": "#fff3e0",
-    "border": "#eeeeee",
+    "surface_alt": "#f5f8f7",
+    "border": "#d9e2df",
 
-    "text": "#2f1b0c",
-    "muted": "#7a5a3a",
-
-   
-    "yellow": "#ff9800",        
-    "yellow_soft": "#ffc340",   
+    "text": "#2b3438",
+    "muted": "#667579",
 
    
-    "red": "#e00000",           
-    "red_soft": "#ff0000",      
+    "yellow": "#b8a15a",
+    "yellow_soft": "#d8c98b",
 
-    "green": "#2f6b45",
-    "green_soft": "#8bb174",
+   
+    "red": "#a84f55",
+    "red_soft": "#c98489",
+
+    "green": "#277267",
+    "green_soft": "#7ba99e",
+    "blue": "#4f6f73",
+    "blue_soft": "#8fa6aa",
 }
 
 CHART_COLORS = [
     UI_PALETTE["green"],
+    UI_PALETTE["blue"],
+    UI_PALETTE["green_soft"],
+    UI_PALETTE["blue_soft"],
     UI_PALETTE["yellow"],
     UI_PALETTE["red"],
-    UI_PALETTE["green_soft"],
-    UI_PALETTE["red_soft"],
 ]
+
+CASE_TIPIFICATION_GUIDE = [
+    {
+        "Tipificacion": "1 - phishing",
+        "Descripcion": "Correos sospechosos, suplantacion, enlaces fraudulentos o reportes de phishing.",
+    },
+    {
+        "Tipificacion": "2 - Soporte Uso",
+        "Descripcion": "Dudas de uso, acompanamiento funcional, configuracion, orientacion y paso a paso.",
+    },
+    {
+        "Tipificacion": "3 - Soporte Falla",
+        "Descripcion": "Errores, fallas, caidas, lentitud, indisponibilidad o afectaciones tecnicas.",
+    },
+    {
+        "Tipificacion": "4 - solicitudes",
+        "Descripcion": "Solicitudes operativas o comerciales como certificados, biometria, pagos u otros tramites.",
+    },
+    {
+        "Tipificacion": "5 - incidente",
+        "Descripcion": "Casos marcados como incidente o con afectacion operativa reportada.",
+    },
+    {
+        "Tipificacion": "6 - Plataformas Ext",
+        "Descripcion": "Problemas relacionados con plataformas externas como Adobe, Autofirma o DocuSign.",
+    },
+    {
+        "Tipificacion": "7 - No Aplica",
+        "Descripcion": "Casos sin informacion suficiente o que no encajan en las reglas definidas.",
+    },
+    {
+        "Tipificacion": "8 - Instalaciones",
+        "Descripcion": "Procesos de instalacion, activacion, agendamiento o citas con tecnicos de instalacion.",
+    },
+]
+
+CLIENTES_CLAVE = [
+    "SICOV",
+    "TELEFONICA",
+    "TUYA",
+    "SUFI BANCOLOMBIA",
+    "RCI COLOMBIA S.A COMPAÑÍA DE FINANCIAMIENTO",
+    "PORVENIR",
+    "MIBANCO S.A.",
+    "BBVA",
+    "BANCOOMEVA",
+    "BANCOLOMBIA",
+    "BANCO POPULAR",
+    "BANCO FALABELLA",
+    "BANCO DE OCCIDENTE",
+    "BANCO DAVIVIENDA S.A.",
+    "BANCO CAJA SOCIAL",
+    "AV VILLAS",
+    "FALLABELLA",
+    "COLPENSIONES",
+    "CLARO",
+    "Coopcentral",
+]
+
+CLIENTES_CLAVE_ALIASES = {
+    "SICOV": ["SICOV"],
+    "TELEFONICA": ["TELEFONICA", "TELEFÓNICA", "MOVISTAR"],
+    "TUYA": ["TUYA", "TUYA S.A"],
+    "SUFI BANCOLOMBIA": ["SUFI BANCOLOMBIA", "SUFI"],
+    "RCI COLOMBIA S.A COMPAÑÍA DE FINANCIAMIENTO": [
+        "RCI COLOMBIA S.A COMPAÑÍA DE FINANCIAMIENTO",
+        "RCI COLOMBIA",
+        "RCI",
+    ],
+    "PORVENIR": ["PORVENIR"],
+    "MIBANCO S.A.": ["MIBANCO S.A.", "MIBANCO"],
+    "BBVA": ["BBVA"],
+    "BANCOOMEVA": ["BANCOOMEVA", "BANCOOMEVA S.A"],
+    "BANCOLOMBIA": ["BANCOLOMBIA", "BANCOLOMBIA S.A"],
+    "BANCO POPULAR": ["BANCO POPULAR"],
+    "BANCO FALABELLA": ["BANCO FALABELLA"],
+    "BANCO DE OCCIDENTE": ["BANCO DE OCCIDENTE"],
+    "BANCO DAVIVIENDA S.A.": ["BANCO DAVIVIENDA S.A.", "BANCO DAVIVIENDA", "DAVIVIENDA"],
+    "BANCO CAJA SOCIAL": ["BANCO CAJA SOCIAL", "CAJA SOCIAL"],
+    "AV VILLAS": ["AV VILLAS", "BANCO AV VILLAS"],
+    "FALLABELLA": ["FALLABELLA", "FALABELLA"],
+    "COLPENSIONES": ["COLPENSIONES"],
+    "CLARO": ["CLARO", "COMCEL"],
+    "Coopcentral": ["COOPCENTRAL", "BANCO COOPCENTRAL"],
+}
 
 
 def aplicar_tema_visual():
@@ -63,13 +156,12 @@ def aplicar_tema_visual():
             --red-soft: {UI_PALETTE["red_soft"]};
             --green: {UI_PALETTE["green"]};
             --green-soft: {UI_PALETTE["green_soft"]};
+            --blue: {UI_PALETTE["blue"]};
+            --blue-soft: {UI_PALETTE["blue_soft"]};
         }}
 
         html, body, [data-testid="stAppViewContainer"], .stApp {{
-            background:
-                radial-gradient(circle at top left, rgba(212, 160, 23, 0.16), transparent 24%),
-                radial-gradient(circle at top right, rgba(47, 107, 69, 0.10), transparent 22%),
-                linear-gradient(180deg, var(--bg-soft) 0%, var(--bg) 100%);
+            background: linear-gradient(180deg, var(--bg-soft) 0%, var(--bg) 42%, #ffffff 100%);
             color: var(--text) !important;
             color-scheme: light !important;
         }}
@@ -79,12 +171,12 @@ def aplicar_tema_visual():
         }}
 
         [data-testid="stSidebar"] {{
-            background: linear-gradient(180deg, #f5eed7 0%, #efe4c5 100%) !important;
+            background: linear-gradient(180deg, #ffffff 0%, #f3f6f9 100%) !important;
             border-right: 1px solid var(--border);
         }}
 
         .block-container {{
-            padding-top: 1.6rem;
+            padding-top: 1rem;
             padding-bottom: 2rem;
         }}
 
@@ -106,42 +198,70 @@ def aplicar_tema_visual():
         [data-baseweb="select"] > div,
         .stTextInput > div > div > input,
         .stTextArea textarea {{
-            background: rgba(255, 255, 255, 0.86) !important;
+            background: rgba(255, 255, 255, 0.96) !important;
             border: 1px solid var(--border) !important;
-            border-radius: 14px !important;
-            box-shadow: 0 10px 24px rgba(47, 42, 35, 0.05);
+            border-radius: 8px !important;
+            box-shadow: 0 8px 20px rgba(20, 58, 90, 0.05);
             color: var(--text) !important;
         }}
 
         .stButton > button,
         [data-testid="baseButton-secondary"] {{
-            background: linear-gradient(135deg, var(--green), #3d8258) !important;
+            background: var(--green) !important;
             color: white !important;
             border: none !important;
-            border-radius: 12px !important;
+            border-radius: 8px !important;
             font-weight: 700 !important;
-            box-shadow: 0 10px 24px rgba(47, 107, 69, 0.18);
+            box-shadow: 0 8px 18px rgba(39, 114, 103, 0.16);
+        }}
+
+        .stButton > button *,
+        [data-testid="baseButton-secondary"] * {{
+            color: white !important;
         }}
 
         .stButton > button:hover {{
-            background: linear-gradient(135deg, #285a3b, var(--green)) !important;
+            background: #1f5f56 !important;
             color: white !important;
         }}
 
         [data-testid="stTabs"] button[role="tab"] {{
-            border-radius: 12px;
+            border-radius: 8px;
             border: 1px solid var(--border);
-            background: rgba(255, 255, 255, 0.7);
+            background: rgba(255, 255, 255, 0.9);
+            color: var(--muted) !important;
         }}
 
         [data-testid="stTabs"] button[aria-selected="true"] {{
-            background: linear-gradient(180deg, #fff8dd, #f8efd0);
-            border-color: #d6c48e;
+            background: #edf5f3;
+            border-color: var(--green-soft);
             color: var(--green) !important;
         }}
 
+        [data-testid="stTabs"] [data-baseweb="tab-highlight"] {{
+            background-color: var(--green) !important;
+        }}
+
+        [data-baseweb="tag"] {{
+            background-color: #edf5f3 !important;
+            border: 1px solid #c7d9d4 !important;
+            border-radius: 7px !important;
+            color: var(--text) !important;
+        }}
+
+        [data-baseweb="tag"] span,
+        [data-baseweb="tag"] svg {{
+            color: var(--text) !important;
+            fill: var(--text) !important;
+        }}
+
+        [data-baseweb="select"] svg {{
+            color: var(--muted) !important;
+            fill: var(--muted) !important;
+        }}
+
         .stDivider {{
-            border-color: rgba(212, 160, 23, 0.25) !important;
+            border-color: rgba(20, 58, 90, 0.12) !important;
         }}
         </style>
         """,
@@ -153,13 +273,13 @@ def aplicar_estilo_figura(fig, titulo=None):
     fig.update_layout(
         title=titulo,
         paper_bgcolor="rgba(255,255,255,0)",
-        plot_bgcolor="rgba(255,255,255,0.78)",
+        plot_bgcolor="rgba(255,255,255,0.94)",
         font=dict(color=UI_PALETTE["text"]),
-        title_font=dict(color=UI_PALETTE["green"], size=18),
+        title_font=dict(color=UI_PALETTE["green"], size=17),
         margin=dict(l=12, r=12, t=52, b=12),
-        legend=dict(bgcolor="rgba(255,255,255,0.65)"),
+        legend=dict(bgcolor="rgba(255,255,255,0.82)"),
     )
-    fig.update_xaxes(showgrid=True, gridcolor="rgba(212, 160, 23, 0.16)", zeroline=False)
+    fig.update_xaxes(showgrid=True, gridcolor="rgba(20, 58, 90, 0.10)", zeroline=False)
     fig.update_yaxes(showgrid=False, zeroline=False)
     return fig
 
@@ -173,80 +293,83 @@ def estilos_login():
 
         /* Fondo general */
         .stApp {
-            background: linear-gradient(135deg, #fff8f0, #fff3e0);
+            background: linear-gradient(180deg, #eef4f3 0%, #f7f9fb 54%, #ffffff 100%);
+        }
+
+        .block-container {
+            max-width: 1180px;
+            padding-top: 4rem;
+        }
+
+        .login-spacer {
+            height: 5vh;
         }
 
         /* Card principal */
         .login-card {
-            background: rgba(255, 255, 255, 0.9);
-            backdrop-filter: blur(10px);
-            padding: 40px 32px;
-            border-radius: 20px;
-            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.08);
+            background: rgba(255, 255, 255, 0.98);
+            padding: 36px 32px;
+            border-radius: 8px;
+            box-shadow: 0 18px 42px rgba(20, 58, 90, 0.12);
             text-align: center;
             max-width: 420px;
             margin: auto;
             width: 100%;
-            border: 1px solid #ffd9a8;
-            transition: all 0.3s ease;
-        }
-
-        .login-card:hover {
-            transform: translateY(-4px);
-            box-shadow: 0 28px 50px rgba(0, 0, 0, 0.12);
+            border: 1px solid #d8e0e8;
         }
 
         /* Título */
         .login-title {
-            font-size: 26px;
-            font-weight: 700;
-            color: #2f1b0c;
-            margin-bottom: 6px;
+            font-size: 28px;
+            font-weight: 800;
+            color: #277267;
+            margin-bottom: 8px;
+            text-align: left;
         }
 
         /* Subtítulo */
         .login-subtitle {
             font-size: 14px;
-            color: #7a5a3a;
+            color: #5d6b7a;
             margin-bottom: 24px;
+            text-align: left;
         }
 
         /* Inputs */
         input {
-            border-radius: 10px !important;
-            border: 1px solid #ffd9a8 !important;
+            border-radius: 8px !important;
+            border: 1px solid #d8e0e8 !important;
             padding: 10px !important;
             transition: all 0.2s ease;
         }
 
         input:focus {
-            border: 1px solid #ff9800 !important;
-            box-shadow: 0 0 0 2px rgba(255, 152, 0, 0.2);
+            border: 1px solid #0f6b5f !important;
+            box-shadow: 0 0 0 3px rgba(15, 107, 95, 0.12);
             outline: none;
         }
 
         /* Botón */
         div.stButton > button {
             width: 100%;
-            border-radius: 12px;
-            background: linear-gradient(135deg, #ff9800, #e00000);
+            border-radius: 8px;
+            background: #277267;
             color: white;
-            font-weight: 600;
+            font-weight: 700;
             border: none;
             padding: 0.7rem 1rem;
             transition: all 0.25s ease;
-            box-shadow: 0 8px 18px rgba(224, 0, 0, 0.2);
+            box-shadow: 0 8px 18px rgba(39, 114, 103, 0.18);
         }
 
         div.stButton > button:hover {
-            transform: translateY(-2px);
-            background: linear-gradient(135deg, #ffc340, #ff0000);
-            box-shadow: 0 12px 24px rgba(224, 0, 0, 0.3);
+            background: #0f6b5f;
+            box-shadow: 0 12px 24px rgba(15, 107, 95, 0.20);
         }
 
         /* Placeholder */
         ::placeholder {
-            color: #a68b6b;
+            color: #8a97a5;
             font-size: 13px;
         }
 
@@ -254,7 +377,7 @@ def estilos_login():
         @media (max-width: 768px) {
             .login-card {
                 padding: 24px !important;
-                border-radius: 16px !important;
+                border-radius: 8px !important;
             }
 
             .login-title {
@@ -272,7 +395,7 @@ def estilos_login():
 
 
 def validar_email(correo):
-    return re.match(r"^[a-zA-Z0-9._%+-]+@certicamara\.com$", str(correo).strip())
+    return re.match(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$", str(correo).strip())
 
 
 def login():
@@ -280,29 +403,28 @@ def login():
         return True
 
     estilos_login()
-    _, top_space_2, _ = st.columns([1, 1, 1])
-    with top_space_2:
-        st.markdown("<br><br><br>", unsafe_allow_html=True)
+    st.markdown('<div class="login-spacer"></div>', unsafe_allow_html=True)
 
-    col2 = st.container()
-    with col2:
-        with st.container():
-            
-            st.markdown('<div class="login-title">Analitica de casos</div>', unsafe_allow_html=True)
-            st.markdown('<div class="login-subtitle">Ingresa con tu correo corporativo</div>', unsafe_allow_html=True)
-            correo = st.text_input("Correo corporativo", key="correo_login")
+    _, col_login, _ = st.columns([1.15, 0.7, 1.15])
+    with col_login:
+        st.markdown('<div class="login-title">Control de casos e incidentes</div>', unsafe_allow_html=True)
+        st.markdown('<div class="login-subtitle">Ingresa con tu correo y contrasena</div>', unsafe_allow_html=True)
+        correo = st.text_input("Correo corporativo", key="correo_login")
+        password = st.text_input("Contrasena", type="password", key="password_login")
 
-            if st.button("Ingresar", key="btn_login"):
-                if not validar_email(correo):
-                    st.error("El correo debe ser corporativo")
-                    st.markdown("</div>", unsafe_allow_html=True)
-                    return False
+        if st.button("Ingresar", key="btn_login"):
+            if not validar_email(correo):
+                st.error("Escribe un correo valido")
+                return False
 
-                st.session_state.user = correo
-                st.session_state.role = "admin" if correo.lower() == ADMIN_EMAIL else "user"
-                st.rerun()
+            usuario = autenticar_usuario(correo, password)
+            if not usuario:
+                st.error("Correo o contrasena incorrectos, o usuario inactivo")
+                return False
 
-            st.markdown("</div>", unsafe_allow_html=True)
+            st.session_state.user = usuario["email"]
+            st.session_state.role = usuario["role"]
+            st.rerun()
 
     return False
 
@@ -310,18 +432,18 @@ def login():
 def tarjeta(titulo, valor):
     return f"""
         <div style="
-            background: linear-gradient(180deg, {UI_PALETTE["surface"]} 0%, {UI_PALETTE["surface_alt"]} 100%);
-            padding:20px;
-            border-radius:16px;
+            background: {UI_PALETTE["surface"]};
+            padding:18px;
+            border-radius:8px;
             text-align:center;
             color:{UI_PALETTE["text"]};
-            height:120px;
+            min-height:112px;
             display:flex;
             flex-direction:column;
             justify-content:center;
             align-items:center;
             border: 1px solid {UI_PALETTE["border"]};
-            box-shadow: 0 16px 28px rgba(47, 42, 35, 0.06);
+            box-shadow: 0 10px 24px rgba(20, 58, 90, 0.06);
             position: relative;
             overflow: hidden;
         ">
@@ -329,13 +451,301 @@ def tarjeta(titulo, valor):
                 position:absolute;
                 inset:0 auto auto 0;
                 width:100%;
-                height:8px;
-                background: linear-gradient(90deg, {UI_PALETTE["green"]}, {UI_PALETTE["yellow"]}, {UI_PALETTE["red"]});
+                height:4px;
+                background: {UI_PALETTE["green"]};
             "></div>
-            <div style="font-size:15px; font-weight:600; margin-bottom:8px; color:{UI_PALETTE['muted']};">{titulo}</div>
-            <div style="font-size:30px; font-weight:800; color:{UI_PALETTE['green']};">{valor}</div>
+            <div style="font-size:13px; font-weight:700; margin-bottom:8px; color:{UI_PALETTE['muted']}; text-transform:uppercase; letter-spacing:0;">{titulo}</div>
+            <div style="font-size:28px; font-weight:800; color:{UI_PALETTE['green']};">{valor}</div>
         </div>
     """
+
+
+def valor_limpio(valor):
+    if valor is None or pd.isna(valor):
+        return ""
+    return str(valor).strip()
+
+
+def porcentaje(valor, total):
+    return round((valor / total) * 100, 2) if total else 0
+
+
+def aliases_clientes_ordenados():
+    aliases = []
+    for cliente, opciones in CLIENTES_CLAVE_ALIASES.items():
+        for alias in opciones:
+            alias_normalizado = normalizar_texto(alias)
+            if alias_normalizado:
+                aliases.append((cliente, alias_normalizado))
+    return sorted(aliases, key=lambda item: len(item[1]), reverse=True)
+
+
+CLIENTES_CLAVE_ALIAS_ORDENADOS = aliases_clientes_ordenados()
+
+
+def texto_contiene_alias(texto_normalizado, alias_normalizado):
+    patron = rf"(?<!\w){re.escape(alias_normalizado)}(?!\w)"
+    return re.search(patron, texto_normalizado) is not None
+
+
+def detectar_cliente_clave(texto):
+    texto_normalizado = normalizar_texto(texto)
+    if not texto_normalizado:
+        return ""
+    for cliente, alias in CLIENTES_CLAVE_ALIAS_ORDENADOS:
+        if texto_contiene_alias(texto_normalizado, alias):
+            return cliente
+    return ""
+
+
+def detectar_cliente_en_fila(row, campos):
+    for campo in campos:
+        cliente = detectar_cliente_clave(valor_limpio(row.get(campo)))
+        if cliente:
+            return cliente, campo
+    return "", ""
+
+
+def preparar_casos_clientes_clave(df):
+    if df.empty:
+        trabajo = df.copy()
+        trabajo["cliente_clave"] = pd.Series(dtype="object")
+        trabajo["fuente_cliente"] = pd.Series(dtype="object")
+        trabajo["creado_dt"] = pd.Series(dtype="datetime64[ns]")
+        trabajo["cerrado_dt"] = pd.Series(dtype="datetime64[ns]")
+        trabajo["tiempo_respuesta_h"] = pd.Series(dtype="float")
+        return trabajo
+
+    trabajo = df.copy()
+    detecciones = trabajo.apply(
+        lambda row: detectar_cliente_en_fila(row, ["cuenta"]),
+        axis=1,
+        result_type="expand",
+    )
+    detecciones.columns = ["cliente_clave", "fuente_cliente"]
+    trabajo[["cliente_clave", "fuente_cliente"]] = detecciones
+    trabajo = trabajo[trabajo["cliente_clave"] != ""].copy()
+    trabajo["creado_dt"] = pd.to_datetime(trabajo["creado"], errors="coerce")
+    trabajo["cerrado_dt"] = pd.to_datetime(trabajo["cerrado"], errors="coerce")
+    trabajo["tiempo_respuesta_h"] = pd.to_numeric(trabajo["tiempo_respuesta"], errors="coerce")
+    return trabajo
+
+
+def preparar_incidentes_clientes_clave(df):
+    if df.empty:
+        trabajo = df.copy()
+        trabajo["cliente_clave"] = pd.Series(dtype="object")
+        trabajo["fuente_cliente"] = pd.Series(dtype="object")
+        trabajo["creado_dt"] = pd.Series(dtype="datetime64[ns]")
+        trabajo["cerrado_dt"] = pd.Series(dtype="datetime64[ns]")
+        trabajo["duracion_horas_num"] = pd.Series(dtype="float")
+        return trabajo
+
+    trabajo = df.copy()
+    campos = [
+        "empresa",
+        "solicitante",
+        "breve_descripcion",
+        "descripcion",
+        "observaciones_trabajo",
+        "observaciones_adicionales",
+    ]
+    detecciones = trabajo.apply(
+        lambda row: detectar_cliente_en_fila(row, campos),
+        axis=1,
+        result_type="expand",
+    )
+    detecciones.columns = ["cliente_clave", "fuente_cliente"]
+    trabajo[["cliente_clave", "fuente_cliente"]] = detecciones
+    trabajo = trabajo[trabajo["cliente_clave"] != ""].copy()
+    trabajo["creado_dt"] = pd.to_datetime(trabajo["creado"], errors="coerce")
+    trabajo["cerrado_dt"] = pd.to_datetime(trabajo["cerrado"], errors="coerce")
+    trabajo["duracion_horas_num"] = pd.to_numeric(trabajo["duracion_horas"], errors="coerce")
+    return trabajo
+
+
+def fecha_maxima_cliente(casos_cliente, incidentes_cliente):
+    fechas = []
+    if not casos_cliente.empty:
+        fechas.append(casos_cliente["creado_dt"].max())
+    if not incidentes_cliente.empty:
+        fechas.append(incidentes_cliente["creado_dt"].max())
+    fechas_validas = [fecha for fecha in fechas if pd.notna(fecha)]
+    if not fechas_validas:
+        return ""
+    return max(fechas_validas).strftime("%Y-%m-%d %H:%M")
+
+
+def valor_mas_frecuente(serie, default="Sin dato"):
+    if serie.empty:
+        return default
+    valores = serie.replace("", pd.NA).dropna()
+    if valores.empty:
+        return default
+    return valores.value_counts().idxmax()
+
+
+def nivel_atencion_cliente(
+    abiertos,
+    incidentes_abiertos,
+    alertas,
+    prioridad_alta,
+    sla_casos,
+    sla_incidentes,
+    casos_sin_causa,
+):
+    score = 100
+    score -= min(25, abiertos * 5)
+    score -= min(20, incidentes_abiertos * 10)
+    score -= min(20, alertas * 4)
+    score -= min(12, prioridad_alta * 6)
+    score -= min(10, casos_sin_causa * 2)
+
+    if sla_casos is not None and sla_casos < 90:
+        score -= min(15, round((90 - sla_casos) / 3, 2))
+    if sla_incidentes is not None and sla_incidentes < 90:
+        score -= min(15, round((90 - sla_incidentes) / 3, 2))
+
+    score = max(0, round(score, 2))
+    if score >= 85:
+        return "Verde", "Estable", score
+    if score >= 65:
+        return "Amarillo", "Seguimiento", score
+    return "Rojo", "Prioritario", score
+
+
+def resumen_clientes_clave(casos, incidentes):
+    filas = []
+    for cliente in CLIENTES_CLAVE:
+        casos_cliente = casos[casos["cliente_clave"] == cliente] if not casos.empty else pd.DataFrame()
+        incidentes_cliente = (
+            incidentes[incidentes["cliente_clave"] == cliente] if not incidentes.empty else pd.DataFrame()
+        )
+
+        total_casos = len(casos_cliente)
+        total_incidentes = len(incidentes_cliente)
+        if total_casos == 0 and total_incidentes == 0:
+            filas.append(
+                {
+                    "Cliente": cliente,
+                    "Nivel": "Sin actividad",
+                    "Estado atencion": "Sin actividad",
+                    "Score": 100,
+                    "Casos": 0,
+                    "Incidentes": 0,
+                    "Total atenciones": 0,
+                    "Abiertos": 0,
+                    "SLA casos %": None,
+                    "SLA incidentes %": None,
+                    "Alertas incidentes": 0,
+                    "Prioridad alta": 0,
+                    "Casos sin causa": 0,
+                    "Producto principal": "Sin dato",
+                    "Causa incidente principal": "Sin dato",
+                    "Ultima atencion": "",
+                }
+            )
+            continue
+
+        if total_casos:
+            casos_cerrados = casos_cliente[casos_cliente["estado"] == "Cerrado"]
+            casos_abiertos = total_casos - len(casos_cerrados)
+            tiempos_casos = casos_cerrados["tiempo_respuesta_h"].dropna()
+            sla_casos = (
+                porcentaje(len(tiempos_casos[tiempos_casos < 24]), len(tiempos_casos))
+                if len(tiempos_casos)
+                else None
+            )
+            casos_sin_causa = len(
+                casos_cliente[
+                    casos_cliente["causa"].replace("", pd.NA).fillna("Sin dato").str.lower().isin(["sin dato"])
+                ]
+            )
+        else:
+            casos_abiertos = 0
+            sla_casos = None
+            casos_sin_causa = 0
+
+        if total_incidentes:
+            incidentes_cerrados = incidentes_cliente[incidentes_cliente["estado"] == "Cerrado"]
+            incidentes_abiertos = total_incidentes - len(incidentes_cerrados)
+            duraciones_incidentes = incidentes_cerrados["duracion_horas_num"].dropna()
+            sla_incidentes = (
+                porcentaje(len(duraciones_incidentes[duraciones_incidentes < 24]), len(duraciones_incidentes))
+                if len(duraciones_incidentes)
+                else None
+            )
+            alertas = len(incidentes_cliente[incidentes_cliente["es_alerta_auto"].fillna("No") == "Si"])
+            prioridad_alta = len(
+                incidentes_cliente[
+                    incidentes_cliente["prioridad"].fillna("").str.contains(
+                        r"^(?:1|2\s*-\s*Alta)", case=False, regex=True
+                    )
+                ]
+            )
+        else:
+            incidentes_abiertos = 0
+            sla_incidentes = None
+            alertas = 0
+            prioridad_alta = 0
+        abiertos = casos_abiertos + incidentes_abiertos
+        nivel, estado_atencion, score = nivel_atencion_cliente(
+            abiertos,
+            incidentes_abiertos,
+            alertas,
+            prioridad_alta,
+            sla_casos,
+            sla_incidentes,
+            casos_sin_causa,
+        )
+
+        filas.append(
+            {
+                "Cliente": cliente,
+                "Nivel": nivel,
+                "Estado atencion": estado_atencion,
+                "Score": score,
+                "Casos": total_casos,
+                "Incidentes": total_incidentes,
+                "Total atenciones": total_casos + total_incidentes,
+                "Abiertos": abiertos,
+                "SLA casos %": sla_casos,
+                "SLA incidentes %": sla_incidentes,
+                "Alertas incidentes": alertas,
+                "Prioridad alta": prioridad_alta,
+                "Casos sin causa": casos_sin_causa,
+                "Producto principal": valor_mas_frecuente(casos_cliente.get("producto", pd.Series(dtype="object"))),
+                "Causa incidente principal": valor_mas_frecuente(
+                    incidentes_cliente.get("causa_raiz_auto", pd.Series(dtype="object"))
+                ),
+                "Ultima atencion": fecha_maxima_cliente(casos_cliente, incidentes_cliente),
+            }
+        )
+
+    return pd.DataFrame(filas)
+
+
+def tabla_resumen_tipificaciones_casos(df):
+    conteo_tipificaciones = df["tipificacion"].value_counts()
+    resumen = pd.DataFrame(CASE_TIPIFICATION_GUIDE)
+    resumen["Cantidad"] = resumen["Tipificacion"].map(conteo_tipificaciones).fillna(0).astype(int)
+
+    tipificaciones_faltantes = [
+        tipificacion
+        for tipificacion in conteo_tipificaciones.index.tolist()
+        if tipificacion not in resumen["Tipificacion"].tolist()
+    ]
+    if tipificaciones_faltantes:
+        adicionales = pd.DataFrame(
+            {
+                "Tipificacion": tipificaciones_faltantes,
+                "Descripcion": ["Tipificacion detectada sin descripcion configurada."] * len(tipificaciones_faltantes),
+                "Cantidad": [int(conteo_tipificaciones[tip]) for tip in tipificaciones_faltantes],
+            }
+        )
+        resumen = pd.concat([resumen, adicionales], ignore_index=True)
+
+    return resumen.sort_values(by=["Cantidad", "Tipificacion"], ascending=[False, True]).reset_index(drop=True)
 
 
 def dashboard_casos():
@@ -392,6 +802,11 @@ def dashboard_casos():
         fig = px.bar(casos_dia, x="creado", y="casos", color_discrete_sequence=[UI_PALETTE["yellow"]])
         fig.update_traces(marker_color=UI_PALETTE["yellow"])
         st.plotly_chart(aplicar_estilo_figura(fig, "Casos por dia"), use_container_width=True)
+
+    st.divider()
+    st.subheader("Resumen de tipificaciones")
+    st.caption("Descripcion breve de cada tipificacion y cantidad actual de casos clasificados en el dashboard.")
+    st.dataframe(tabla_resumen_tipificaciones_casos(df), use_container_width=True, hide_index=True)
 
 
 def dashboard_incidentes():
@@ -492,34 +907,43 @@ def dashboard_incidentes():
         st.plotly_chart(aplicar_estilo_figura(fig, "Incidentes por dia"), use_container_width=True)
 
     st.divider()
-    st.subheader("Impacto en Cliente Externo")
+    st.subheader("Cliente Externo")
 
     df_cliente_externo = df[df["tipificacion_auto"].fillna("Cliente Interno") == "Cliente Externo"].copy()
+    df_caso_externo = df[df["tipificacion_auto"].fillna("") == "Caso Cliente Externo"].copy()
+
+    resumen_col1, resumen_col2 = st.columns(2)
+    porcentaje_externo = round((len(df_cliente_externo) / total) * 100, 2) if total > 0 else 0
+    porcentaje_caso_externo = round((len(df_caso_externo) / total) * 100, 2) if total > 0 else 0
+
+    with resumen_col1:
+        st.markdown(tarjeta("Incidentes Cliente Externo", len(df_cliente_externo)), unsafe_allow_html=True)
+        st.caption(f"Participacion sobre el total: {porcentaje_externo}%")
+
+    with resumen_col2:
+        st.markdown(tarjeta("Casos cargados como incidente", len(df_caso_externo)), unsafe_allow_html=True)
+        st.caption(f"Participacion sobre el total: {porcentaje_caso_externo}%")
+
     if not df_cliente_externo.empty:
         causas_externo = df_cliente_externo["causa_raiz_auto"].replace("", pd.NA).fillna("Sin inferencia").value_counts().reset_index()
         causas_externo.columns = ["Afectacion", "Cantidad"]
         causas_externo = causas_externo.sort_values(by="Cantidad", ascending=True)
         principal_afectacion = causas_externo.iloc[-1]["Afectacion"]
-        porcentaje_externo = round((len(df_cliente_externo) / total) * 100, 2) if total > 0 else 0
+        st.caption(f"Principal afectacion inferida en incidentes reales: {principal_afectacion}")
 
-        externo_col1, externo_col2 = st.columns([1, 2])
-        with externo_col1:
-            st.markdown(tarjeta("Incidentes Cliente Externo", len(df_cliente_externo)), unsafe_allow_html=True)
-            st.caption(f"Participacion sobre el total: {porcentaje_externo}%")
-            st.caption(f"Principal afectacion inferida: {principal_afectacion}")
-
-        with externo_col2:
-            fig = px.bar(
-                causas_externo,
-                x="Cantidad",
-                y="Afectacion",
-                orientation="h",
-                text="Cantidad",
-                color_discrete_sequence=[UI_PALETTE["red"]],
-                title="Que esta afectando al Cliente Externo",
-            )
-            fig.update_traces(textposition="outside")
-            st.plotly_chart(aplicar_estilo_figura(fig, "Que esta afectando al Cliente Externo"), use_container_width=True)
+        fig = px.bar(
+            causas_externo,
+            x="Cantidad",
+            y="Afectacion",
+            orientation="h",
+            text="Cantidad",
+            color_discrete_sequence=[UI_PALETTE["red"]],
+            title="Que esta afectando al Cliente Externo",
+        )
+        fig.update_traces(textposition="outside")
+        st.plotly_chart(aplicar_estilo_figura(fig, "Que esta afectando al Cliente Externo"), use_container_width=True)
+    elif not df_caso_externo.empty:
+        st.info("No hay incidentes reales tipificados como Cliente Externo. Los registros detectados en este grupo fueron reclasificados como casos.")
     else:
         st.info("No hay incidentes tipificados como Cliente Externo en los datos cargados.")
 
@@ -539,6 +963,302 @@ def dashboard_incidentes():
                 if alerta["incidentes_adicionales"] > 0:
                     relacionados += f" y {alerta['incidentes_adicionales']} mas"
                 st.caption(f"Incidentes relacionados: {relacionados}")
+
+
+def dashboard_clientes_clave():
+    casos = preparar_casos_clientes_clave(load_casos())
+    incidentes = preparar_incidentes_clientes_clave(load_incidentes())
+
+    st.subheader("Clientes clave")
+
+    fechas = []
+    if not casos.empty:
+        fechas.append(casos["creado_dt"])
+    if not incidentes.empty:
+        fechas.append(incidentes["creado_dt"])
+    fechas = pd.concat(fechas).dropna() if fechas else pd.Series(dtype="datetime64[ns]")
+
+    filtro_col1, filtro_col2 = st.columns([2, 1])
+    with filtro_col1:
+        clientes_seleccionados = st.multiselect(
+            "Clientes",
+            CLIENTES_CLAVE,
+            default=CLIENTES_CLAVE,
+            key="clientes_clave_filtro",
+        )
+    with filtro_col2:
+        rango_fechas = None
+        if not fechas.empty:
+            fecha_min = fechas.min().date()
+            fecha_max = fechas.max().date()
+            rango_fechas = st.date_input(
+                "Rango de fechas",
+                value=(fecha_min, fecha_max),
+                min_value=fecha_min,
+                max_value=fecha_max,
+                key="clientes_clave_rango",
+            )
+
+    if not clientes_seleccionados:
+        st.warning("Selecciona al menos un cliente clave.")
+        return
+
+    casos = casos[casos["cliente_clave"].isin(clientes_seleccionados)].copy()
+    incidentes = incidentes[incidentes["cliente_clave"].isin(clientes_seleccionados)].copy()
+
+    if rango_fechas and isinstance(rango_fechas, tuple) and len(rango_fechas) == 2:
+        fecha_inicio = pd.Timestamp(rango_fechas[0])
+        fecha_fin = pd.Timestamp(rango_fechas[1]) + pd.Timedelta(days=1) - pd.Timedelta(seconds=1)
+        if not casos.empty:
+            casos = casos[casos["creado_dt"].between(fecha_inicio, fecha_fin, inclusive="both")].copy()
+        if not incidentes.empty:
+            incidentes = incidentes[incidentes["creado_dt"].between(fecha_inicio, fecha_fin, inclusive="both")].copy()
+
+    resumen = resumen_clientes_clave(casos, incidentes)
+    resumen = resumen[resumen["Cliente"].isin(clientes_seleccionados)].copy()
+    resumen_actividad = resumen[resumen["Total atenciones"] > 0].copy()
+
+    total_casos = len(casos)
+    total_incidentes = len(incidentes)
+    abiertos_casos = len(casos[casos["estado"] != "Cerrado"]) if not casos.empty else 0
+    abiertos_incidentes = len(incidentes[incidentes["estado"] != "Cerrado"]) if not incidentes.empty else 0
+    clientes_activos = len(resumen_actividad)
+    clientes_seguimiento = len(resumen_actividad[resumen_actividad["Nivel"].isin(["Amarillo", "Rojo"])])
+
+    casos_cerrados = casos[casos["estado"] == "Cerrado"] if not casos.empty else pd.DataFrame()
+    tiempos_casos = casos_cerrados.get("tiempo_respuesta_h", pd.Series(dtype="float")).dropna()
+    sla_casos = porcentaje(len(tiempos_casos[tiempos_casos < 24]), len(tiempos_casos)) if len(tiempos_casos) else 0
+
+    incidentes_cerrados = incidentes[incidentes["estado"] == "Cerrado"] if not incidentes.empty else pd.DataFrame()
+    duraciones_incidentes = incidentes_cerrados.get("duracion_horas_num", pd.Series(dtype="float")).dropna()
+    sla_incidentes = (
+        porcentaje(len(duraciones_incidentes[duraciones_incidentes < 24]), len(duraciones_incidentes))
+        if len(duraciones_incidentes)
+        else 0
+    )
+
+    col1, col2, col3, col4, col5 = st.columns(5)
+    col1.markdown(tarjeta("Clientes activos", clientes_activos), unsafe_allow_html=True)
+    col2.markdown(tarjeta("Atenciones", total_casos + total_incidentes), unsafe_allow_html=True)
+    col3.markdown(tarjeta("Abiertos", abiertos_casos + abiertos_incidentes), unsafe_allow_html=True)
+    col4.markdown(tarjeta("SLA casos <24h", f"{sla_casos}%"), unsafe_allow_html=True)
+    col5.markdown(tarjeta("SLA inc. <24h", f"{sla_incidentes}%"), unsafe_allow_html=True)
+    st.caption(
+        f"Casos: {total_casos} | Incidentes: {total_incidentes} | "
+        f"Clientes en seguimiento: {clientes_seguimiento}"
+    )
+
+    clientes_sin_actividad = resumen[resumen["Total atenciones"] == 0]["Cliente"].tolist()
+    if clientes_sin_actividad:
+        st.caption("Sin actividad en el periodo: " + ", ".join(clientes_sin_actividad))
+
+    if resumen_actividad.empty:
+        st.info("No hay casos o incidentes asociados a los clientes seleccionados en el periodo.")
+        return
+
+    st.divider()
+    graf_col1, graf_col2 = st.columns(2)
+
+    with graf_col1:
+        grafico = resumen_actividad.sort_values(by="Total atenciones", ascending=True)
+        fig = px.bar(
+            grafico,
+            x="Total atenciones",
+            y="Cliente",
+            orientation="h",
+            text="Total atenciones",
+            color="Nivel",
+            color_discrete_map={
+                "Verde": UI_PALETTE["green"],
+                "Amarillo": UI_PALETTE["yellow"],
+                "Rojo": UI_PALETTE["red"],
+            },
+        )
+        fig.update_traces(textposition="outside")
+        st.plotly_chart(aplicar_estilo_figura(fig, "Atenciones por cliente clave"), use_container_width=True)
+
+    with graf_col2:
+        actividad = []
+        if not casos.empty:
+            casos_dia = casos[["creado_dt"]].dropna().copy()
+            casos_dia["Fecha"] = casos_dia["creado_dt"].dt.date
+            casos_dia["Tipo"] = "Casos"
+            actividad.append(casos_dia.groupby(["Fecha", "Tipo"]).size().reset_index(name="Cantidad"))
+        if not incidentes.empty:
+            incidentes_dia = incidentes[["creado_dt"]].dropna().copy()
+            incidentes_dia["Fecha"] = incidentes_dia["creado_dt"].dt.date
+            incidentes_dia["Tipo"] = "Incidentes"
+            actividad.append(incidentes_dia.groupby(["Fecha", "Tipo"]).size().reset_index(name="Cantidad"))
+        if actividad:
+            actividad_dia = pd.concat(actividad, ignore_index=True)
+            fig = px.bar(
+                actividad_dia,
+                x="Fecha",
+                y="Cantidad",
+                color="Tipo",
+                barmode="group",
+                color_discrete_sequence=[UI_PALETTE["green"], UI_PALETTE["red"]],
+            )
+            st.plotly_chart(aplicar_estilo_figura(fig, "Actividad por dia"), use_container_width=True)
+        else:
+            st.info("No hay fechas validas para graficar actividad.")
+
+    graf_col3, graf_col4 = st.columns(2)
+    with graf_col3:
+        if not casos.empty:
+            productos = casos["producto"].replace("", pd.NA).fillna("Sin producto").value_counts().reset_index()
+            productos.columns = ["Producto", "Cantidad"]
+            productos = productos.head(10).sort_values(by="Cantidad", ascending=True)
+            fig = px.bar(
+                productos,
+                x="Cantidad",
+                y="Producto",
+                orientation="h",
+                text="Cantidad",
+                color_discrete_sequence=[UI_PALETTE["yellow"]],
+            )
+            fig.update_traces(textposition="outside")
+            st.plotly_chart(aplicar_estilo_figura(fig, "Productos con mas casos"), use_container_width=True)
+        else:
+            st.info("No hay casos asociados a clientes clave.")
+
+    with graf_col4:
+        if not incidentes.empty:
+            causas = (
+                incidentes["causa_raiz_auto"]
+                .replace("", pd.NA)
+                .fillna("Sin inferencia")
+                .value_counts()
+                .reset_index()
+            )
+            causas.columns = ["Causa incidente", "Cantidad"]
+            causas = causas.head(10).sort_values(by="Cantidad", ascending=True)
+            fig = px.bar(
+                causas,
+                x="Cantidad",
+                y="Causa incidente",
+                orientation="h",
+                text="Cantidad",
+                color_discrete_sequence=[UI_PALETTE["red"]],
+            )
+            fig.update_traces(textposition="outside")
+            st.plotly_chart(aplicar_estilo_figura(fig, "Causas en incidentes"), use_container_width=True)
+        else:
+            st.info("No hay incidentes asociados a clientes clave.")
+
+    st.divider()
+    tab_resumen, tab_casos, tab_incidentes, tab_seguimiento = st.tabs(
+        ["Resumen", "Casos", "Incidentes", "Seguimiento"]
+    )
+
+    with tab_resumen:
+        columnas_resumen = [
+            "Cliente",
+            "Nivel",
+            "Estado atencion",
+            "Score",
+            "Casos",
+            "Incidentes",
+            "Total atenciones",
+            "Abiertos",
+            "SLA casos %",
+            "SLA incidentes %",
+            "Alertas incidentes",
+            "Casos sin causa",
+            "Producto principal",
+            "Causa incidente principal",
+            "Ultima atencion",
+        ]
+        st.dataframe(
+            resumen[columnas_resumen].sort_values(by=["Total atenciones", "Score"], ascending=[False, True]),
+            use_container_width=True,
+            hide_index=True,
+        )
+
+    with tab_casos:
+        if casos.empty:
+            st.info("No hay casos asociados a los clientes seleccionados.")
+        else:
+            columnas_casos = [
+                "cliente_clave",
+                "numero",
+                "cuenta",
+                "estado",
+                "prioridad",
+                "producto",
+                "tipificacion",
+                "tiempo_respuesta",
+                "creado",
+                "cerrado",
+                "causa",
+                "codigo_resolucion",
+                "fuente_cliente",
+            ]
+            columnas_casos = [col for col in columnas_casos if col in casos.columns]
+            st.dataframe(
+                casos.sort_values(by="creado_dt", ascending=False)[columnas_casos],
+                use_container_width=True,
+                hide_index=True,
+            )
+
+    with tab_incidentes:
+        if incidentes.empty:
+            st.info("No hay incidentes asociados a los clientes seleccionados.")
+        else:
+            columnas_incidentes = [
+                "cliente_clave",
+                "numero",
+                "empresa",
+                "solicitante",
+                "estado",
+                "prioridad",
+                "servicio_negocio",
+                "tipificacion_auto",
+                "es_alerta_auto",
+                "causa_raiz_auto",
+                "duracion_horas",
+                "creado",
+                "cerrado",
+                "breve_descripcion",
+                "fuente_cliente",
+            ]
+            columnas_incidentes = [col for col in columnas_incidentes if col in incidentes.columns]
+            st.dataframe(
+                incidentes.sort_values(by="creado_dt", ascending=False)[columnas_incidentes],
+                use_container_width=True,
+                hide_index=True,
+            )
+
+    with tab_seguimiento:
+        seguimiento = resumen_actividad[resumen_actividad["Nivel"].isin(["Amarillo", "Rojo"])].copy()
+        if seguimiento.empty:
+            st.success("Los clientes clave con actividad estan en nivel estable para el periodo seleccionado.")
+        else:
+            seguimiento = seguimiento.sort_values(by=["Nivel", "Score", "Abiertos"], ascending=[False, True, False])
+            st.dataframe(
+                seguimiento[
+                    [
+                        "Cliente",
+                        "Nivel",
+                        "Estado atencion",
+                        "Score",
+                        "Abiertos",
+                        "Alertas incidentes",
+                        "Prioridad alta",
+                        "Casos sin causa",
+                        "Producto principal",
+                        "Causa incidente principal",
+                    ]
+                ],
+                use_container_width=True,
+                hide_index=True,
+            )
+            for _, row in seguimiento.iterrows():
+                st.warning(
+                    f"**{row['Cliente']}** | {row['Estado atencion']} | "
+                    f"Abiertos: {row['Abiertos']} | Alertas: {row['Alertas incidentes']} | "
+                    f"Casos sin causa: {row['Casos sin causa']}"
+                )
 
 
 def vista_cargar_casos():
@@ -629,32 +1349,77 @@ def vista_incidentes():
     st.dataframe(df, use_container_width=True, hide_index=True)
 
 
+def vista_administrar_usuarios():
+    st.subheader("Administrar usuarios")
+    st.caption("Crea usuarios para dar acceso a los dashboards o cambia su rol y estado.")
+
+    usuarios = listar_usuarios()
+    if usuarios.empty:
+        st.info("Aun no hay usuarios configurados.")
+    else:
+        tabla = usuarios.copy()
+        tabla["active"] = tabla["active"].map({1: "Activo", 0: "Inactivo", True: "Activo", False: "Inactivo"})
+        tabla["role"] = tabla["role"].map({"admin": "Admin", "viewer": "Viewer"}).fillna(tabla["role"])
+        st.dataframe(tabla, use_container_width=True, hide_index=True)
+
+    st.divider()
+    st.markdown("#### Crear o actualizar usuario")
+    with st.form("form_usuario"):
+        email = st.text_input("Correo", key="usuario_email")
+        password = st.text_input(
+            "Contrasena nueva",
+            type="password",
+            help="Minimo 8 caracteres. Para actualizar rol/estado sin cambiar contrasena, dejala vacia.",
+            key="usuario_password",
+        )
+        col_rol, col_estado = st.columns(2)
+        with col_rol:
+            role = st.selectbox("Rol", ["viewer", "admin"], format_func=lambda x: "Viewer" if x == "viewer" else "Admin")
+        with col_estado:
+            active = st.checkbox("Activo", value=True)
+        guardar = st.form_submit_button("Guardar usuario")
+
+    if guardar:
+        if not validar_email(email):
+            st.error("Escribe un correo valido.")
+        else:
+            try:
+                guardar_usuario(email, password or None, role=role, active=active)
+                st.success("Usuario guardado.")
+                st.rerun()
+            except ValueError as exc:
+                st.error(str(exc))
+
+    st.divider()
+    st.markdown("#### Quitar acceso")
+    usuarios_actuales = listar_usuarios()
+    if usuarios_actuales.empty:
+        st.info("No hay usuarios para eliminar.")
+        return
+
+    email_actual = normalizar_email(st.session_state.get("user"))
+    candidatos = [
+        email
+        for email in usuarios_actuales["email"].tolist()
+        if normalizar_email(email) != email_actual
+    ]
+    if not candidatos:
+        st.info("No puedes eliminar tu propio usuario desde aqui.")
+        return
+
+    usuario_eliminar = st.selectbox("Usuario", candidatos, key="usuario_eliminar")
+    confirmar = st.checkbox("Confirmo que quiero eliminar este usuario", key="confirmar_eliminar_usuario")
+    if st.button("Eliminar usuario", disabled=not confirmar):
+        eliminar_usuario(usuario_eliminar)
+        st.success("Usuario eliminado.")
+        st.rerun()
+
+
 def run_app():
     aplicar_tema_visual()
     init_db()
     if not login():
         return
-
-    st.markdown(
-        f"""
-        <div style="
-            background: linear-gradient(135deg, rgba(255,255,255,0.92), rgba(251,247,234,0.92));
-            border: 1px solid {UI_PALETTE["border"]};
-            border-radius: 20px;
-            padding: 1rem 1.2rem;
-            box-shadow: 0 18px 32px rgba(47, 42, 35, 0.06);
-            margin-bottom: 1rem;
-        ">
-            <div style="font-size: 2rem; font-weight: 800; color: {UI_PALETTE['green']};">
-                Gestion casos e incidentes Yerika
-            </div>
-            <div style="font-size: 0.98rem; color: {UI_PALETTE['muted']}; margin-top: 0.2rem;">
-                
-            
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
 
     if st.session_state.role == "admin":
         menu = st.sidebar.selectbox(
@@ -666,8 +1431,11 @@ def run_app():
                 "Cargar Excel Incidentes",
                 "Incidentes",
                 "Dashboard Incidentes",
+                "Clientes Clave",
+                "Administrar Usuarios",
             ],
         )
+        st.sidebar.caption(f"Sesion: {st.session_state.user}")
         if st.sidebar.button("Cerrar sesion"):
             st.session_state.clear()
             st.rerun()
@@ -675,11 +1443,13 @@ def run_app():
         if st.button("Cerrar sesion"):
             st.session_state.clear()
             st.rerun()
-        tabs = st.tabs(["Dashboard Casos", "Dashboard Incidentes"])
+        tabs = st.tabs(["Dashboard Casos", "Dashboard Incidentes", "Clientes Clave"])
         with tabs[0]:
             dashboard_casos()
         with tabs[1]:
             dashboard_incidentes()
+        with tabs[2]:
+            dashboard_clientes_clave()
         return
 
     if menu == "Cargar Excel Casos":
@@ -694,3 +1464,7 @@ def run_app():
         vista_incidentes()
     elif menu == "Dashboard Incidentes":
         dashboard_incidentes()
+    elif menu == "Clientes Clave":
+        dashboard_clientes_clave()
+    elif menu == "Administrar Usuarios":
+        vista_administrar_usuarios()
