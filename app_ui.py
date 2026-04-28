@@ -1,3 +1,4 @@
+import html
 import re
 
 import pandas as pd
@@ -242,6 +243,24 @@ def aplicar_tema_visual():
             background-color: var(--green) !important;
         }}
 
+        [role="radiogroup"] {{
+            gap: 0.5rem;
+            flex-wrap: wrap;
+            margin-bottom: 1rem;
+        }}
+
+        [role="radiogroup"] label {{
+            background: rgba(255, 255, 255, 0.9);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 0.35rem 0.7rem;
+        }}
+
+        [role="radiogroup"] label:has(input:checked) {{
+            background: #edf5f3;
+            border-color: var(--green-soft);
+        }}
+
         [data-baseweb="tag"] {{
             background-color: #edf5f3 !important;
             border: 1px solid #c7d9d4 !important;
@@ -262,6 +281,126 @@ def aplicar_tema_visual():
 
         .stDivider {{
             border-color: rgba(20, 58, 90, 0.12) !important;
+        }}
+
+        .kpi-grid {{
+            display: grid;
+            grid-template-columns: repeat(5, minmax(0, 1fr));
+            gap: 1rem;
+            margin: 0.35rem 0 0.25rem;
+        }}
+
+        .kpi-card {{
+            background: var(--surface);
+            padding: 18px;
+            border-radius: 8px;
+            text-align: center;
+            color: var(--text);
+            min-height: 112px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            border: 1px solid var(--border);
+            box-shadow: 0 10px 24px rgba(20, 58, 90, 0.06);
+            position: relative;
+            overflow: hidden;
+        }}
+
+        .kpi-card::before {{
+            content: "";
+            position: absolute;
+            inset: 0 auto auto 0;
+            width: 100%;
+            height: 4px;
+            background: var(--green);
+        }}
+
+        .kpi-title {{
+            font-size: 13px;
+            font-weight: 700;
+            margin-bottom: 8px;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0;
+        }}
+
+        .kpi-value {{
+            font-size: 28px;
+            font-weight: 800;
+            color: var(--green);
+            line-height: 1.1;
+        }}
+
+        @media (max-width: 900px) {{
+            .block-container {{
+                padding-left: 1rem;
+                padding-right: 1rem;
+            }}
+
+            [data-testid="stHorizontalBlock"] {{
+                flex-direction: column;
+            }}
+
+            [data-testid="stHorizontalBlock"] > div {{
+                width: 100% !important;
+                min-width: 100% !important;
+            }}
+
+            .kpi-grid {{
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: 0.75rem;
+            }}
+
+            [data-testid="stTabs"] div[role="tablist"] {{
+                gap: 0.35rem;
+                overflow-x: auto;
+                padding-bottom: 0.25rem;
+            }}
+
+            [data-testid="stTabs"] button[role="tab"] {{
+                min-width: max-content;
+                padding: 0.45rem 0.7rem;
+            }}
+        }}
+
+        @media (max-width: 520px) {{
+            .block-container {{
+                padding-top: 0.75rem;
+                padding-left: 0.75rem;
+                padding-right: 0.75rem;
+            }}
+
+            h2, h3 {{
+                font-size: 1.25rem !important;
+                line-height: 1.25 !important;
+            }}
+
+            .kpi-grid {{
+                grid-template-columns: 1fr;
+            }}
+
+            .kpi-card {{
+                min-height: 88px;
+                padding: 14px;
+            }}
+
+            .kpi-title {{
+                font-size: 11px;
+                margin-bottom: 6px;
+            }}
+
+            .kpi-value {{
+                font-size: 24px;
+            }}
+
+            [data-baseweb="tag"] {{
+                max-width: 100%;
+            }}
+
+            [data-testid="stDataFrame"] {{
+                font-size: 12px !important;
+            }}
         }}
         </style>
         """,
@@ -413,51 +552,42 @@ def login():
         password = st.text_input("Contrasena", type="password", key="password_login")
 
         if st.button("Ingresar", key="btn_login"):
-            if not validar_email(correo):
-                st.error("Escribe un correo valido")
-                return False
+            with st.spinner("Validando acceso..."):
+                if not validar_email(correo):
+                    st.error("Escribe un correo valido")
+                    return False
 
-            usuario = autenticar_usuario(correo, password)
-            if not usuario:
-                st.error("Correo o contrasena incorrectos, o usuario inactivo")
-                return False
+                usuario = autenticar_usuario(correo, password)
+                if not usuario:
+                    st.error("Correo o contrasena incorrectos, o usuario inactivo")
+                    return False
 
-            st.session_state.user = usuario["email"]
-            st.session_state.role = usuario["role"]
-            st.rerun()
+                st.session_state.user = usuario["email"]
+                st.session_state.role = usuario["role"]
+                st.rerun()
 
     return False
 
 
 def tarjeta(titulo, valor):
-    return f"""
-        <div style="
-            background: {UI_PALETTE["surface"]};
-            padding:18px;
-            border-radius:8px;
-            text-align:center;
-            color:{UI_PALETTE["text"]};
-            min-height:112px;
-            display:flex;
-            flex-direction:column;
-            justify-content:center;
-            align-items:center;
-            border: 1px solid {UI_PALETTE["border"]};
-            box-shadow: 0 10px 24px rgba(20, 58, 90, 0.06);
-            position: relative;
-            overflow: hidden;
-        ">
-            <div style="
-                position:absolute;
-                inset:0 auto auto 0;
-                width:100%;
-                height:4px;
-                background: {UI_PALETTE["green"]};
-            "></div>
-            <div style="font-size:13px; font-weight:700; margin-bottom:8px; color:{UI_PALETTE['muted']}; text-transform:uppercase; letter-spacing:0;">{titulo}</div>
-            <div style="font-size:28px; font-weight:800; color:{UI_PALETTE['green']};">{valor}</div>
-        </div>
-    """
+    titulo = html.escape(str(titulo))
+    valor = html.escape(str(valor))
+    return (
+        '<div class="kpi-card">'
+        f'<div class="kpi-title">{titulo}</div>'
+        f'<div class="kpi-value">{valor}</div>'
+        "</div>"
+    )
+
+
+def render_tarjetas(items):
+    contenido = "".join(tarjeta(titulo, valor) for titulo, valor in items)
+    st.markdown(f'<div class="kpi-grid">{contenido}</div>', unsafe_allow_html=True)
+
+
+def ejecutar_con_carga(nombre, funcion):
+    with st.spinner(f"Cargando {nombre.lower()}..."):
+        funcion()
 
 
 def valor_limpio(valor):
@@ -767,12 +897,15 @@ def dashboard_casos():
     porcentaje_sla = round((cumplen / total_cerrados) * 100, 2) if total_cerrados > 0 else 0
     incumplen = total_cerrados - cumplen
 
-    col1, col2, col3, col4, col5 = st.columns(5)
-    col1.markdown(tarjeta("Total Casos", total), unsafe_allow_html=True)
-    col2.markdown(tarjeta("Cerrados", cerrados), unsafe_allow_html=True)
-    col3.markdown(tarjeta("Abiertos", abiertos), unsafe_allow_html=True)
-    col4.markdown(tarjeta("Promedio (h)", promedio), unsafe_allow_html=True)
-    col5.markdown(tarjeta("SLA <24h (%)", f"{porcentaje_sla}%"), unsafe_allow_html=True)
+    render_tarjetas(
+        [
+            ("Total Casos", total),
+            ("Cerrados", cerrados),
+            ("Abiertos", abiertos),
+            ("Promedio (h)", promedio),
+            ("SLA <24h (%)", f"{porcentaje_sla}%"),
+        ]
+    )
     st.caption(f"Cumplen: {cumplen} | No cumplen: {incumplen}")
 
     st.divider()
@@ -830,12 +963,15 @@ def dashboard_incidentes():
     incumplen = total_cerrados - cumplen
     alertas_tipificadas = len(df[df["es_alerta_auto"].fillna("No") == "Si"])
 
-    col1, col2, col3, col4, col5 = st.columns(5)
-    col1.markdown(tarjeta("Total Incidentes", total), unsafe_allow_html=True)
-    col2.markdown(tarjeta("Cerrados", cerrados), unsafe_allow_html=True)
-    col3.markdown(tarjeta("Abiertos", abiertos), unsafe_allow_html=True)
-    col4.markdown(tarjeta("Promedio (h)", promedio), unsafe_allow_html=True)
-    col5.markdown(tarjeta("SLA <24h (%)", f"{porcentaje_sla}%"), unsafe_allow_html=True)
+    render_tarjetas(
+        [
+            ("Total Incidentes", total),
+            ("Cerrados", cerrados),
+            ("Abiertos", abiertos),
+            ("Promedio (h)", promedio),
+            ("SLA <24h (%)", f"{porcentaje_sla}%"),
+        ]
+    )
     st.caption(f"Cumplen: {cumplen} | No cumplen: {incumplen} | Alertas tipificadas: {alertas_tipificadas}")
 
     st.divider()
@@ -1037,12 +1173,15 @@ def dashboard_clientes_clave():
         else 0
     )
 
-    col1, col2, col3, col4, col5 = st.columns(5)
-    col1.markdown(tarjeta("Clientes activos", clientes_activos), unsafe_allow_html=True)
-    col2.markdown(tarjeta("Atenciones", total_casos + total_incidentes), unsafe_allow_html=True)
-    col3.markdown(tarjeta("Abiertos", abiertos_casos + abiertos_incidentes), unsafe_allow_html=True)
-    col4.markdown(tarjeta("SLA casos <24h", f"{sla_casos}%"), unsafe_allow_html=True)
-    col5.markdown(tarjeta("SLA inc. <24h", f"{sla_incidentes}%"), unsafe_allow_html=True)
+    render_tarjetas(
+        [
+            ("Clientes activos", clientes_activos),
+            ("Atenciones", total_casos + total_incidentes),
+            ("Abiertos", abiertos_casos + abiertos_incidentes),
+            ("SLA casos <24h", f"{sla_casos}%"),
+            ("SLA inc. <24h", f"{sla_incidentes}%"),
+        ]
+    )
     st.caption(
         f"Casos: {total_casos} | Incidentes: {total_incidentes} | "
         f"Clientes en seguimiento: {clientes_seguimiento}"
@@ -1443,13 +1582,19 @@ def run_app():
         if st.button("Cerrar sesion"):
             st.session_state.clear()
             st.rerun()
-        tabs = st.tabs(["Dashboard Casos", "Dashboard Incidentes", "Clientes Clave"])
-        with tabs[0]:
-            dashboard_casos()
-        with tabs[1]:
-            dashboard_incidentes()
-        with tabs[2]:
-            dashboard_clientes_clave()
+        vista = st.radio(
+            "Vista",
+            ["Casos", "Incidentes", "Clientes clave"],
+            horizontal=True,
+            label_visibility="collapsed",
+            key="viewer_vista",
+        )
+        if vista == "Casos":
+            ejecutar_con_carga("Casos", dashboard_casos)
+        elif vista == "Incidentes":
+            ejecutar_con_carga("Incidentes", dashboard_incidentes)
+        else:
+            ejecutar_con_carga("Clientes clave", dashboard_clientes_clave)
         return
 
     if menu == "Cargar Excel Casos":
