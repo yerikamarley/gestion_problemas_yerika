@@ -982,9 +982,16 @@ def preparar_casos(df):
 
 def guardar_casos(df):
     conn = get_conn()
-    nuevos = 0
-    actualizados = 0
+    cargados = 0
     df = preparar_casos(df)
+    if df.empty:
+        conn.close()
+        return 0, 0
+
+    cur = conn.cursor()
+    total_anterior = cur.execute("SELECT COUNT(*) FROM cases").fetchone()[0]
+    cur.execute("DELETE FROM cases")
+
     for _, row in df.iterrows():
         numero = safe_text(valor_fila(row, "numero"))
         data = (
@@ -1009,25 +1016,11 @@ def guardar_casos(df):
             tipificar_caso(row),
             tiempo(valor_fila(row, "creado"), valor_fila(row, "cerrado")),
         )
-        cur = conn.cursor()
-        cur.execute("SELECT numero FROM cases WHERE numero=?", (numero,))
-        if cur.fetchone():
-            cur.execute(
-                """
-                UPDATE cases SET descripcion=?, contacto=?, cuenta=?, codigo_resolucion=?, canal=?,
-                estado=?, prioridad=?, asignado=?, actualizado=?, creado_por=?, creado=?, producto=?,
-                cerrado=?, causa=?, notas_resolucion=?, observaciones_adicionales=?,
-                observaciones_trabajo=?, tipificacion=?, tiempo_respuesta=? WHERE numero=?
-                """,
-                data[1:] + (numero,),
-            )
-            actualizados += 1
-        else:
-            cur.execute("INSERT INTO cases VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", data)
-            nuevos += 1
+        cur.execute("INSERT INTO cases VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", data)
+        cargados += 1
     conn.commit()
     conn.close()
-    return nuevos, actualizados
+    return cargados, total_anterior
 
 
 def load_casos():
@@ -1170,9 +1163,16 @@ def preparar_incidentes(df):
 
 def guardar_incidentes(df):
     conn = get_conn()
-    nuevos = 0
-    actualizados = 0
+    cargados = 0
     df = preparar_incidentes(df)
+    if df.empty:
+        conn.close()
+        return 0, 0
+
+    cur = conn.cursor()
+    total_anterior = cur.execute("SELECT COUNT(*) FROM incidents").fetchone()[0]
+    cur.execute("DELETE FROM incidents")
+
     for _, row in df.iterrows():
         numero = safe_text(valor_fila(row, "numero"))
         tipificacion_auto, es_alerta_auto, causa_raiz_auto = clasificacion_incidente(row)
@@ -1212,41 +1212,24 @@ def guardar_incidentes(df):
             es_alerta_auto,
             duracion_horas,
         )
-        cur = conn.cursor()
-        cur.execute("SELECT numero FROM incidents WHERE numero=?", (numero,))
-        if cur.fetchone():
-            cur.execute(
-                """
-                UPDATE incidents SET solicitante=?, breve_descripcion=?, categoria=?, prioridad=?, estado=?,
-                grupo_asignacion=?, asignado_a=?, descripcion=?, despues_aprobacion=?, despues_rechazo=?,
-                duracion_segundos=?, minutos=?, fecha_vencimiento_sla=?, tipo_falla=?, empresa=?, creado_por=?,
-                cerrado=?, escalado_proveedor=?, servicio_negocio=?, creado=?, observaciones_trabajo=?,
-                observaciones_adicionales=?, actualizaciones=?, impacto=?, lista_notas_trabajo=?,
-                tipificacion_original=?, causa_raiz_original=?, tipificacion_auto=?, causa_raiz_auto=?,
-                es_alerta_auto=?, duracion_horas=? WHERE numero=?
-                """,
-                data[1:] + (numero,),
-            )
-            actualizados += 1
-        else:
-            cur.execute(
-                """
-                INSERT INTO incidents (
-                    numero, solicitante, breve_descripcion, categoria, prioridad, estado,
-                    grupo_asignacion, asignado_a, descripcion, despues_aprobacion, despues_rechazo,
-                    duracion_segundos, minutos, fecha_vencimiento_sla, tipo_falla, empresa, creado_por,
-                    cerrado, escalado_proveedor, servicio_negocio, creado, observaciones_trabajo,
-                    observaciones_adicionales, actualizaciones, impacto, lista_notas_trabajo,
-                    tipificacion_original, causa_raiz_original, tipificacion_auto, causa_raiz_auto,
-                    es_alerta_auto, duracion_horas
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                data,
-            )
-            nuevos += 1
+        cur.execute(
+            """
+            INSERT INTO incidents (
+                numero, solicitante, breve_descripcion, categoria, prioridad, estado,
+                grupo_asignacion, asignado_a, descripcion, despues_aprobacion, despues_rechazo,
+                duracion_segundos, minutos, fecha_vencimiento_sla, tipo_falla, empresa, creado_por,
+                cerrado, escalado_proveedor, servicio_negocio, creado, observaciones_trabajo,
+                observaciones_adicionales, actualizaciones, impacto, lista_notas_trabajo,
+                tipificacion_original, causa_raiz_original, tipificacion_auto, causa_raiz_auto,
+                es_alerta_auto, duracion_horas
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            data,
+        )
+        cargados += 1
     conn.commit()
     conn.close()
-    return nuevos, actualizados
+    return cargados, total_anterior
 
 
 def load_incidentes():

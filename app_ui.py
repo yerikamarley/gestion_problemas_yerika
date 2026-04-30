@@ -1407,8 +1407,8 @@ def vista_cargar_casos():
         st.write(f"Filas detectadas: {len(df)}")
         st.dataframe(df.head(), use_container_width=True, hide_index=True)
         if st.button("Procesar casos"):
-            nuevos, actualizados = guardar_casos(df)
-            st.success(f"Nuevos: {nuevos} | Actualizados: {actualizados}")
+            cargados, reemplazados = guardar_casos(df)
+            st.success(f"Cargados: {cargados} | Registros anteriores reemplazados: {reemplazados}")
 
 
 def vista_casos():
@@ -1430,8 +1430,8 @@ def vista_cargar_incidentes():
         st.write(f"Filas detectadas: {len(df)}")
         st.dataframe(df.head(), use_container_width=True, hide_index=True)
         if st.button("Procesar incidentes"):
-            nuevos, actualizados = guardar_incidentes(df)
-            st.success(f"Nuevos: {nuevos} | Actualizados: {actualizados}")
+            cargados, reemplazados = guardar_incidentes(df)
+            st.success(f"Cargados: {cargados} | Registros anteriores reemplazados: {reemplazados}")
 
 
 def vista_incidentes():
