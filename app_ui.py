@@ -53,6 +53,9 @@ CHART_COLORS = [
     UI_PALETTE["red"],
 ]
 
+SLA_CASOS_HORAS = 36
+SLA_INCIDENTES_HORAS = 24
+
 CASE_TIPIFICATION_GUIDE = [
     {
         "Tipificacion": "1 - phishing",
@@ -782,7 +785,7 @@ def resumen_clientes_clave(casos, incidentes):
             casos_abiertos = total_casos - len(casos_cerrados)
             tiempos_casos = casos_cerrados["tiempo_respuesta_h"].dropna()
             sla_casos = (
-                porcentaje(len(tiempos_casos[tiempos_casos < 24]), len(tiempos_casos))
+                porcentaje(len(tiempos_casos[tiempos_casos < SLA_CASOS_HORAS]), len(tiempos_casos))
                 if len(tiempos_casos)
                 else None
             )
@@ -801,7 +804,7 @@ def resumen_clientes_clave(casos, incidentes):
             incidentes_abiertos = total_incidentes - len(incidentes_cerrados)
             duraciones_incidentes = incidentes_cerrados["duracion_horas_num"].dropna()
             sla_incidentes = (
-                porcentaje(len(duraciones_incidentes[duraciones_incidentes < 24]), len(duraciones_incidentes))
+                porcentaje(len(duraciones_incidentes[duraciones_incidentes < SLA_INCIDENTES_HORAS]), len(duraciones_incidentes))
                 if len(duraciones_incidentes)
                 else None
             )
@@ -893,7 +896,7 @@ def dashboard_casos():
     promedio = round(tiempos_cerrados.mean(), 2) if len(tiempos_cerrados) > 0 else 0
 
     total_cerrados = len(tiempos_cerrados)
-    cumplen = len(tiempos_cerrados[tiempos_cerrados < 24])
+    cumplen = len(tiempos_cerrados[tiempos_cerrados < SLA_CASOS_HORAS])
     porcentaje_sla = round((cumplen / total_cerrados) * 100, 2) if total_cerrados > 0 else 0
     incumplen = total_cerrados - cumplen
 
@@ -903,7 +906,7 @@ def dashboard_casos():
             ("Cerrados", cerrados),
             ("Abiertos", abiertos),
             ("Promedio (h)", promedio),
-            ("SLA <24h (%)", f"{porcentaje_sla}%"),
+            (f"SLA <{SLA_CASOS_HORAS}h (%)", f"{porcentaje_sla}%"),
         ]
     )
     st.caption(f"Cumplen: {cumplen} | No cumplen: {incumplen}")
@@ -958,7 +961,7 @@ def dashboard_incidentes():
     df_cerrados = df[df["estado"] == "Cerrado"]
     duraciones_cerrados = pd.to_numeric(df_cerrados["duracion_horas"], errors="coerce").dropna()
     total_cerrados = len(duraciones_cerrados)
-    cumplen = len(duraciones_cerrados[duraciones_cerrados < 24])
+    cumplen = len(duraciones_cerrados[duraciones_cerrados < SLA_INCIDENTES_HORAS])
     porcentaje_sla = round((cumplen / total_cerrados) * 100, 2) if total_cerrados > 0 else 0
     incumplen = total_cerrados - cumplen
     alertas_tipificadas = len(df[df["es_alerta_auto"].fillna("No") == "Si"])
@@ -969,7 +972,7 @@ def dashboard_incidentes():
             ("Cerrados", cerrados),
             ("Abiertos", abiertos),
             ("Promedio (h)", promedio),
-            ("SLA <24h (%)", f"{porcentaje_sla}%"),
+            (f"SLA <{SLA_INCIDENTES_HORAS}h (%)", f"{porcentaje_sla}%"),
         ]
     )
     st.caption(f"Cumplen: {cumplen} | No cumplen: {incumplen} | Alertas tipificadas: {alertas_tipificadas}")
@@ -1083,7 +1086,7 @@ def dashboard_incidentes():
     else:
         st.info("No hay incidentes tipificados como Cliente Externo en los datos cargados.")
 
-    alertas = construir_alertas_incidentes(df, sla_horas=24)
+    alertas = construir_alertas_incidentes(df, sla_horas=SLA_INCIDENTES_HORAS)
 
     if alertas:
         st.divider()
@@ -1163,12 +1166,19 @@ def dashboard_clientes_clave():
 
     casos_cerrados = casos[casos["estado"] == "Cerrado"] if not casos.empty else pd.DataFrame()
     tiempos_casos = casos_cerrados.get("tiempo_respuesta_h", pd.Series(dtype="float")).dropna()
-    sla_casos = porcentaje(len(tiempos_casos[tiempos_casos < 24]), len(tiempos_casos)) if len(tiempos_casos) else 0
+    sla_casos = (
+        porcentaje(len(tiempos_casos[tiempos_casos < SLA_CASOS_HORAS]), len(tiempos_casos))
+        if len(tiempos_casos)
+        else 0
+    )
 
     incidentes_cerrados = incidentes[incidentes["estado"] == "Cerrado"] if not incidentes.empty else pd.DataFrame()
     duraciones_incidentes = incidentes_cerrados.get("duracion_horas_num", pd.Series(dtype="float")).dropna()
     sla_incidentes = (
-        porcentaje(len(duraciones_incidentes[duraciones_incidentes < 24]), len(duraciones_incidentes))
+        porcentaje(
+            len(duraciones_incidentes[duraciones_incidentes < SLA_INCIDENTES_HORAS]),
+            len(duraciones_incidentes),
+        )
         if len(duraciones_incidentes)
         else 0
     )
@@ -1178,8 +1188,8 @@ def dashboard_clientes_clave():
             ("Clientes activos", clientes_activos),
             ("Atenciones", total_casos + total_incidentes),
             ("Abiertos", abiertos_casos + abiertos_incidentes),
-            ("SLA casos <24h", f"{sla_casos}%"),
-            ("SLA inc. <24h", f"{sla_incidentes}%"),
+            (f"SLA casos <{SLA_CASOS_HORAS}h", f"{sla_casos}%"),
+            (f"SLA inc. <{SLA_INCIDENTES_HORAS}h", f"{sla_incidentes}%"),
         ]
     )
     st.caption(
