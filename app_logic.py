@@ -714,6 +714,22 @@ def eliminar_usuario(email):
     conn.close()
 
 
+def contar_incidentes():
+    conn = get_conn()
+    total = conn.execute("SELECT COUNT(*) FROM incidents").fetchone()[0]
+    conn.close()
+    return total
+
+
+def limpiar_incidentes():
+    conn = get_conn()
+    total = conn.execute("SELECT COUNT(*) FROM incidents").fetchone()[0]
+    conn.execute("DELETE FROM incidents")
+    conn.commit()
+    conn.close()
+    return total
+
+
 def ensure_table_columns(conn, table_name, columns):
     existentes = {row[1] for row in conn.execute(f"PRAGMA table_info({table_name})").fetchall()}
     for nombre, tipo in columns.items():

@@ -7,12 +7,14 @@ import streamlit as st
 
 from app_logic import (
     autenticar_usuario,
+    contar_incidentes,
     construir_alertas_incidentes,
     eliminar_usuario,
     guardar_casos,
     guardar_incidentes,
     guardar_usuario,
     init_db,
+    limpiar_incidentes,
     listar_usuarios,
     load_casos,
     load_incidentes,
@@ -1599,6 +1601,30 @@ def vista_administrar_usuarios():
                 st.rerun()
             except ValueError as exc:
                 st.error(str(exc))
+
+    st.divider()
+    st.markdown("#### Mantenimiento de datos")
+    total_incidentes = contar_incidentes()
+    st.caption(
+        f"Incidentes guardados actualmente: {total_incidentes}. "
+        "Esta accion elimina solo incidentes; los casos se conservan."
+    )
+    confirmar_limpieza = st.checkbox(
+        "Confirmo que quiero borrar todos los incidentes cargados",
+        key="confirmar_limpiar_incidentes",
+    )
+    clave_limpieza = st.text_input(
+        "Clave para limpiar incidentes",
+        type="password",
+        key="clave_limpiar_incidentes",
+    )
+    puede_limpiar = confirmar_limpieza and clave_limpieza == "lina202" and total_incidentes > 0
+    if clave_limpieza and clave_limpieza != "lina202":
+        st.error("Clave incorrecta.")
+    if st.button("Limpiar incidentes", disabled=not puede_limpiar):
+        borrados = limpiar_incidentes()
+        st.success(f"Incidentes eliminados: {borrados}. Los casos no fueron modificados.")
+        st.rerun()
 
     st.divider()
     st.markdown("#### Quitar acceso")
