@@ -56,6 +56,35 @@ CHART_COLORS = [
 SLA_CASOS_HORAS = 36
 SLA_INCIDENTES_HORAS = 24
 
+
+def preparar_fechas_dashboard(df, columna="creado"):
+    trabajo = df.copy()
+    trabajo["_creado_dt_dashboard"] = pd.to_datetime(trabajo[columna], errors="coerce")
+    return trabajo
+
+
+def meses_disponibles(df, columna_dt="_creado_dt_dashboard"):
+    if df.empty or columna_dt not in df.columns:
+        return []
+    meses = df[columna_dt].dropna().dt.to_period("M").astype(str).sort_values().unique().tolist()
+    return meses
+
+
+def selector_mes_dashboard(df, key, columna_dt="_creado_dt_dashboard"):
+    meses = meses_disponibles(df, columna_dt)
+    if not meses:
+        st.caption("No hay fechas validas para filtrar por mes.")
+        return "Todos"
+    opciones = ["Todos"] + meses
+    return st.selectbox("Mes del dashboard", opciones, index=len(opciones) - 1, key=key)
+
+
+def filtrar_mes_dashboard(df, mes, columna_dt="_creado_dt_dashboard"):
+    if mes == "Todos" or df.empty or columna_dt not in df.columns:
+        return df
+    return df[df[columna_dt].dt.to_period("M").astype(str) == mes].copy()
+
+
 CASE_TIPIFICATION_GUIDE = [
     {
         "Tipificacion": "1 - phishing",
@@ -887,6 +916,13 @@ def dashboard_casos():
         st.info("No hay datos de casos cargados.")
         return
 
+    df = preparar_fechas_dashboard(df)
+    mes_dashboard = selector_mes_dashboard(df, "dashboard_casos_mes")
+    df = filtrar_mes_dashboard(df, mes_dashboard)
+    if df.empty:
+        st.info(f"No hay casos cargados para {mes_dashboard}.")
+        return
+
     total = len(df)
     cerrados = len(df[df.estado == "Cerrado"])
     abiertos = total - cerrados
@@ -909,7 +945,7 @@ def dashboard_casos():
             (f"SLA <{SLA_CASOS_HORAS}h (%)", f"{porcentaje_sla}%"),
         ]
     )
-    st.caption(f"Cumplen: {cumplen} | No cumplen: {incumplen}")
+    st.caption(f"Periodo: {mes_dashboard} | Cumplen: {cumplen} | No cumplen: {incumplen}")
 
     st.divider()
     col1, col2 = st.columns(2)
@@ -933,9 +969,9 @@ def dashboard_casos():
 
     with col2:
         serie = df.copy()
-        serie["creado"] = pd.to_datetime(serie["creado"], errors="coerce")
-        casos_dia = serie.groupby(serie["creado"].dt.date).size().reset_index(name="casos")
-        fig = px.bar(casos_dia, x="creado", y="casos", color_discrete_sequence=[UI_PALETTE["yellow"]])
+        casos_dia = serie.groupby(serie["_creado_dt_dashboard"].dt.date).size().reset_index(name="casos")
+        casos_dia.columns = ["Fecha", "casos"]
+        fig = px.bar(casos_dia, x="Fecha", y="casos", color_discrete_sequence=[UI_PALETTE["yellow"]])
         fig.update_traces(marker_color=UI_PALETTE["yellow"])
         st.plotly_chart(aplicar_estilo_figura(fig, "Casos por dia"), use_container_width=True)
 
@@ -949,6 +985,13 @@ def dashboard_incidentes():
     df = load_incidentes()
     if df.empty:
         st.info("No hay datos de incidentes cargados.")
+        return
+
+    df = preparar_fechas_dashboard(df)
+    mes_dashboard = selector_mes_dashboard(df, "dashboard_incidentes_mes")
+    df = filtrar_mes_dashboard(df, mes_dashboard)
+    if df.empty:
+        st.info(f"No hay incidentes cargados para {mes_dashboard}.")
         return
 
     total = len(df)
@@ -975,7 +1018,10 @@ def dashboard_incidentes():
             (f"SLA <{SLA_INCIDENTES_HORAS}h (%)", f"{porcentaje_sla}%"),
         ]
     )
-    st.caption(f"Cumplen: {cumplen} | No cumplen: {incumplen} | Alertas tipificadas: {alertas_tipificadas}")
+    st.caption(
+        f"Periodo: {mes_dashboard} | Cumplen: {cumplen} | No cumplen: {incumplen} | "
+        f"Alertas tipificadas: {alertas_tipificadas}"
+    )
 
     st.divider()
     fila1_col1, fila1_col2 = st.columns(2)
@@ -1033,11 +1079,11 @@ def dashboard_incidentes():
 
     with fila2_col2:
         serie = df.copy()
-        serie["creado"] = pd.to_datetime(serie["creado"], errors="coerce")
-        incidentes_dia = serie.groupby(serie["creado"].dt.date).size().reset_index(name="incidentes")
+        incidentes_dia = serie.groupby(serie["_creado_dt_dashboard"].dt.date).size().reset_index(name="incidentes")
+        incidentes_dia.columns = ["Fecha", "incidentes"]
         fig = px.bar(
             incidentes_dia,
-            x="creado",
+            x="Fecha",
             y="incidentes",
             title="Incidentes por dia",
             color_discrete_sequence=[UI_PALETTE["red"]],
@@ -1117,7 +1163,7 @@ def dashboard_clientes_clave():
         fechas.append(incidentes["creado_dt"])
     fechas = pd.concat(fechas).dropna() if fechas else pd.Series(dtype="datetime64[ns]")
 
-    filtro_col1, filtro_col2 = st.columns([2, 1])
+    filtro_col1, filtro_col2, filtro_col3 = st.columns([2, 1, 1])
     with filtro_col1:
         clientes_seleccionados = st.multiselect(
             "Clientes",
@@ -1126,6 +1172,9 @@ def dashboard_clientes_clave():
             key="clientes_clave_filtro",
         )
     with filtro_col2:
+        base_meses = pd.DataFrame({"creado_dt": fechas})
+        mes_dashboard = selector_mes_dashboard(base_meses, "clientes_clave_mes", "creado_dt")
+    with filtro_col3:
         rango_fechas = None
         if not fechas.empty:
             fecha_min = fechas.min().date()
@@ -1144,6 +1193,12 @@ def dashboard_clientes_clave():
 
     casos = casos[casos["cliente_clave"].isin(clientes_seleccionados)].copy()
     incidentes = incidentes[incidentes["cliente_clave"].isin(clientes_seleccionados)].copy()
+
+    if mes_dashboard != "Todos":
+        if not casos.empty:
+            casos = filtrar_mes_dashboard(casos, mes_dashboard, "creado_dt")
+        if not incidentes.empty:
+            incidentes = filtrar_mes_dashboard(incidentes, mes_dashboard, "creado_dt")
 
     if rango_fechas and isinstance(rango_fechas, tuple) and len(rango_fechas) == 2:
         fecha_inicio = pd.Timestamp(rango_fechas[0])
@@ -1193,7 +1248,7 @@ def dashboard_clientes_clave():
         ]
     )
     st.caption(
-        f"Casos: {total_casos} | Incidentes: {total_incidentes} | "
+        f"Periodo: {mes_dashboard} | Casos: {total_casos} | Incidentes: {total_incidentes} | "
         f"Clientes en seguimiento: {clientes_seguimiento}"
     )
 
@@ -1418,7 +1473,10 @@ def vista_cargar_casos():
         st.dataframe(df.head(), use_container_width=True, hide_index=True)
         if st.button("Procesar casos"):
             cargados, reemplazados = guardar_casos(df)
-            st.success(f"Cargados: {cargados} | Registros anteriores reemplazados: {reemplazados}")
+            st.success(
+                f"Cargados: {cargados} | Registros existentes actualizados: {reemplazados} | "
+                "Los meses anteriores se conservan."
+            )
 
 
 def vista_casos():
@@ -1441,7 +1499,10 @@ def vista_cargar_incidentes():
         st.dataframe(df.head(), use_container_width=True, hide_index=True)
         if st.button("Procesar incidentes"):
             cargados, reemplazados = guardar_incidentes(df)
-            st.success(f"Cargados: {cargados} | Registros anteriores reemplazados: {reemplazados}")
+            st.success(
+                f"Cargados: {cargados} | Registros existentes actualizados: {reemplazados} | "
+                "Los meses anteriores se conservan."
+            )
 
 
 def vista_incidentes():

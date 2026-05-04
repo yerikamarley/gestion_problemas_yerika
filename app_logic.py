@@ -989,8 +989,18 @@ def guardar_casos(df):
         return 0, 0
 
     cur = conn.cursor()
-    total_anterior = cur.execute("SELECT COUNT(*) FROM cases").fetchone()[0]
-    cur.execute("DELETE FROM cases")
+    numeros = [safe_text(valor_fila(row, "numero")) for _, row in df.iterrows()]
+    existentes = set()
+    if numeros:
+        placeholders = ", ".join(["?"] * len(numeros))
+        existentes = {
+            fila[0]
+            for fila in cur.execute(
+                f"SELECT numero FROM cases WHERE numero IN ({placeholders})",
+                numeros,
+            ).fetchall()
+        }
+    reemplazados = len(existentes)
 
     for _, row in df.iterrows():
         numero = safe_text(valor_fila(row, "numero"))
@@ -1016,11 +1026,14 @@ def guardar_casos(df):
             tipificar_caso(row),
             tiempo(valor_fila(row, "creado"), valor_fila(row, "cerrado")),
         )
-        cur.execute("INSERT INTO cases VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", data)
+        cur.execute(
+            "INSERT OR REPLACE INTO cases VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            data,
+        )
         cargados += 1
     conn.commit()
     conn.close()
-    return cargados, total_anterior
+    return cargados, reemplazados
 
 
 def load_casos():
@@ -1170,8 +1183,18 @@ def guardar_incidentes(df):
         return 0, 0
 
     cur = conn.cursor()
-    total_anterior = cur.execute("SELECT COUNT(*) FROM incidents").fetchone()[0]
-    cur.execute("DELETE FROM incidents")
+    numeros = [safe_text(valor_fila(row, "numero")) for _, row in df.iterrows()]
+    existentes = set()
+    if numeros:
+        placeholders = ", ".join(["?"] * len(numeros))
+        existentes = {
+            fila[0]
+            for fila in cur.execute(
+                f"SELECT numero FROM incidents WHERE numero IN ({placeholders})",
+                numeros,
+            ).fetchall()
+        }
+    reemplazados = len(existentes)
 
     for _, row in df.iterrows():
         numero = safe_text(valor_fila(row, "numero"))
@@ -1214,7 +1237,7 @@ def guardar_incidentes(df):
         )
         cur.execute(
             """
-            INSERT INTO incidents (
+            INSERT OR REPLACE INTO incidents (
                 numero, solicitante, breve_descripcion, categoria, prioridad, estado,
                 grupo_asignacion, asignado_a, descripcion, despues_aprobacion, despues_rechazo,
                 duracion_segundos, minutos, fecha_vencimiento_sla, tipo_falla, empresa, creado_por,
@@ -1229,7 +1252,7 @@ def guardar_incidentes(df):
         cargados += 1
     conn.commit()
     conn.close()
-    return cargados, total_anterior
+    return cargados, reemplazados
 
 
 def load_incidentes():
