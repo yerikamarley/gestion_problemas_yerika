@@ -1484,12 +1484,51 @@ def vista_cargar_casos():
 def vista_casos():
     df = load_casos()
     if not df.empty:
-        filtro_estado = st.selectbox("Estado", ["Todos"] + list(df["estado"].dropna().unique()), key="estado_casos")
-        filtro_cuenta = st.text_input("Cuenta", key="cuenta_casos")
+        df = preparar_fechas_dashboard(df)
+        df["mes"] = df["_creado_dt_dashboard"].dt.to_period("M").astype(str).replace("NaT", "Sin fecha")
+
+        filtro_col1, filtro_col2, filtro_col3 = st.columns([1, 1, 2])
+        with filtro_col1:
+            filtro_mes = selector_mes_dashboard(df, "vista_casos_mes")
+        if filtro_mes != "Todos":
+            df = filtrar_mes_dashboard(df, filtro_mes)
+
+        with filtro_col2:
+            estados = sorted(df["estado"].dropna().unique().tolist())
+            filtro_estado = st.selectbox("Estado", ["Todos"] + estados, key="estado_casos")
+        with filtro_col3:
+            filtro_cuenta = st.text_input("Cuenta", key="cuenta_casos")
+
         if filtro_estado != "Todos":
             df = df[df["estado"] == filtro_estado]
         if filtro_cuenta:
             df = df[df["cuenta"].fillna("").str.contains(filtro_cuenta, case=False, na=False)]
+        df = df.drop(columns=["_creado_dt_dashboard"], errors="ignore")
+        columnas = [
+            "numero",
+            "estado",
+            "mes",
+            "cuenta",
+            "contacto",
+            "descripcion",
+            "prioridad",
+            "asignado",
+            "creado",
+            "cerrado",
+            "producto",
+            "causa",
+            "tipificacion",
+            "tiempo_respuesta",
+            "canal",
+            "creado_por",
+            "actualizado",
+            "codigo_resolucion",
+            "notas_resolucion",
+            "observaciones_adicionales",
+            "observaciones_trabajo",
+        ]
+        df = df[[col for col in columnas if col in df.columns]]
+        st.caption(f"Registros encontrados: {len(df)}")
     st.dataframe(df, use_container_width=True, hide_index=True)
 
 
@@ -1510,17 +1549,31 @@ def vista_cargar_incidentes():
 def vista_incidentes():
     df = load_incidentes()
     if not df.empty:
-        filtro_estado = st.selectbox("Estado", ["Todos"] + list(df["estado"].dropna().unique()), key="estado_inc")
-        filtro_tipificacion = st.selectbox(
-            "Tipificacion",
-            ["Todos"] + sorted(df["tipificacion_auto"].dropna().unique().tolist()),
-            key="tip_inc",
-        )
-        filtro_alerta = st.selectbox(
-            "Es alerta",
-            ["Todos"] + sorted(df["es_alerta_auto"].dropna().unique().tolist()),
-            key="alerta_inc",
-        )
+        df = preparar_fechas_dashboard(df)
+        df["mes"] = df["_creado_dt_dashboard"].dt.to_period("M").astype(str).replace("NaT", "Sin fecha")
+
+        filtro_col1, filtro_col2, filtro_col3, filtro_col4 = st.columns(4)
+        with filtro_col1:
+            filtro_mes = selector_mes_dashboard(df, "vista_incidentes_mes")
+        if filtro_mes != "Todos":
+            df = filtrar_mes_dashboard(df, filtro_mes)
+
+        with filtro_col2:
+            estados = sorted(df["estado"].dropna().unique().tolist())
+            filtro_estado = st.selectbox("Estado", ["Todos"] + estados, key="estado_inc")
+        with filtro_col3:
+            filtro_tipificacion = st.selectbox(
+                "Tipificacion",
+                ["Todos"] + sorted(df["tipificacion_auto"].dropna().unique().tolist()),
+                key="tip_inc",
+            )
+        with filtro_col4:
+            filtro_alerta = st.selectbox(
+                "Es alerta",
+                ["Todos"] + sorted(df["es_alerta_auto"].dropna().unique().tolist()),
+                key="alerta_inc",
+            )
+
         if filtro_estado != "Todos":
             df = df[df["estado"] == filtro_estado]
         if filtro_tipificacion != "Todos":
@@ -1533,6 +1586,7 @@ def vista_incidentes():
             "categoria",
             "prioridad",
             "estado",
+            "mes",
             "grupo_asignacion",
             "asignado_a",
             "descripcion",
@@ -1557,7 +1611,9 @@ def vista_incidentes():
             "causa_raiz_auto",
             "duracion_horas",
         ]
+        df = df.drop(columns=["_creado_dt_dashboard"], errors="ignore")
         df = df[[col for col in columnas if col in df.columns]]
+        st.caption(f"Registros encontrados: {len(df)}")
     st.dataframe(df, use_container_width=True, hide_index=True)
 
 
