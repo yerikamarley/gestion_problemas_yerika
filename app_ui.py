@@ -18,6 +18,7 @@ from app_logic import (
     listar_usuarios,
     load_casos,
     load_incidentes,
+    normalizar_fecha,
     normalizar_texto,
     normalizar_email,
 )
@@ -61,7 +62,10 @@ SLA_INCIDENTES_HORAS = 24
 
 def preparar_fechas_dashboard(df, columna="creado"):
     trabajo = df.copy()
-    trabajo["_creado_dt_dashboard"] = pd.to_datetime(trabajo[columna], errors="coerce")
+    trabajo["_creado_dt_dashboard"] = pd.to_datetime(
+        trabajo[columna].apply(normalizar_fecha),
+        errors="coerce",
+    )
     return trabajo
 
 
@@ -689,8 +693,8 @@ def preparar_casos_clientes_clave(df):
     detecciones.columns = ["cliente_clave", "fuente_cliente"]
     trabajo[["cliente_clave", "fuente_cliente"]] = detecciones
     trabajo = trabajo[trabajo["cliente_clave"] != ""].copy()
-    trabajo["creado_dt"] = pd.to_datetime(trabajo["creado"], errors="coerce")
-    trabajo["cerrado_dt"] = pd.to_datetime(trabajo["cerrado"], errors="coerce")
+    trabajo["creado_dt"] = pd.to_datetime(trabajo["creado"].apply(normalizar_fecha), errors="coerce")
+    trabajo["cerrado_dt"] = pd.to_datetime(trabajo["cerrado"].apply(normalizar_fecha), errors="coerce")
     trabajo["tiempo_respuesta_h"] = pd.to_numeric(trabajo["tiempo_respuesta"], errors="coerce")
     return trabajo
 
@@ -722,8 +726,8 @@ def preparar_incidentes_clientes_clave(df):
     detecciones.columns = ["cliente_clave", "fuente_cliente"]
     trabajo[["cliente_clave", "fuente_cliente"]] = detecciones
     trabajo = trabajo[trabajo["cliente_clave"] != ""].copy()
-    trabajo["creado_dt"] = pd.to_datetime(trabajo["creado"], errors="coerce")
-    trabajo["cerrado_dt"] = pd.to_datetime(trabajo["cerrado"], errors="coerce")
+    trabajo["creado_dt"] = pd.to_datetime(trabajo["creado"].apply(normalizar_fecha), errors="coerce")
+    trabajo["cerrado_dt"] = pd.to_datetime(trabajo["cerrado"].apply(normalizar_fecha), errors="coerce")
     trabajo["duracion_horas_num"] = pd.to_numeric(trabajo["duracion_horas"], errors="coerce")
     return trabajo
 
@@ -1475,10 +1479,13 @@ def vista_cargar_casos():
         st.dataframe(df.head(), use_container_width=True, hide_index=True)
         if st.button("Procesar casos"):
             cargados, reemplazados = guardar_casos(df)
-            st.success(
-                f"Cargados: {cargados} | Registros existentes actualizados: {reemplazados} | "
-                "Los meses anteriores se conservan."
-            )
+            if cargados == 0:
+                st.error("No se guardaron casos. Revisa que el archivo tenga una columna de numero de caso.")
+            else:
+                st.success(
+                    f"Cargados: {cargados} | Registros existentes actualizados: {reemplazados} | "
+                    "Los meses anteriores se conservan."
+                )
 
 
 def vista_casos():
@@ -1540,10 +1547,13 @@ def vista_cargar_incidentes():
         st.dataframe(df.head(), use_container_width=True, hide_index=True)
         if st.button("Procesar incidentes"):
             cargados, reemplazados = guardar_incidentes(df)
-            st.success(
-                f"Cargados: {cargados} | Registros existentes actualizados: {reemplazados} | "
-                "Los meses anteriores se conservan."
-            )
+            if cargados == 0:
+                st.error("No se guardaron incidentes. Revisa que el archivo tenga una columna de numero de incidente.")
+            else:
+                st.success(
+                    f"Cargados: {cargados} | Registros existentes actualizados: {reemplazados} | "
+                    "Los meses anteriores se conservan."
+                )
 
 
 def vista_incidentes():

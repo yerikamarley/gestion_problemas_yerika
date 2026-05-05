@@ -15,7 +15,7 @@ ADMIN_EMAIL = "yerika.basto@certicamara.com"
 INITIAL_ADMIN_PASSWORD = os.environ.get("APP_ADMIN_PASSWORD", "Yerika2026!")
 
 CASE_ALIASES = {
-    "numero": ["numero", "número"],
+    "numero": ["numero", "número", "numero de caso", "número de caso", "caso", "id caso"],
     "descripcion": ["breve descripcion", "breve descripción", "descripcion corta"],
     "contacto": ["contacto"],
     "cuenta": ["cuenta"],
@@ -24,11 +24,11 @@ CASE_ALIASES = {
     "estado": ["estado"],
     "prioridad": ["prioridad"],
     "asignado": ["asignado a"],
-    "actualizado": ["actualizado"],
+    "actualizado": ["actualizado", "fecha actualizado", "actualizado el"],
     "creado_por": ["creado por"],
-    "creado": ["creado"],
+    "creado": ["creado", "fecha creado", "creado el", "fecha de creacion", "fecha de creación"],
     "producto": ["producto"],
-    "cerrado": ["cerrado"],
+    "cerrado": ["cerrado", "fecha cerrado", "cerrado el", "fecha de cierre"],
     "causa": ["causa"],
     "notas_resolucion": ["notas de resolucion", "notas de resolución"],
     "observaciones_adicionales": ["observaciones adicionales"],
@@ -39,7 +39,14 @@ CASE_ALIASES = {
 }
 
 INCIDENT_ALIASES = {
-    "numero": ["numero", "número"],
+    "numero": [
+        "numero",
+        "número",
+        "numero de incidente",
+        "número de incidente",
+        "incidente",
+        "id incidente",
+    ],
     "solicitante": ["solicitante"],
     "breve_descripcion": ["breve descripcion", "breve descripción"],
     "categoria": ["categoria", "categoría"],
@@ -56,14 +63,15 @@ INCIDENT_ALIASES = {
     "fecha_vencimiento_sla": [
         "fecha de vencimiento del sla",
         "vencimiento sla",
+        "fecha vencimiento sla",
     ],
     "tipo_falla": ["tipo de falla"],
     "empresa": ["empresa"],
     "creado_por": ["creado por"],
-    "cerrado": ["cerrado"],
+    "cerrado": ["cerrado", "fecha cerrado", "cerrado el", "fecha de cierre"],
     "escalado_proveedor": ["escalado a proveedor"],
     "servicio_negocio": ["servicio de negocio"],
-    "creado": ["creado"],
+    "creado": ["creado", "fecha creado", "creado el", "fecha de creacion", "fecha de creación"],
     "observaciones_trabajo": [
         "observaciones y notas de trabajo",
         "observaciones de trabajo",
@@ -463,7 +471,9 @@ def safe_float(valor):
 
 
 def normalizar_clave(valor):
-    return normalizar_texto(valor)
+    texto = normalizar_texto(valor)
+    texto = texto.replace("n?", "nu").replace("n�", "nu")
+    return re.sub(r"[^a-z0-9]+", " ", texto).strip()
 
 
 def renombrar_columnas(df, aliases):
@@ -480,6 +490,23 @@ def renombrar_columnas(df, aliases):
     df = df.loc[:, ~df.columns.duplicated()]
     df = df.loc[:, ~df.columns.astype(str).str.contains("^Unnamed", na=False)]
     return df
+
+
+def normalizar_fecha(valor):
+    if valor is None or pd.isna(valor):
+        return ""
+    texto = safe_text(valor)
+    if re.match(r"^\d{4}-\d{1,2}-\d{1,2}(?:\s+\d{1,2}:\d{2}(?::\d{2})?)?$", texto):
+        fecha = pd.to_datetime(texto, errors="coerce")
+    elif isinstance(valor, str) and re.search(r"\d{1,2}[/-]\d{1,2}[/-]\d{2,4}", texto):
+        fecha = pd.to_datetime(valor, errors="coerce", dayfirst=True)
+    else:
+        fecha = pd.to_datetime(valor, errors="coerce")
+    if pd.isna(fecha):
+        fecha = pd.to_datetime(valor, errors="coerce", dayfirst=True)
+    if pd.isna(fecha):
+        return safe_text(valor)
+    return fecha.strftime("%Y-%m-%d %H:%M:%S")
 
 
 def valor_fila(row, clave, default=""):
@@ -1030,17 +1057,17 @@ def guardar_casos(df):
             safe_text(valor_fila(row, "estado")),
             safe_text(valor_fila(row, "prioridad")),
             safe_text(valor_fila(row, "asignado")),
-            safe_text(valor_fila(row, "actualizado")),
+            normalizar_fecha(valor_fila(row, "actualizado")),
             safe_text(valor_fila(row, "creado_por")),
-            safe_text(valor_fila(row, "creado")),
+            normalizar_fecha(valor_fila(row, "creado")),
             safe_text(valor_fila(row, "producto")),
-            safe_text(valor_fila(row, "cerrado")),
+            normalizar_fecha(valor_fila(row, "cerrado")),
             safe_text(valor_fila(row, "causa")),
             safe_text(valor_fila(row, "notas_resolucion")),
             safe_text(valor_fila(row, "observaciones_adicionales")),
             safe_text(valor_fila(row, "observaciones_trabajo")),
             tipificar_caso(row),
-            tiempo(valor_fila(row, "creado"), valor_fila(row, "cerrado")),
+            tiempo(normalizar_fecha(valor_fila(row, "creado")), normalizar_fecha(valor_fila(row, "cerrado"))),
         )
         cur.execute(
             "INSERT OR REPLACE INTO cases VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -1231,14 +1258,14 @@ def guardar_incidentes(df):
             safe_text(valor_fila(row, "despues_rechazo")),
             duracion_segundos,
             safe_float(valor_fila(row, "minutos")),
-            safe_text(valor_fila(row, "fecha_vencimiento_sla")),
+            normalizar_fecha(valor_fila(row, "fecha_vencimiento_sla")),
             safe_text(valor_fila(row, "tipo_falla")),
             safe_text(valor_fila(row, "empresa")),
             safe_text(valor_fila(row, "creado_por")),
-            safe_text(valor_fila(row, "cerrado")),
+            normalizar_fecha(valor_fila(row, "cerrado")),
             safe_text(valor_fila(row, "escalado_proveedor")),
             safe_text(valor_fila(row, "servicio_negocio")),
-            safe_text(valor_fila(row, "creado")),
+            normalizar_fecha(valor_fila(row, "creado")),
             safe_text(valor_fila(row, "observaciones_trabajo")),
             safe_text(valor_fila(row, "observaciones_adicionales")),
             safe_text(valor_fila(row, "actualizaciones")),
