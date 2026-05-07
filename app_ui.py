@@ -58,6 +58,22 @@ CHART_COLORS = [
 
 SLA_CASOS_HORAS = 36
 SLA_INCIDENTES_HORAS = 24
+APP_VERSION = "2026-05-07-gestion-tipificaciones-v2"
+CASE_TIPIFICATION_RENAMES = {
+    "8 - Instalaciones": "9 - Redireccionamiento Agenda IVR",
+    "8 - Agenda Instalaciones IVR": "9 - Redireccionamiento Agenda IVR",
+    "9 - Agenda Instalaciones IVR": "9 - Redireccionamiento Agenda IVR",
+    "9 - Agenda sin evidencia": "10 - Cliente no asistio",
+    "10 - Agenda sin evidencia": "10 - Cliente no asistio",
+}
+
+
+def normalizar_tipificaciones_casos_df(df):
+    if df.empty or "tipificacion" not in df.columns:
+        return df
+    trabajo = df.copy()
+    trabajo["tipificacion"] = trabajo["tipificacion"].replace(CASE_TIPIFICATION_RENAMES)
+    return trabajo
 
 
 def preparar_fechas_dashboard(df, columna="creado"):
@@ -921,7 +937,7 @@ def tabla_resumen_tipificaciones_casos(df):
 
 
 def dashboard_casos():
-    df = load_casos()
+    df = normalizar_tipificaciones_casos_df(load_casos())
     if df.empty:
         st.info("No hay datos de casos cargados.")
         return
@@ -1492,7 +1508,7 @@ def vista_cargar_casos():
 
 
 def vista_casos():
-    df = load_casos()
+    df = normalizar_tipificaciones_casos_df(load_casos())
     if not df.empty:
         df = preparar_fechas_dashboard(df)
         df["mes"] = df["_creado_dt_dashboard"].dt.to_period("M").astype(str).replace("NaT", "Sin fecha")
@@ -1750,10 +1766,12 @@ def run_app():
             ],
         )
         st.sidebar.caption(f"Sesion: {st.session_state.user}")
+        st.sidebar.caption(f"Version: {APP_VERSION}")
         if st.sidebar.button("Cerrar sesion"):
             st.session_state.clear()
             st.rerun()
     else:
+        st.caption(f"Version: {APP_VERSION}")
         if st.button("Cerrar sesion"):
             st.session_state.clear()
             st.rerun()
