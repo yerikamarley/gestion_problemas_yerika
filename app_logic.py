@@ -323,6 +323,60 @@ CASE_INSTALLATION_CONTEXT_HINTS = [
     "certificado",
 ]
 
+CASE_RULES_START_DATE = pd.Timestamp("2026-04-01")
+
+CASE_IVR_KEYWORDS = [
+    "ivr",
+    "arbol telefonico",
+    "menu telefonico",
+    "llamada ivr",
+]
+
+CASE_NOT_CONNECTED_KEYWORDS = [
+    "no se conecto",
+    "no conecto",
+    "no se conecta",
+    "no se conectaron",
+    "no conectaron",
+    "cliente no conectado",
+    "cliente no se conecto",
+    "cliente no se conecta",
+    "no asistio",
+    "no ingreso",
+    "no se presento",
+]
+
+CASE_AGENDA_KEYWORDS = [
+    "agenda",
+    "agendado",
+    "agendada",
+    "agendar",
+    "agendamiento",
+    "cita",
+    "sesion",
+    "programada",
+    "programado",
+]
+
+CASE_EVIDENCE_KEYWORDS = [
+    "evidencia",
+    "evidencias",
+    "adjunto",
+    "adjunta",
+    "adjuntos",
+    "soporte adjunto",
+    "captura",
+    "pantallazo",
+    "grabacion",
+    "registro",
+    "correo enviado",
+    "meet.google",
+    "teams.microsoft",
+    "zoom.us",
+    "link de la videollamada",
+    "enlace de la videollamada",
+]
+
 CASE_USAGE_REQUEST_HINTS = [
     "solicitud",
     "asesoria",
@@ -545,6 +599,39 @@ def es_caso_instalacion(texto):
         palabra in texto for palabra in CASE_INSTALLATION_CONTEXT_HINTS
     )
     return agenda_instalacion and contexto_instalacion
+
+
+def aplica_reglas_desde_abril(row):
+    fecha = normalizar_fecha(valor_fila(row, "creado"))
+    fecha = pd.to_datetime(fecha, errors="coerce")
+    return not pd.isna(fecha) and fecha >= CASE_RULES_START_DATE
+
+
+def contiene_alguna_palabra(texto, palabras):
+    return any(palabra in texto for palabra in palabras)
+
+
+def contiene_alguna_frase_completa(texto, palabras):
+    return any(
+        re.search(rf"(?<![a-z0-9]){re.escape(palabra)}(?![a-z0-9])", texto)
+        for palabra in palabras
+    )
+
+
+def es_caso_ivr(texto, canal):
+    return contiene_alguna_frase_completa(" ".join([texto, canal]), CASE_IVR_KEYWORDS)
+
+
+def es_agenda_sin_evidencia(texto):
+    if not contiene_alguna_palabra(texto, CASE_NOT_CONNECTED_KEYWORDS):
+        return False
+    if not contiene_alguna_palabra(texto, CASE_AGENDA_KEYWORDS):
+        return False
+    return (
+        contiene_alguna_frase_completa(texto, CASE_NOT_CONNECTED_KEYWORDS)
+        and contiene_alguna_frase_completa(texto, CASE_AGENDA_KEYWORDS)
+        and not contiene_alguna_frase_completa(texto, CASE_EVIDENCE_KEYWORDS)
+    )
 
 
 def es_caso_incidente(texto_apertura, texto_resolucion, texto_total):
@@ -956,8 +1043,12 @@ def tipificar_caso(row):
     if "phishing" in texto:
         return "1 - phishing"
 
+    if es_agenda_sin_evidencia(texto):
+        return "10 - Cliente no asistio"
+
+    canal = normalizar_texto(valor_fila(row, "canal"))
     if es_caso_instalacion(texto):
-        return "8 - Instalaciones"
+        return "9 - Redireccionamiento Agenda IVR"
 
     texto_resolucion = " ".join(
         [

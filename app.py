@@ -1406,6 +1406,37 @@ ALERT_KEYWORDS_APP = [
     "down", "critico", "critical", "warning",
 ]
 
+CASE_RULES_START_DATE_APP = pd.Timestamp("2026-04-01")
+CASE_IVR_KEYWORDS_APP = ["ivr", "arbol telefonico", "menu telefonico", "llamada ivr"]
+CASE_INSTALLATION_KEYWORDS_APP = [
+    "instalacion", "instalaciones", "instalar", "instale", "instalada",
+    "instalado", "tecnico de instalacion", "tecnicos de instalacion",
+    "canal de agendamiento",
+]
+CASE_INSTALLATION_SCHEDULING_KEYWORDS_APP = [
+    "agendar", "agendamiento", "agenda", "programar cita",
+    "programar una cita", "programar instalacion", "sesion de instalacion",
+]
+CASE_INSTALLATION_CONTEXT_HINTS_APP = [
+    "instalacion", "instalaciones", "instalar", "activacion",
+    "firma digital", "firma", "token", "certificado",
+]
+CASE_NOT_CONNECTED_KEYWORDS_APP = [
+    "no se conecto", "no conecto", "no se conecta", "no se conectaron",
+    "no conectaron", "cliente no conectado", "cliente no se conecto",
+    "cliente no se conecta", "no asistio", "no ingreso", "no se presento",
+]
+CASE_AGENDA_KEYWORDS_APP = [
+    "agenda", "agendado", "agendada", "agendar", "agendamiento",
+    "cita", "sesion", "programada", "programado",
+]
+CASE_EVIDENCE_KEYWORDS_APP = [
+    "evidencia", "evidencias", "adjunto", "adjunta", "adjuntos",
+    "soporte adjunto", "captura", "pantallazo", "grabacion", "registro",
+    "correo enviado", "meet.google", "teams.microsoft", "zoom.us",
+    "link de la videollamada", "enlace de la videollamada",
+]
+
 
 def normalizar_clave_app(valor):
     texto = unicodedata.normalize("NFKD", str(valor)).encode("ascii", "ignore").decode("ascii")
@@ -1454,6 +1485,46 @@ def unir_textos_app(row, campos):
     return " ".join(normalizar_texto(valor_fila_app(row, campo)) for campo in campos).strip()
 
 
+def aplica_reglas_desde_abril_app(row):
+    fecha = pd.to_datetime(valor_fila_app(row, "creado"), errors="coerce", dayfirst=True)
+    return not pd.isna(fecha) and fecha >= CASE_RULES_START_DATE_APP
+
+
+def contiene_alguna_app(texto, palabras):
+    return any(palabra in texto for palabra in palabras)
+
+
+def contiene_alguna_frase_completa_app(texto, palabras):
+    return any(
+        re.search(rf"(?<![a-z0-9]){re.escape(palabra)}(?![a-z0-9])", texto)
+        for palabra in palabras
+    )
+
+
+def es_caso_instalacion_app(texto):
+    if contiene_alguna_app(texto, CASE_INSTALLATION_KEYWORDS_APP):
+        return True
+    agenda = contiene_alguna_app(texto, CASE_INSTALLATION_SCHEDULING_KEYWORDS_APP)
+    contexto = contiene_alguna_app(texto, CASE_INSTALLATION_CONTEXT_HINTS_APP)
+    return agenda and contexto
+
+
+def es_caso_ivr_app(texto, canal):
+    return contiene_alguna_frase_completa_app(" ".join([texto, canal]), CASE_IVR_KEYWORDS_APP)
+
+
+def es_agenda_sin_evidencia_app(texto):
+    if not contiene_alguna_app(texto, CASE_NOT_CONNECTED_KEYWORDS_APP):
+        return False
+    if not contiene_alguna_app(texto, CASE_AGENDA_KEYWORDS_APP):
+        return False
+    return (
+        contiene_alguna_frase_completa_app(texto, CASE_NOT_CONNECTED_KEYWORDS_APP)
+        and contiene_alguna_frase_completa_app(texto, CASE_AGENDA_KEYWORDS_APP)
+        and not contiene_alguna_frase_completa_app(texto, CASE_EVIDENCE_KEYWORDS_APP)
+    )
+
+
 def tipificar(row):
     texto = " ".join(
         [
@@ -1464,8 +1535,13 @@ def tipificar(row):
             normalizar_texto(valor_fila_app(row, "observaciones_trabajo")),
         ]
     )
+    canal = normalizar_texto(valor_fila_app(row, "canal"))
     if "phishing" in texto:
         return "1 - phishing"
+    if es_agenda_sin_evidencia_app(texto):
+        return "10 - Cliente no asistio"
+    if es_caso_instalacion_app(texto):
+        return "9 - Redireccionamiento Agenda IVR"
     if "error" in texto or "falla" in texto:
         return "2 - Soporte Falla"
     if "contrasena" in texto or "como usar" in texto:
@@ -1815,11 +1891,23 @@ elif menu == "Casos":
     df = load()
 
     if not df.empty:
-        filtro_estado = st.selectbox("Estado", ["Todos"] + list(df["estado"].dropna().unique()), key="estado_casos")
-        filtro_cuenta = st.text_input("Cuenta", key="cuenta_casos")
+        filtro_col1, filtro_col2, filtro_col3 = st.columns([1, 1.5, 2])
+        with filtro_col1:
+            filtro_estado = st.selectbox("Estado", ["Todos"] + list(df["estado"].dropna().unique()), key="estado_casos")
+        with filtro_col2:
+            clasificaciones = sorted(df["tipificacion"].dropna().unique().tolist())
+            filtro_clasificacion = st.selectbox(
+                "Clasificacion",
+                ["Todos"] + clasificaciones,
+                key="clasificacion_casos",
+            )
+        with filtro_col3:
+            filtro_cuenta = st.text_input("Cuenta", key="cuenta_casos")
 
         if filtro_estado != "Todos":
             df = df[df["estado"] == filtro_estado]
+        if filtro_clasificacion != "Todos":
+            df = df[df["tipificacion"] == filtro_clasificacion]
 
         if filtro_cuenta:
             df = df[df["cuenta"].str.contains(filtro_cuenta, case=False, na=False)]

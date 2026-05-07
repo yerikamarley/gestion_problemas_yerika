@@ -121,8 +121,12 @@ CASE_TIPIFICATION_GUIDE = [
         "Descripcion": "Casos sin informacion suficiente o que no encajan en las reglas definidas.",
     },
     {
-        "Tipificacion": "8 - Instalaciones",
-        "Descripcion": "Procesos de instalacion, activacion, agendamiento o citas con tecnicos de instalacion.",
+        "Tipificacion": "9 - Redireccionamiento Agenda IVR",
+        "Descripcion": "Casos detectados como instalacion que deben redirigirse a agenda por IVR.",
+    },
+    {
+        "Tipificacion": "10 - Cliente no asistio",
+        "Descripcion": "Cliente no conectado, no ingreso o no se presento a la agenda.",
     },
 ]
 
@@ -957,8 +961,7 @@ def dashboard_casos():
     col1, col2 = st.columns(2)
 
     with col1:
-        tip = df["tipificacion"].value_counts().reset_index()
-        tip.columns = ["Tipificacion", "Cantidad"]
+        tip = tabla_resumen_tipificaciones_casos(df)[["Tipificacion", "Cantidad"]]
         tip = tip.sort_values(by="Cantidad", ascending=True)
         fig = px.bar(
             tip,
@@ -1494,7 +1497,7 @@ def vista_casos():
         df = preparar_fechas_dashboard(df)
         df["mes"] = df["_creado_dt_dashboard"].dt.to_period("M").astype(str).replace("NaT", "Sin fecha")
 
-        filtro_col1, filtro_col2, filtro_col3 = st.columns([1, 1, 2])
+        filtro_col1, filtro_col2, filtro_col3, filtro_col4 = st.columns([1, 1, 1.5, 2])
         with filtro_col1:
             filtro_mes = selector_mes_dashboard(df, "vista_casos_mes")
         if filtro_mes != "Todos":
@@ -1504,10 +1507,19 @@ def vista_casos():
             estados = sorted(df["estado"].dropna().unique().tolist())
             filtro_estado = st.selectbox("Estado", ["Todos"] + estados, key="estado_casos")
         with filtro_col3:
+            clasificaciones = sorted(df["tipificacion"].dropna().unique().tolist())
+            filtro_clasificacion = st.selectbox(
+                "Clasificacion",
+                ["Todos"] + clasificaciones,
+                key="clasificacion_casos",
+            )
+        with filtro_col4:
             filtro_cuenta = st.text_input("Cuenta", key="cuenta_casos")
 
         if filtro_estado != "Todos":
             df = df[df["estado"] == filtro_estado]
+        if filtro_clasificacion != "Todos":
+            df = df[df["tipificacion"] == filtro_clasificacion]
         if filtro_cuenta:
             df = df[df["cuenta"].fillna("").str.contains(filtro_cuenta, case=False, na=False)]
         df = df.drop(columns=["_creado_dt_dashboard"], errors="ignore")
