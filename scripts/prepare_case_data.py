@@ -10,8 +10,12 @@ import pandas as pd
 
 CATEGORIES = [
     {
-        "tipificacion": "8 - Instalaciones",
-        "descripcion": "Procesos de instalacion, activacion, agendamiento o citas con tecnicos de instalacion.",
+        "tipificacion": "9 - Redireccionamiento Agenda IVR",
+        "descripcion": "Casos detectados como instalacion que deben redirigirse a agenda por IVR.",
+    },
+    {
+        "tipificacion": "10 - Cliente no asistio",
+        "descripcion": "Cliente no conectado, no ingreso o no se presento a la agenda.",
     },
     {
         "tipificacion": "2 - Soporte Uso",
@@ -52,7 +56,7 @@ MANUAL_OVERRIDES = {
     "CS0181629": ("4 - solicitudes", "Solicitud de desbloqueo FVC."),
     "CS0182271": ("4 - solicitudes", "Solicitud de desbloqueo."),
     "CS0182608": ("3 - Soporte Falla", "Error de biometria y preguntas sociodemograficas."),
-    "CS0182090": ("8 - Instalaciones", "Validacion de acceso y condiciones para instalacion/uso de token virtual."),
+    "CS0182090": ("9 - Redireccionamiento Agenda IVR", "Validacion de acceso y condiciones para redireccionamiento a agenda."),
     "CS0182037": ("3 - Soporte Falla", "Error en recepcion de codigos OTP."),
     "CS0184362": ("7 - No Aplica", "Caso anulado por inactividad y solicitud de informacion insuficiente."),
     "CS0184391": ("2 - Soporte Uso", "Solicitud de sesion y acompanamiento para validar aplicativo."),
@@ -65,7 +69,8 @@ KEYWORD_RULES = [
     ("1 - phishing", r"phishing|suplant|fraud|correo sospechoso|enlace fraud"),
     ("6 - Plataformas Ext", r"adobe|autofirma|docusign"),
     ("5 - incidente", r"incidente|caida|indispon|afectacion operativa|masivo"),
-    ("8 - Instalaciones", r"instal|activaci[oó]n|agenda|cita|tecnico|token virtual"),
+    ("10 - Cliente no asistio", r"cliente no se conect[oó]|no se conect[oó]|no ingreso|no se present[oó]|no asistio"),
+    ("9 - Redireccionamiento Agenda IVR", r"instal|activaci[oó]n|agenda|cita|tecnico|token virtual"),
     ("3 - Soporte Falla", r"error|falla|inconveniente|bloqueo|desbloqueo|otp|biometri|fvc|lentitud"),
     ("4 - solicitudes", r"solicitud|certificado|biometria|pago|tramite|descargar|formato"),
     ("2 - Soporte Uso", r"duda|acompan|configur|orient|paso a paso|como|uso|acceso|validacion"),

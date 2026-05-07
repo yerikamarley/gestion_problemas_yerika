@@ -1173,11 +1173,21 @@ def guardar_casos(df):
 def load_casos():
     conn = get_conn()
     df = pd.read_sql("SELECT * FROM cases", conn)
-    conn.close()
 
     if not df.empty:
-        df["tipificacion"] = df.apply(tipificar_caso, axis=1)
+        tipificaciones = df.apply(tipificar_caso, axis=1)
+        cambios = df["tipificacion"].fillna("") != tipificaciones.fillna("")
+        if cambios.any():
+            cur = conn.cursor()
+            for numero, tipificacion in zip(df.loc[cambios, "numero"], tipificaciones.loc[cambios]):
+                cur.execute(
+                    "UPDATE cases SET tipificacion=? WHERE numero=?",
+                    (tipificacion, numero),
+                )
+            conn.commit()
+        df["tipificacion"] = tipificaciones
 
+    conn.close()
     return df
 
 

@@ -359,6 +359,15 @@ def guardar(df):
 def load():
     conn = get_conn()
     df = pd.read_sql("SELECT * FROM cases", conn)
+    if not df.empty:
+        tipificaciones = df.apply(tipificar, axis=1)
+        cambios = df["tipificacion"].fillna("") != tipificaciones.fillna("")
+        if cambios.any():
+            cur = conn.cursor()
+            for numero, tipificacion in zip(df.loc[cambios, "numero"], tipificaciones.loc[cambios]):
+                cur.execute("UPDATE cases SET tipificacion=? WHERE numero=?", (tipificacion, numero))
+            conn.commit()
+        df["tipificacion"] = tipificaciones
     conn.close()
     return df
 
@@ -1647,6 +1656,15 @@ def guardar(df):
 def load():
     conn = get_conn()
     df = pd.read_sql("SELECT * FROM cases", conn)
+    if not df.empty:
+        tipificaciones = df.apply(tipificar, axis=1)
+        cambios = df["tipificacion"].fillna("") != tipificaciones.fillna("")
+        if cambios.any():
+            cur = conn.cursor()
+            for numero, tipificacion in zip(df.loc[cambios, "numero"], tipificaciones.loc[cambios]):
+                cur.execute("UPDATE cases SET tipificacion=? WHERE numero=?", (tipificacion, numero))
+            conn.commit()
+        df["tipificacion"] = tipificaciones
     conn.close()
     return df
 
