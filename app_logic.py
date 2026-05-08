@@ -1114,15 +1114,34 @@ def preparar_casos(df):
     return df.drop_duplicates(subset=["numero"], keep="last")
 
 
-def guardar_casos(df):
+def meses_casos(df):
+    if df.empty or "creado" not in df.columns:
+        return []
+    fechas = df["creado"].apply(normalizar_fecha)
+    fechas = pd.to_datetime(fechas, errors="coerce")
+    return fechas.dropna().dt.to_period("M").astype(str).sort_values().unique().tolist()
+
+
+def guardar_casos(df, reemplazar_meses=False):
     conn = get_conn()
     cargados = 0
+    filas_recibidas = len(df)
     df = preparar_casos(df)
+    duplicados_archivo = max(filas_recibidas - len(df), 0)
     if df.empty:
         conn.close()
-        return 0, 0
+        return 0, 0, 0, [], duplicados_archivo
 
     cur = conn.cursor()
+    meses_reemplazados = meses_casos(df) if reemplazar_meses else []
+    eliminados = 0
+    if meses_reemplazados:
+        placeholders_meses = ", ".join(["?"] * len(meses_reemplazados))
+        eliminados = cur.execute(
+            f"DELETE FROM cases WHERE substr(creado, 1, 7) IN ({placeholders_meses})",
+            meses_reemplazados,
+        ).rowcount
+
     numeros = [safe_text(valor_fila(row, "numero")) for _, row in df.iterrows()]
     existentes = set()
     if numeros:
@@ -1167,7 +1186,7 @@ def guardar_casos(df):
         cargados += 1
     conn.commit()
     conn.close()
-    return cargados, reemplazados
+    return cargados, reemplazados, eliminados, meses_reemplazados, duplicados_archivo
 
 
 def load_casos():

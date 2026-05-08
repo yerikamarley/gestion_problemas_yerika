@@ -58,7 +58,7 @@ CHART_COLORS = [
 
 SLA_CASOS_HORAS = 36
 SLA_INCIDENTES_HORAS = 24
-APP_VERSION = "2026-05-07-gestion-tipificaciones-v2"
+APP_VERSION = "2026-05-08-reemplazo-mensual-casos-v2"
 CASE_TIPIFICATION_RENAMES = {
     "8 - Instalaciones": "9 - Redireccionamiento Agenda IVR",
     "8 - Agenda Instalaciones IVR": "9 - Redireccionamiento Agenda IVR",
@@ -1496,14 +1496,31 @@ def vista_cargar_casos():
         df = pd.read_excel(archivo)
         st.write(f"Filas detectadas: {len(df)}")
         st.dataframe(df.head(), use_container_width=True, hide_index=True)
+        reemplazar_meses = st.checkbox(
+            "Reemplazar los meses incluidos en este archivo",
+            value=True,
+            help=(
+                "Si esta activo, antes de cargar se eliminan de la base los casos de los meses "
+                "presentes en el Excel y luego se carga el archivo. Asi el mes queda igual al corte subido."
+            ),
+        )
         if st.button("Procesar casos"):
-            cargados, reemplazados = guardar_casos(df)
+            cargados, reemplazados, eliminados, meses_reemplazados, duplicados_archivo = guardar_casos(
+                df,
+                reemplazar_meses=reemplazar_meses,
+            )
             if cargados == 0:
                 st.error("No se guardaron casos. Revisa que el archivo tenga una columna de numero de caso.")
             else:
+                detalle_reemplazo = ""
+                if reemplazar_meses:
+                    meses = ", ".join(meses_reemplazados) if meses_reemplazados else "sin fechas validas"
+                    detalle_reemplazo = f" | Meses reemplazados: {meses} | Registros eliminados antes de cargar: {eliminados}"
                 st.success(
                     f"Cargados: {cargados} | Registros existentes actualizados: {reemplazados} | "
-                    "Los meses anteriores se conservan."
+                    f"Duplicados/filas sin numero omitidos del archivo: {duplicados_archivo} | "
+                    "Los meses no incluidos en el archivo se conservan."
+                    f"{detalle_reemplazo}"
                 )
 
 
