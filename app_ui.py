@@ -58,7 +58,6 @@ CHART_COLORS = [
 
 SLA_CASOS_HORAS = 36
 SLA_INCIDENTES_HORAS = 24
-APP_VERSION = "2026-05-08-seguimiento-abiertos-v1"
 CASE_TIPIFICATION_RENAMES = {
     "8 - Instalaciones": "9 - Redireccionamiento Agenda IVR",
     "8 - Agenda Instalaciones IVR": "9 - Redireccionamiento Agenda IVR",
@@ -664,6 +663,233 @@ def mascara_cerrados(df):
     return df["estado"].apply(normalizar_texto).eq("cerrado")
 
 
+def mascara_prioridad_alta(df):
+    if df.empty or "prioridad" not in df.columns:
+        return pd.Series(False, index=df.index)
+    return df["prioridad"].fillna("").str.contains(
+        r"^(?:1|2\s*-\s*Alta|alta|critica|critico)",
+        case=False,
+        regex=True,
+    )
+
+
+def preparar_seguimiento_operativo_incidentes(df, horas_proximas=24):
+    trabajo = df.copy()
+    if trabajo.empty:
+        return trabajo
+
+    ahora = pd.Timestamp.now()
+    trabajo["_cerrado"] = mascara_cerrados(trabajo)
+    trabajo["_abierto"] = ~trabajo["_cerrado"]
+    trabajo["_creado_dt"] = pd.to_datetime(trabajo["creado"].apply(normalizar_fecha), errors="coerce")
+    trabajo["_vencimiento_dt"] = pd.to_datetime(
+        trabajo["fecha_vencimiento_sla"].apply(normalizar_fecha),
+        errors="coerce",
+    )
+    trabajo["_horas_abierto"] = ((ahora - trabajo["_creado_dt"]).dt.total_seconds() / 3600).round(2)
+    trabajo["_horas_para_vencer"] = ((trabajo["_vencimiento_dt"] - ahora).dt.total_seconds() / 3600).round(2)
+    trabajo["_vencido"] = trabajo["_abierto"] & trabajo["_vencimiento_dt"].notna() & (trabajo["_horas_para_vencer"] < 0)
+    trabajo["_proximo_vencer"] = (
+        trabajo["_abierto"]
+        & trabajo["_vencimiento_dt"].notna()
+        & trabajo["_horas_para_vencer"].between(0, horas_proximas, inclusive="both")
+    )
+    trabajo["_prioridad_alta"] = mascara_prioridad_alta(trabajo)
+    trabajo["_alerta"] = trabajo["es_alerta_auto"].fillna("No").eq("Si")
+    trabajo["_cliente_externo"] = trabajo["tipificacion_auto"].fillna("").isin(
+        ["Cliente Externo", "Caso Cliente Externo"]
+    )
+    trabajo["_requiere_seguimiento"] = (
+        trabajo["_abierto"]
+        & (
+            trabajo["_vencido"]
+            | trabajo["_proximo_vencer"]
+            | trabajo["_prioridad_alta"]
+            | trabajo["_alerta"]
+            | trabajo["_cliente_externo"]
+        )
+    )
+    return trabajo
+
+
+def render_seguimiento_operativo_incidentes(df):
+    seguimiento = preparar_seguimiento_operativo_incidentes(df)
+    if seguimiento.empty:
+        return
+
+    abiertos = seguimiento[seguimiento["_abierto"]].copy()
+    vencidos = seguimiento[seguimiento["_vencido"]].copy()
+    proximos = seguimiento[seguimiento["_proximo_vencer"]].copy()
+    prioridad_alta = seguimiento[seguimiento["_abierto"] & seguimiento["_prioridad_alta"]].copy()
+    alertas_abiertas = seguimiento[seguimiento["_abierto"] & seguimiento["_alerta"]].copy()
+    cliente_externo_abierto = seguimiento[seguimiento["_abierto"] & seguimiento["_cliente_externo"]].copy()
+
+    st.subheader("Seguimiento operativo")
+    st.caption(
+        "Vista de control para incidentes abiertos que requieren accion: vencidos por SLA, proximos a vencer "
+        "en 24 horas, prioridad alta, alertas abiertas o afectacion de cliente externo."
+    )
+    render_tarjetas(
+        [
+            ("Abiertos", len(abiertos)),
+            ("Vencidos", len(vencidos)),
+            ("Proximos 24h", len(proximos)),
+            ("Prioridad alta", len(prioridad_alta)),
+            ("Alertas abiertas", len(alertas_abiertas)),
+        ]
+    )
+    st.caption(
+        "Los vencidos y proximos a vencer se calculan con la fecha de vencimiento SLA. "
+        "Las horas para vencer negativas indican atraso."
+    )
+
+    columnas = [
+        "numero",
+        "estado",
+        "prioridad",
+        "grupo_asignacion",
+        "asignado_a",
+        "empresa",
+        "servicio_negocio",
+        "creado",
+        "fecha_vencimiento_sla",
+        "_horas_abierto",
+        "_horas_para_vencer",
+        "tipificacion_auto",
+        "es_alerta_auto",
+        "causa_raiz_auto",
+    ]
+    etiquetas = {
+        "_horas_abierto": "horas_abierto",
+        "_horas_para_vencer": "horas_para_vencer",
+    }
+
+    tab_vencidos, tab_proximos, tab_prioridad, tab_alertas, tab_cliente = st.tabs(
+        ["Vencidos", "Proximos 24h", "Prioridad alta", "Alertas", "Cliente externo"]
+    )
+
+    tablas = [
+        (tab_vencidos, vencidos.sort_values(by="_horas_para_vencer")),
+        (tab_proximos, proximos.sort_values(by="_horas_para_vencer")),
+        (tab_prioridad, prioridad_alta.sort_values(by="_horas_abierto", ascending=False)),
+        (tab_alertas, alertas_abiertas.sort_values(by="_horas_abierto", ascending=False)),
+        (tab_cliente, cliente_externo_abierto.sort_values(by="_horas_abierto", ascending=False)),
+    ]
+
+    for tab, tabla in tablas:
+        with tab:
+            if tabla.empty:
+                st.info("No hay incidentes para este criterio en el periodo seleccionado.")
+            else:
+                visible = tabla[[col for col in columnas if col in tabla.columns]].rename(columns=etiquetas)
+                st.dataframe(visible, use_container_width=True, hide_index=True)
+
+
+def preparar_seguimiento_casos(df, horas_proximas=12):
+    trabajo = df.copy()
+    if trabajo.empty:
+        return trabajo
+
+    ahora = pd.Timestamp.now()
+    trabajo["_cerrado"] = mascara_cerrados(trabajo)
+    trabajo["_abierto"] = ~trabajo["_cerrado"]
+    trabajo["_creado_dt"] = pd.to_datetime(trabajo["creado"].apply(normalizar_fecha), errors="coerce")
+    trabajo["_horas_abierto"] = trabajo["_creado_dt"].apply(lambda fecha: horas_habiles_entre(fecha, ahora))
+    trabajo["_horas_para_vencer"] = (SLA_CASOS_HORAS - trabajo["_horas_abierto"]).round(2)
+    trabajo["_vencido"] = trabajo["_abierto"] & trabajo["_creado_dt"].notna() & (trabajo["_horas_para_vencer"] < 0)
+    trabajo["_proximo_vencer"] = (
+        trabajo["_abierto"]
+        & trabajo["_creado_dt"].notna()
+        & trabajo["_horas_para_vencer"].between(0, horas_proximas, inclusive="both")
+    )
+    return trabajo
+
+
+def horas_habiles_entre(inicio, fin):
+    if pd.isna(inicio) or pd.isna(fin):
+        return None
+
+    actual = pd.Timestamp(inicio)
+    fin = pd.Timestamp(fin)
+    if actual >= fin:
+        return 0
+
+    total = pd.Timedelta(0)
+    while actual < fin:
+        if actual.weekday() >= 5:
+            actual = (actual + pd.Timedelta(days=1)).replace(hour=8, minute=0, second=0, microsecond=0)
+            continue
+
+        inicio_dia = actual.replace(hour=8, minute=0, second=0, microsecond=0)
+        fin_dia = actual.replace(hour=17, minute=0, second=0, microsecond=0)
+
+        if actual < inicio_dia:
+            actual = inicio_dia
+        if actual >= fin_dia:
+            actual = (actual + pd.Timedelta(days=1)).replace(hour=8, minute=0, second=0, microsecond=0)
+            continue
+
+        limite = min(fin, fin_dia)
+        total += limite - actual
+        actual = limite
+
+    return round(total.total_seconds() / 3600, 2)
+
+
+def render_seguimiento_casos(df):
+    seguimiento = preparar_seguimiento_casos(df)
+    if seguimiento.empty:
+        return
+
+    abiertos = seguimiento[seguimiento["_abierto"]].copy()
+    vencidos = seguimiento[seguimiento["_vencido"]].copy()
+    proximos = seguimiento[seguimiento["_proximo_vencer"]].copy()
+
+    st.divider()
+    st.subheader("Control de vencimiento")
+    st.caption(
+        f"Calculado solo sobre casos abiertos con el mismo criterio de horas habiles del SLA de {SLA_CASOS_HORAS} horas. "
+        "El SLA superior resume casos cerrados; esta tabla muestra pendientes abiertos."
+    )
+    render_tarjetas(
+        [
+            ("Abiertos", len(abiertos)),
+            ("Vencidos", len(vencidos)),
+            ("Proximos 12h", len(proximos)),
+        ]
+    )
+
+    columnas = [
+        "numero",
+        "estado",
+        "prioridad",
+        "cuenta",
+        "contacto",
+        "asignado",
+        "creado",
+        "_horas_abierto",
+        "_horas_para_vencer",
+        "tipificacion",
+        "descripcion",
+    ]
+    etiquetas = {
+        "_horas_abierto": "horas_habiles_abierto",
+        "_horas_para_vencer": "horas_habiles_para_vencer",
+    }
+
+    tab_vencidos, tab_proximos = st.tabs(["Vencidos", "Proximos 12h"])
+    for tab, tabla in [
+        (tab_vencidos, vencidos.sort_values(by="_horas_para_vencer")),
+        (tab_proximos, proximos.sort_values(by="_horas_para_vencer")),
+    ]:
+        with tab:
+            if tabla.empty:
+                st.info("No hay casos para este criterio en el periodo seleccionado.")
+            else:
+                visible = tabla[[col for col in columnas if col in tabla.columns]].rename(columns=etiquetas)
+                st.dataframe(visible, use_container_width=True, hide_index=True)
+
+
 def aliases_clientes_ordenados():
     aliases = []
     for cliente, opciones in CLIENTES_CLAVE_ALIASES.items():
@@ -919,6 +1145,88 @@ def resumen_clientes_clave(casos, incidentes):
     return pd.DataFrame(filas)
 
 
+def tabla_atenciones_abiertas_clientes(casos, incidentes):
+    tablas = []
+    if not casos.empty:
+        abiertos_casos = casos[~mascara_cerrados(casos)].copy()
+        if not abiertos_casos.empty:
+            abiertos_casos["Tipo"] = "Caso"
+            abiertos_casos["Cliente"] = abiertos_casos["cliente_clave"]
+            abiertos_casos["Numero"] = abiertos_casos["numero"]
+            abiertos_casos["Estado"] = abiertos_casos["estado"]
+            abiertos_casos["Prioridad"] = abiertos_casos["prioridad"]
+            abiertos_casos["Responsable"] = abiertos_casos["asignado"]
+            abiertos_casos["Creado"] = abiertos_casos["creado"]
+            abiertos_casos["Vencimiento SLA"] = ""
+            abiertos_casos["Clasificacion"] = abiertos_casos["tipificacion"]
+            abiertos_casos["Resumen"] = abiertos_casos["descripcion"]
+            tablas.append(
+                abiertos_casos[
+                    [
+                        "Tipo",
+                        "Cliente",
+                        "Numero",
+                        "Estado",
+                        "Prioridad",
+                        "Responsable",
+                        "Creado",
+                        "Vencimiento SLA",
+                        "Clasificacion",
+                        "Resumen",
+                    ]
+                ]
+            )
+
+    if not incidentes.empty:
+        abiertos_incidentes = incidentes[~mascara_cerrados(incidentes)].copy()
+        if not abiertos_incidentes.empty:
+            abiertos_incidentes["Tipo"] = "Incidente"
+            abiertos_incidentes["Cliente"] = abiertos_incidentes["cliente_clave"]
+            abiertos_incidentes["Numero"] = abiertos_incidentes["numero"]
+            abiertos_incidentes["Estado"] = abiertos_incidentes["estado"]
+            abiertos_incidentes["Prioridad"] = abiertos_incidentes["prioridad"]
+            abiertos_incidentes["Responsable"] = abiertos_incidentes["asignado_a"]
+            abiertos_incidentes["Creado"] = abiertos_incidentes["creado"]
+            abiertos_incidentes["Vencimiento SLA"] = abiertos_incidentes["fecha_vencimiento_sla"]
+            abiertos_incidentes["Clasificacion"] = abiertos_incidentes["tipificacion_auto"]
+            abiertos_incidentes["Resumen"] = abiertos_incidentes["breve_descripcion"].replace("", pd.NA).fillna(
+                abiertos_incidentes["descripcion"]
+            )
+            tablas.append(
+                abiertos_incidentes[
+                    [
+                        "Tipo",
+                        "Cliente",
+                        "Numero",
+                        "Estado",
+                        "Prioridad",
+                        "Responsable",
+                        "Creado",
+                        "Vencimiento SLA",
+                        "Clasificacion",
+                        "Resumen",
+                    ]
+                ]
+            )
+
+    if not tablas:
+        return pd.DataFrame(
+            columns=[
+                "Tipo",
+                "Cliente",
+                "Numero",
+                "Estado",
+                "Prioridad",
+                "Responsable",
+                "Creado",
+                "Vencimiento SLA",
+                "Clasificacion",
+                "Resumen",
+            ]
+        )
+    return pd.concat(tablas, ignore_index=True).sort_values(by=["Cliente", "Tipo", "Creado"])
+
+
 def tabla_resumen_tipificaciones_casos(df):
     conteo_tipificaciones = df["tipificacion"].value_counts()
     resumen = pd.DataFrame(CASE_TIPIFICATION_GUIDE)
@@ -956,10 +1264,11 @@ def dashboard_casos():
         return
 
     total = len(df)
-    cerrados = len(df[df.estado == "Cerrado"])
+    cerrados_mask = mascara_cerrados(df)
+    cerrados = len(df[cerrados_mask])
     abiertos = total - cerrados
 
-    df_cerrados = df[df["estado"] == "Cerrado"]
+    df_cerrados = df[cerrados_mask]
     tiempos_cerrados = pd.to_numeric(df_cerrados["tiempo_respuesta"], errors="coerce").dropna()
     promedio = round(tiempos_cerrados.mean(), 2) if len(tiempos_cerrados) > 0 else 0
 
@@ -1011,6 +1320,8 @@ def dashboard_casos():
     st.caption("Descripcion breve de cada tipificacion y cantidad actual de casos clasificados en el dashboard.")
     st.dataframe(tabla_resumen_tipificaciones_casos(df), use_container_width=True, hide_index=True)
 
+    render_seguimiento_casos(df)
+
 
 def dashboard_incidentes():
     df = load_incidentes()
@@ -1026,13 +1337,14 @@ def dashboard_incidentes():
         return
 
     total = len(df)
-    cerrados = len(df[df["estado"] == "Cerrado"])
+    cerrados_mask = mascara_cerrados(df)
+    cerrados = len(df[cerrados_mask])
     abiertos = total - cerrados
 
     duraciones = pd.to_numeric(df["duracion_horas"], errors="coerce").dropna()
     promedio = round(duraciones.mean(), 2) if len(duraciones) > 0 else 0
 
-    df_cerrados = df[df["estado"] == "Cerrado"]
+    df_cerrados = df[cerrados_mask]
     duraciones_cerrados = pd.to_numeric(df_cerrados["duracion_horas"], errors="coerce").dropna()
     total_cerrados = len(duraciones_cerrados)
     cumplen = len(duraciones_cerrados[duraciones_cerrados < SLA_INCIDENTES_HORAS])
@@ -1387,8 +1699,8 @@ def dashboard_clientes_clave():
             st.info("No hay incidentes asociados a clientes clave.")
 
     st.divider()
-    tab_resumen, tab_casos, tab_incidentes, tab_seguimiento = st.tabs(
-        ["Resumen", "Casos", "Incidentes", "Seguimiento"]
+    tab_resumen, tab_abiertos, tab_casos, tab_incidentes, tab_seguimiento = st.tabs(
+        ["Resumen", "Abiertos", "Casos", "Incidentes", "Seguimiento"]
     )
 
     with tab_resumen:
@@ -1414,6 +1726,14 @@ def dashboard_clientes_clave():
             use_container_width=True,
             hide_index=True,
         )
+
+    with tab_abiertos:
+        abiertos_detalle = tabla_atenciones_abiertas_clientes(casos, incidentes)
+        if abiertos_detalle.empty:
+            st.success("No hay casos ni incidentes abiertos para los clientes seleccionados.")
+        else:
+            st.caption("Detalle de atenciones abiertas. El campo Tipo indica si corresponde a caso o incidente.")
+            st.dataframe(abiertos_detalle, use_container_width=True, hide_index=True)
 
     with tab_casos:
         if casos.empty:
@@ -1686,6 +2006,23 @@ def vista_incidentes():
     st.dataframe(df, use_container_width=True, hide_index=True)
 
 
+def vista_seguimiento_incidentes():
+    df = load_incidentes()
+    if df.empty:
+        st.info("No hay incidentes cargados.")
+        return
+
+    df = preparar_fechas_dashboard(df)
+    mes_dashboard = selector_mes_dashboard(df, "seguimiento_incidentes_mes")
+    df = filtrar_mes_dashboard(df, mes_dashboard)
+    if df.empty:
+        st.info(f"No hay incidentes cargados para {mes_dashboard}.")
+        return
+
+    st.caption(f"Periodo: {mes_dashboard}")
+    render_seguimiento_operativo_incidentes(df)
+
+
 def vista_administrar_usuarios():
     st.subheader("Administrar usuarios")
     st.caption("Crea usuarios para dar acceso a los dashboards o cambia su rol y estado.")
@@ -1792,23 +2129,22 @@ def run_app():
                 "Cargar Excel Incidentes",
                 "Incidentes",
                 "Dashboard Incidentes",
+                "Seguimiento Incidentes",
                 "Clientes Clave",
                 "Administrar Usuarios",
             ],
         )
         st.sidebar.caption(f"Sesion: {st.session_state.user}")
-        st.sidebar.caption(f"Version: {APP_VERSION}")
         if st.sidebar.button("Cerrar sesion"):
             st.session_state.clear()
             st.rerun()
     else:
-        st.caption(f"Version: {APP_VERSION}")
         if st.button("Cerrar sesion"):
             st.session_state.clear()
             st.rerun()
         vista = st.radio(
             "Vista",
-            ["Casos", "Incidentes", "Clientes clave"],
+            ["Casos", "Incidentes", "Seguimiento incidentes", "Clientes clave"],
             horizontal=True,
             label_visibility="collapsed",
             key="viewer_vista",
@@ -1817,6 +2153,8 @@ def run_app():
             ejecutar_con_carga("Casos", dashboard_casos)
         elif vista == "Incidentes":
             ejecutar_con_carga("Incidentes", dashboard_incidentes)
+        elif vista == "Seguimiento incidentes":
+            ejecutar_con_carga("Seguimiento incidentes", vista_seguimiento_incidentes)
         else:
             ejecutar_con_carga("Clientes clave", dashboard_clientes_clave)
         return
@@ -1833,6 +2171,8 @@ def run_app():
         vista_incidentes()
     elif menu == "Dashboard Incidentes":
         dashboard_incidentes()
+    elif menu == "Seguimiento Incidentes":
+        vista_seguimiento_incidentes()
     elif menu == "Clientes Clave":
         dashboard_clientes_clave()
     elif menu == "Administrar Usuarios":
