@@ -58,7 +58,7 @@ CHART_COLORS = [
 
 SLA_CASOS_HORAS = 36
 SLA_INCIDENTES_HORAS = 24
-APP_VERSION = "2026-05-08-reemplazo-mensual-casos-v2"
+APP_VERSION = "2026-05-08-seguimiento-abiertos-v1"
 CASE_TIPIFICATION_RENAMES = {
     "8 - Instalaciones": "9 - Redireccionamiento Agenda IVR",
     "8 - Agenda Instalaciones IVR": "9 - Redireccionamiento Agenda IVR",
@@ -658,6 +658,12 @@ def porcentaje(valor, total):
     return round((valor / total) * 100, 2) if total else 0
 
 
+def mascara_cerrados(df):
+    if df.empty or "estado" not in df.columns:
+        return pd.Series(False, index=df.index)
+    return df["estado"].apply(normalizar_texto).eq("cerrado")
+
+
 def aliases_clientes_ordenados():
     aliases = []
     for cliente, opciones in CLIENTES_CLAVE_ALIASES.items():
@@ -836,7 +842,7 @@ def resumen_clientes_clave(casos, incidentes):
             continue
 
         if total_casos:
-            casos_cerrados = casos_cliente[casos_cliente["estado"] == "Cerrado"]
+            casos_cerrados = casos_cliente[mascara_cerrados(casos_cliente)]
             casos_abiertos = total_casos - len(casos_cerrados)
             tiempos_casos = casos_cerrados["tiempo_respuesta_h"].dropna()
             sla_casos = (
@@ -855,7 +861,7 @@ def resumen_clientes_clave(casos, incidentes):
             casos_sin_causa = 0
 
         if total_incidentes:
-            incidentes_cerrados = incidentes_cliente[incidentes_cliente["estado"] == "Cerrado"]
+            incidentes_cerrados = incidentes_cliente[mascara_cerrados(incidentes_cliente)]
             incidentes_abiertos = total_incidentes - len(incidentes_cerrados)
             duraciones_incidentes = incidentes_cerrados["duracion_horas_num"].dropna()
             sla_incidentes = (
@@ -1239,12 +1245,17 @@ def dashboard_clientes_clave():
 
     total_casos = len(casos)
     total_incidentes = len(incidentes)
-    abiertos_casos = len(casos[casos["estado"] != "Cerrado"]) if not casos.empty else 0
-    abiertos_incidentes = len(incidentes[incidentes["estado"] != "Cerrado"]) if not incidentes.empty else 0
+    abiertos_casos = len(casos[~mascara_cerrados(casos)]) if not casos.empty else 0
+    abiertos_incidentes = len(incidentes[~mascara_cerrados(incidentes)]) if not incidentes.empty else 0
     clientes_activos = len(resumen_actividad)
-    clientes_seguimiento = len(resumen_actividad[resumen_actividad["Nivel"].isin(["Amarillo", "Rojo"])])
+    clientes_seguimiento = len(
+        resumen_actividad[
+            resumen_actividad["Nivel"].isin(["Amarillo", "Rojo"])
+            & (resumen_actividad["Abiertos"] > 0)
+        ]
+    )
 
-    casos_cerrados = casos[casos["estado"] == "Cerrado"] if not casos.empty else pd.DataFrame()
+    casos_cerrados = casos[mascara_cerrados(casos)] if not casos.empty else pd.DataFrame()
     tiempos_casos = casos_cerrados.get("tiempo_respuesta_h", pd.Series(dtype="float")).dropna()
     sla_casos = (
         porcentaje(len(tiempos_casos[tiempos_casos < SLA_CASOS_HORAS]), len(tiempos_casos))
@@ -1252,7 +1263,7 @@ def dashboard_clientes_clave():
         else 0
     )
 
-    incidentes_cerrados = incidentes[incidentes["estado"] == "Cerrado"] if not incidentes.empty else pd.DataFrame()
+    incidentes_cerrados = incidentes[mascara_cerrados(incidentes)] if not incidentes.empty else pd.DataFrame()
     duraciones_incidentes = incidentes_cerrados.get("duracion_horas_num", pd.Series(dtype="float")).dropna()
     sla_incidentes = (
         porcentaje(
@@ -1459,7 +1470,10 @@ def dashboard_clientes_clave():
             )
 
     with tab_seguimiento:
-        seguimiento = resumen_actividad[resumen_actividad["Nivel"].isin(["Amarillo", "Rojo"])].copy()
+        seguimiento = resumen_actividad[
+            resumen_actividad["Nivel"].isin(["Amarillo", "Rojo"])
+            & (resumen_actividad["Abiertos"] > 0)
+        ].copy()
         if seguimiento.empty:
             st.success("Los clientes clave con actividad estan en nivel estable para el periodo seleccionado.")
         else:
