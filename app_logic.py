@@ -1048,7 +1048,7 @@ def tipificar_caso(row):
 
     canal = normalizar_texto(valor_fila(row, "canal"))
     if es_caso_instalacion(texto):
-        return "9 - Redireccionamiento Agenda IVR"
+        return "9 - Redireccionamiento Agenda"
 
     texto_resolucion = " ".join(
         [

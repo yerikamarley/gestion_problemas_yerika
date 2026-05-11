@@ -24,44 +24,47 @@ from app_logic import (
 )
 
 UI_PALETTE = {
-    "bg": "#f7f9fb",
-    "bg_soft": "#eef4f3",
-    "surface": "#ffffff",
-    "surface_alt": "#f5f8f7",
-    "border": "#d9e2df",
+    "bg": "#fffafa",
+    "bg_soft": "#fff3ec",
+    "surface": "#fffafa",
+    "surface_alt": "#fff4ef",
+    "border": "#ead8d1",
 
-    "text": "#2b3438",
-    "muted": "#667579",
+    "text": "#141414",
+    "muted": "#5a5151",
 
-   
-    "yellow": "#b8a15a",
-    "yellow_soft": "#d8c98b",
+    "primary": "#f35b04",
+    "primary_hover": "#f18701",
+    "orange": "#f18701",
+    "yellow": "#f7b801",
+    "yellow_soft": "#ffe0a1",
+    "lavender": "#9683ec",
+    "purple": "#5d16a6",
 
-   
-    "red": "#a84f55",
-    "red_soft": "#c98489",
-
-    "green": "#277267",
-    "green_soft": "#7ba99e",
-    "blue": "#4f6f73",
-    "blue_soft": "#8fa6aa",
+    "red": "#f35b04",
+    "red_soft": "#f18701",
+    "green": "#f35b04",
+    "green_soft": "#f18701",
+    "blue": "#9683ec",
+    "blue_soft": "#5d16a6",
 }
 
 CHART_COLORS = [
-    UI_PALETTE["green"],
-    UI_PALETTE["blue"],
-    UI_PALETTE["green_soft"],
-    UI_PALETTE["blue_soft"],
+    UI_PALETTE["primary"],
     UI_PALETTE["yellow"],
-    UI_PALETTE["red"],
+    UI_PALETTE["orange"],
+    UI_PALETTE["lavender"],
+    UI_PALETTE["purple"],
+    UI_PALETTE["text"],
 ]
 
 SLA_CASOS_HORAS = 36
 SLA_INCIDENTES_HORAS = 24
 CASE_TIPIFICATION_RENAMES = {
-    "8 - Instalaciones": "9 - Redireccionamiento Agenda IVR",
-    "8 - Agenda Instalaciones IVR": "9 - Redireccionamiento Agenda IVR",
-    "9 - Agenda Instalaciones IVR": "9 - Redireccionamiento Agenda IVR",
+    "8 - Instalaciones": "9 - Redireccionamiento Agenda",
+    "8 - Agenda Instalaciones IVR": "9 - Redireccionamiento Agenda",
+    "9 - Agenda Instalaciones IVR": "9 - Redireccionamiento Agenda",
+    "9 - Redireccionamiento Agenda IVR": "9 - Redireccionamiento Agenda",
     "9 - Agenda sin evidencia": "10 - Cliente no asistio",
     "10 - Agenda sin evidencia": "10 - Cliente no asistio",
 }
@@ -136,8 +139,8 @@ CASE_TIPIFICATION_GUIDE = [
         "Descripcion": "Casos sin informacion suficiente o que no encajan en las reglas definidas.",
     },
     {
-        "Tipificacion": "9 - Redireccionamiento Agenda IVR",
-        "Descripcion": "Casos detectados como instalacion que deben redirigirse a agenda por IVR.",
+        "Tipificacion": "9 - Redireccionamiento Agenda",
+        "Descripcion": "Casos detectados como instalacion que deben redirigirse a agenda.",
     },
     {
         "Tipificacion": "10 - Cliente no asistio",
@@ -208,8 +211,13 @@ def aplicar_tema_visual():
             --border: {UI_PALETTE["border"]};
             --text: {UI_PALETTE["text"]};
             --muted: {UI_PALETTE["muted"]};
+            --primary: {UI_PALETTE["primary"]};
+            --primary-hover: {UI_PALETTE["primary_hover"]};
+            --orange: {UI_PALETTE["orange"]};
             --yellow: {UI_PALETTE["yellow"]};
             --yellow-soft: {UI_PALETTE["yellow_soft"]};
+            --lavender: {UI_PALETTE["lavender"]};
+            --purple: {UI_PALETTE["purple"]};
             --red: {UI_PALETTE["red"]};
             --red-soft: {UI_PALETTE["red_soft"]};
             --green: {UI_PALETTE["green"]};
@@ -219,7 +227,7 @@ def aplicar_tema_visual():
         }}
 
         html, body, [data-testid="stAppViewContainer"], .stApp {{
-            background: linear-gradient(180deg, var(--bg-soft) 0%, var(--bg) 42%, #ffffff 100%);
+            background: linear-gradient(180deg, var(--bg-soft) 0%, var(--bg) 42%, var(--surface) 100%);
             color: var(--text) !important;
             color-scheme: light !important;
         }}
@@ -229,7 +237,7 @@ def aplicar_tema_visual():
         }}
 
         [data-testid="stSidebar"] {{
-            background: linear-gradient(180deg, #ffffff 0%, #f3f6f9 100%) !important;
+            background: linear-gradient(180deg, var(--surface) 0%, var(--surface-alt) 100%) !important;
             border-right: 1px solid var(--border);
         }}
 
@@ -256,21 +264,21 @@ def aplicar_tema_visual():
         [data-baseweb="select"] > div,
         .stTextInput > div > div > input,
         .stTextArea textarea {{
-            background: rgba(255, 255, 255, 0.96) !important;
+            background: rgba(255, 250, 250, 0.96) !important;
             border: 1px solid var(--border) !important;
             border-radius: 8px !important;
-            box-shadow: 0 8px 20px rgba(20, 58, 90, 0.05);
+            box-shadow: 0 8px 20px rgba(20, 20, 20, 0.05);
             color: var(--text) !important;
         }}
 
         .stButton > button,
         [data-testid="baseButton-secondary"] {{
-            background: var(--green) !important;
+            background: var(--primary) !important;
             color: white !important;
             border: none !important;
             border-radius: 8px !important;
             font-weight: 700 !important;
-            box-shadow: 0 8px 18px rgba(39, 114, 103, 0.16);
+            box-shadow: 0 8px 18px rgba(243, 91, 4, 0.18);
         }}
 
         .stButton > button *,
@@ -279,25 +287,25 @@ def aplicar_tema_visual():
         }}
 
         .stButton > button:hover {{
-            background: #1f5f56 !important;
+            background: var(--primary-hover) !important;
             color: white !important;
         }}
 
         [data-testid="stTabs"] button[role="tab"] {{
             border-radius: 8px;
             border: 1px solid var(--border);
-            background: rgba(255, 255, 255, 0.9);
+            background: rgba(255, 250, 250, 0.9);
             color: var(--muted) !important;
         }}
 
         [data-testid="stTabs"] button[aria-selected="true"] {{
-            background: #edf5f3;
-            border-color: var(--green-soft);
-            color: var(--green) !important;
+            background: rgba(243, 91, 4, 0.10);
+            border-color: var(--primary-hover);
+            color: var(--primary) !important;
         }}
 
         [data-testid="stTabs"] [data-baseweb="tab-highlight"] {{
-            background-color: var(--green) !important;
+            background-color: var(--primary) !important;
         }}
 
         [role="radiogroup"] {{
@@ -307,20 +315,20 @@ def aplicar_tema_visual():
         }}
 
         [role="radiogroup"] label {{
-            background: rgba(255, 255, 255, 0.9);
+            background: rgba(255, 250, 250, 0.9);
             border: 1px solid var(--border);
             border-radius: 8px;
             padding: 0.35rem 0.7rem;
         }}
 
         [role="radiogroup"] label:has(input:checked) {{
-            background: #edf5f3;
-            border-color: var(--green-soft);
+            background: rgba(243, 91, 4, 0.10);
+            border-color: var(--primary-hover);
         }}
 
         [data-baseweb="tag"] {{
-            background-color: #edf5f3 !important;
-            border: 1px solid #c7d9d4 !important;
+            background-color: rgba(243, 91, 4, 0.10) !important;
+            border: 1px solid rgba(243, 91, 4, 0.24) !important;
             border-radius: 7px !important;
             color: var(--text) !important;
         }}
@@ -337,7 +345,7 @@ def aplicar_tema_visual():
         }}
 
         .stDivider {{
-            border-color: rgba(20, 58, 90, 0.12) !important;
+            border-color: rgba(20, 20, 20, 0.12) !important;
         }}
 
         .kpi-grid {{
@@ -359,7 +367,7 @@ def aplicar_tema_visual():
             justify-content: center;
             align-items: center;
             border: 1px solid var(--border);
-            box-shadow: 0 10px 24px rgba(20, 58, 90, 0.06);
+            box-shadow: 0 10px 24px rgba(20, 20, 20, 0.06);
             position: relative;
             overflow: hidden;
         }}
@@ -370,7 +378,7 @@ def aplicar_tema_visual():
             inset: 0 auto auto 0;
             width: 100%;
             height: 4px;
-            background: var(--green);
+            background: var(--primary);
         }}
 
         .kpi-title {{
@@ -385,7 +393,7 @@ def aplicar_tema_visual():
         .kpi-value {{
             font-size: 28px;
             font-weight: 800;
-            color: var(--green);
+            color: var(--primary);
             line-height: 1.1;
         }}
 
@@ -469,13 +477,13 @@ def aplicar_estilo_figura(fig, titulo=None):
     fig.update_layout(
         title=titulo,
         paper_bgcolor="rgba(255,255,255,0)",
-        plot_bgcolor="rgba(255,255,255,0.94)",
+        plot_bgcolor="rgba(255,250,250,0.94)",
         font=dict(color=UI_PALETTE["text"]),
-        title_font=dict(color=UI_PALETTE["green"], size=17),
+        title_font=dict(color=UI_PALETTE["primary"], size=17),
         margin=dict(l=12, r=12, t=52, b=12),
-        legend=dict(bgcolor="rgba(255,255,255,0.82)"),
+        legend=dict(bgcolor="rgba(255,250,250,0.82)"),
     )
-    fig.update_xaxes(showgrid=True, gridcolor="rgba(20, 58, 90, 0.10)", zeroline=False)
+    fig.update_xaxes(showgrid=True, gridcolor="rgba(20, 20, 20, 0.10)", zeroline=False)
     fig.update_yaxes(showgrid=False, zeroline=False)
     return fig
 
@@ -489,7 +497,7 @@ def estilos_login():
 
         /* Fondo general */
         .stApp {
-            background: linear-gradient(180deg, #eef4f3 0%, #f7f9fb 54%, #ffffff 100%);
+            background: linear-gradient(180deg, var(--bg-soft) 0%, var(--bg) 54%, var(--surface) 100%);
         }
 
         .block-container {
@@ -503,22 +511,22 @@ def estilos_login():
 
         /* Card principal */
         .login-card {
-            background: rgba(255, 255, 255, 0.98);
+            background: rgba(255, 250, 250, 0.98);
             padding: 36px 32px;
             border-radius: 8px;
-            box-shadow: 0 18px 42px rgba(20, 58, 90, 0.12);
+            box-shadow: 0 18px 42px rgba(20, 20, 20, 0.12);
             text-align: center;
             max-width: 420px;
             margin: auto;
             width: 100%;
-            border: 1px solid #d8e0e8;
+            border: 1px solid var(--border);
         }
 
         /* Título */
         .login-title {
             font-size: 28px;
             font-weight: 800;
-            color: #277267;
+            color: var(--primary);
             margin-bottom: 8px;
             text-align: left;
         }
@@ -526,7 +534,7 @@ def estilos_login():
         /* Subtítulo */
         .login-subtitle {
             font-size: 14px;
-            color: #5d6b7a;
+            color: var(--muted);
             margin-bottom: 24px;
             text-align: left;
         }
@@ -534,14 +542,14 @@ def estilos_login():
         /* Inputs */
         input {
             border-radius: 8px !important;
-            border: 1px solid #d8e0e8 !important;
+            border: 1px solid var(--border) !important;
             padding: 10px !important;
             transition: all 0.2s ease;
         }
 
         input:focus {
-            border: 1px solid #0f6b5f !important;
-            box-shadow: 0 0 0 3px rgba(15, 107, 95, 0.12);
+            border: 1px solid var(--primary) !important;
+            box-shadow: 0 0 0 3px rgba(243, 91, 4, 0.14);
             outline: none;
         }
 
@@ -549,23 +557,23 @@ def estilos_login():
         div.stButton > button {
             width: 100%;
             border-radius: 8px;
-            background: #277267;
+            background: var(--primary);
             color: white;
             font-weight: 700;
             border: none;
             padding: 0.7rem 1rem;
             transition: all 0.25s ease;
-            box-shadow: 0 8px 18px rgba(39, 114, 103, 0.18);
+            box-shadow: 0 8px 18px rgba(243, 91, 4, 0.20);
         }
 
         div.stButton > button:hover {
-            background: #0f6b5f;
-            box-shadow: 0 12px 24px rgba(15, 107, 95, 0.20);
+            background: var(--primary-hover);
+            box-shadow: 0 12px 24px rgba(241, 135, 1, 0.24);
         }
 
         /* Placeholder */
         ::placeholder {
-            color: #8a97a5;
+            color: var(--muted);
             font-size: 13px;
         }
 
@@ -936,7 +944,7 @@ def preparar_casos_clientes_clave(df):
         trabajo["tiempo_respuesta_h"] = pd.Series(dtype="float")
         return trabajo
 
-    trabajo = df.copy()
+    trabajo = normalizar_tipificaciones_casos_df(df)
     detecciones = trabajo.apply(
         lambda row: detectar_cliente_en_fila(row, ["cuenta"]),
         axis=1,
@@ -1396,7 +1404,7 @@ def dashboard_incidentes():
             y="Causa raiz inferida",
             orientation="h",
             text="Cantidad",
-            color_discrete_sequence=[UI_PALETTE["green"]],
+            color_discrete_sequence=[UI_PALETTE["primary"]],
         )
         fig.update_traces(textposition="outside")
         fig.update_layout(title="Causa raiz inferida")
@@ -1429,9 +1437,9 @@ def dashboard_incidentes():
             x="Fecha",
             y="incidentes",
             title="Incidentes por dia",
-            color_discrete_sequence=[UI_PALETTE["red"]],
+            color_discrete_sequence=[UI_PALETTE["purple"]],
         )
-        fig.update_traces(marker_color=UI_PALETTE["red"])
+        fig.update_traces(marker_color=UI_PALETTE["purple"])
         st.plotly_chart(aplicar_estilo_figura(fig, "Incidentes por dia"), use_container_width=True)
 
     st.divider()
@@ -1465,7 +1473,7 @@ def dashboard_incidentes():
             y="Afectacion",
             orientation="h",
             text="Cantidad",
-            color_discrete_sequence=[UI_PALETTE["red"]],
+            color_discrete_sequence=[UI_PALETTE["purple"]],
             title="Que esta afectando al Cliente Externo",
         )
         fig.update_traces(textposition="outside")
@@ -1621,9 +1629,9 @@ def dashboard_clientes_clave():
             text="Total atenciones",
             color="Nivel",
             color_discrete_map={
-                "Verde": UI_PALETTE["green"],
+                "Verde": UI_PALETTE["lavender"],
                 "Amarillo": UI_PALETTE["yellow"],
-                "Rojo": UI_PALETTE["red"],
+                "Rojo": UI_PALETTE["primary"],
             },
         )
         fig.update_traces(textposition="outside")
@@ -1649,7 +1657,7 @@ def dashboard_clientes_clave():
                 y="Cantidad",
                 color="Tipo",
                 barmode="group",
-                color_discrete_sequence=[UI_PALETTE["green"], UI_PALETTE["red"]],
+                color_discrete_sequence=[UI_PALETTE["primary"], UI_PALETTE["purple"]],
             )
             st.plotly_chart(aplicar_estilo_figura(fig, "Actividad por dia"), use_container_width=True)
         else:
@@ -1691,7 +1699,7 @@ def dashboard_clientes_clave():
                 y="Causa incidente",
                 orientation="h",
                 text="Cantidad",
-                color_discrete_sequence=[UI_PALETTE["red"]],
+                color_discrete_sequence=[UI_PALETTE["purple"]],
             )
             fig.update_traces(textposition="outside")
             st.plotly_chart(aplicar_estilo_figura(fig, "Causas en incidentes"), use_container_width=True)
