@@ -94,12 +94,12 @@ writeTable(
   ["Elemento", "Definición operativa"],
   [
     ["Objetivo", "Reducir mala clasificación, tickets sin información, demoras de asignación, escalamiento confuso y tiempos muertos."],
-    ["Entradas permitidas", "NOC: Alerta, Consulta o Incidente. Cliente interno/externo: Consulta o Incidente."],
-    ["Regla de alerta", "Solo el NOC puede registrar alertas. Una alerta se convierte en incidente si se confirma afectación, degradación, interrupción, riesgo o indicador de compromiso."],
-    ["Responsable inicial", "Todo incidente confirmado se asigna a Soporte N2 para gestión, coordinación, seguimiento y documentación."],
-    ["Escalamiento clave", "Infraestructura se activa inmediatamente para incidentes críticos/altos o caída, degradación, indisponibilidad, plataforma, servidores, red o comunicaciones."],
-    ["No incidente", "Si no corresponde a incidente, Mesa de ayuda crea el caso con la tipología correcta y se conserva trazabilidad."],
-    ["Seguimiento", "NOC recibe notificación automática para visibilidad, monitoreo de tiempos y apoyo en escalamiento."],
+    ["Entradas del dashboard", "Separar Alerta NOC, Consulta NOC, Incidente Cliente Externo, Incidente Interno, Incidente Seguridad, Consulta Cliente y Caso Cliente Externo."],
+    ["Regla de alerta NOC", "Las alertas y consultas creadas por NOC se miden aparte. No se mezclan con incidentes de cliente externo ni con incidentes internos."],
+    ["Incidente real", "Solo cuenta como incidente real para SLA: Incidente Cliente Externo, Incidente Interno o Incidente Seguridad."],
+    ["Caso mal clasificado", "Si un registro de incidentes corresponde a instalacion, descarga, guia, solicitud o tramite de cliente, se reclasifica como Caso Cliente Externo."],
+    ["SLA dinamico", "El cumplimiento se calcula por familia SLA y prioridad: operativo, seguridad o consulta. Se elimina el umbral unico de 24 horas."],
+    ["Seguimiento", "El tablero debe mostrar vencidos y proximos a vencer usando la matriz SLA; si no hay objetivo, usa el vencimiento del sistema como respaldo."],
   ],
   "ResumenMatriz",
   [230, 760],
@@ -112,9 +112,9 @@ writeTable(
   "A4",
   ["Origen", "Tipos permitidos", "Regla", "Responsable validación", "Salida si confirma incidente", "Salida si NO confirma incidente"],
   [
-    ["NOC", "Alerta, Consulta, Incidente", "Solo NOC puede registrar alertas. Validar monitoreo, SOC/NOC, disponibilidad o indicador de compromiso.", "NOC", "Incidente confirmado -> Soporte N2 + notificación NOC", "Mesa de ayuda crea caso/consulta"],
-    ["Cliente interno", "Consulta, Incidente", "No puede registrar alerta. Si reporta afectación real o potencial, validar como incidente.", "Soporte N2 / responsable inicial", "Incidente confirmado -> Soporte N2", "Mesa de ayuda crea caso"],
-    ["Cliente externo", "Consulta, Incidente", "No puede registrar alerta. Validar impacto sobre servicio, cliente, usuarios y evidencia.", "Soporte N2 / responsable inicial", "Incidente confirmado -> Soporte N2", "Mesa de ayuda crea caso"],
+    ["NOC", "Alerta NOC, Consulta NOC", "Todo registro creado por NOC se revisa primero como alerta o consulta NOC. No entra al bloque de cliente externo/interno.", "NOC", "Si confirma afectacion, se escala y se conserva como Alerta NOC con seguimiento separado.", "Consulta NOC o cierre sin afectacion"],
+    ["Cliente interno", "Consulta Cliente, Incidente Interno", "Si hay afectacion sobre plataformas, red, infraestructura o procesos internos, clasificar como incidente interno.", "Soporte N2", "Incidente Interno -> SLA operativo", "Consulta Cliente o caso de mesa de ayuda"],
+    ["Cliente externo", "Consulta Cliente, Incidente Cliente Externo, Caso Cliente Externo", "Separar afectacion real del servicio frente a solicitudes, guias, descargas, instalaciones o tramites.", "Soporte N2", "Incidente Cliente Externo -> SLA operativo", "Caso Cliente Externo o Consulta Cliente"],
   ],
   "OrigenClasificacion",
   [150, 190, 340, 180, 240, 220],
@@ -125,10 +125,13 @@ writeTable(
   "A10",
   ["Clasificación preliminar", "Criterio", "Acción"],
   [
-    ["Alerta", "Señal de monitoreo generada por NOC/SOC/herramientas. No necesariamente es incidente.", "NOC valida. Si hay afectación, degradación, interrupción, riesgo o indicador de compromiso, convertir en incidente."],
-    ["Consulta", "Duda, validación o revisión sin afectación confirmada.", "Validar. Si se confirma afectación real o potencial, convertir en incidente; si no, Mesa de ayuda crea caso."],
-    ["Incidente operativo", "Interrupción, caída, degradación o reducción de calidad de un servicio.", "Asignar a Soporte N2 y priorizar."],
-    ["Incidente de seguridad", "Afecta o puede afectar confidencialidad, integridad o disponibilidad.", "Asignar a Soporte N2, notificar Seguridad/Riesgos y priorizar."],
+    ["Alerta NOC", "Senal de monitoreo o registro creado por NOC. Se mide aparte del bloque cliente externo/interno.", "NOC valida y Soporte N2 coordina si hay afectacion. Usar SLA operativo por prioridad si se confirma incidente."],
+    ["Consulta NOC", "Duda, validacion o revision del NOC sin afectacion confirmada.", "Medir aparte como consulta. No contar en SLA de incidentes reales."],
+    ["Consulta Cliente", "Duda o validacion de cliente interno/externo sin afectacion confirmada.", "No contar como incidente real. Si se confirma afectacion, reclasificar."],
+    ["Incidente Cliente Externo", "Afectacion real de servicio reportada por cliente externo o con impacto hacia cliente externo.", "Asignar a Soporte N2 y medir con SLA operativo."],
+    ["Incidente Interno", "Afectacion de infraestructura, red, plataforma o proceso interno.", "Asignar a Soporte N2 y medir con SLA operativo."],
+    ["Incidente Seguridad", "Afecta o puede afectar confidencialidad, integridad o disponibilidad.", "Notificar Seguridad/Riesgos y medir con SLA de seguridad."],
+    ["Caso Cliente Externo", "Registro creado como incidente pero que corresponde a solicitud, instalacion, descarga, guia o tramite.", "Excluir del SLA de incidentes y redirigir a la tipologia de caso correcta."],
   ],
   "TiposEntrada",
   [190, 500, 520],
@@ -161,15 +164,20 @@ setupSheet(prioridad, "Priorización de incidentes", "La prioridad se asigna por
 writeTable(
   prioridad,
   "A4",
-  ["Prioridad", "Impacto", "Urgencia", "Criterios", "Tiempo atención", "Tiempo resolución", "Escalamiento obligatorio"],
+  ["Familia SLA", "Prioridad", "Impacto", "Urgencia", "Criterios", "Tiempo atención", "Tiempo resolución", "Escalamiento obligatorio"],
   [
-    ["Crítico", "Alto / servicio crítico", "Inmediata", "Interrupción total, múltiples usuarios/clientes, datos sensibles, indicador de compromiso confirmado.", "15 min", "4 horas", "Soporte N2 + Infraestructura inmediata + NOC + Seguridad/Riesgos si aplica"],
-    ["Alto", "Alto o medio-alto", "Media-alta", "Degradación severa, varios usuarios afectados, impacto operativo importante, accesos no autorizados sin compromiso total.", "20 min", "8 horas", "Soporte N2 + Infraestructura inmediata si hay caída/degradación + NOC"],
-    ["Moderado", "Medio", "Media", "Afectación parcial, grupo reducido, incidente de seguridad sin evidencia clara de compromiso.", "30 min", "24 horas seguridad / 4 días operativo", "Soporte N2; escalar según diagnóstico"],
-    ["Bajo", "Bajo", "Baja", "Impacto mínimo, falla menor, evento informativo sin afectación relevante.", "30 min", "48 horas seguridad / 8 días operativo", "Soporte N2; escalar si se identifica afectación mayor"],
+    ["Operativo", "Crítico", "Alto / servicio crítico", "Inmediata", "Caída total, indisponibilidad, afectación masiva o servicio crítico.", "15 min", "4 horas", "Soporte N2 + Infraestructura inmediata + NOC"],
+    ["Operativo", "Alto", "Alto o medio-alto", "Media-alta", "Degradación severa, varios usuarios afectados o impacto operativo importante.", "20 min", "8 horas", "Soporte N2 + Infraestructura inmediata si hay caída/degradación"],
+    ["Operativo", "Moderado", "Medio", "Media", "Afectación parcial o grupo reducido.", "30 min", "4 días / 96 horas", "Soporte N2; escalar según diagnóstico"],
+    ["Operativo", "Bajo", "Bajo", "Baja", "Impacto mínimo, falla menor o evento informativo con baja afectación.", "30 min", "8 días / 192 horas", "Soporte N2; escalar si aumenta el impacto"],
+    ["Seguridad", "Crítico", "Alto / datos sensibles", "Inmediata", "Compromiso confirmado, fuga, malware activo o indisponibilidad por evento de seguridad.", "15 min", "4 horas", "Soporte N2 + Seguridad/Riesgos + Infraestructura si aplica"],
+    ["Seguridad", "Alto", "Alto o medio-alto", "Media-alta", "Acceso no autorizado, indicador de compromiso o evento de seguridad con impacto relevante.", "20 min", "8 horas", "Soporte N2 + Seguridad/Riesgos"],
+    ["Seguridad", "Moderado", "Medio", "Media", "Evento de seguridad sin evidencia clara de compromiso.", "30 min", "24 horas", "Soporte N2 + Seguridad/Riesgos según diagnóstico"],
+    ["Seguridad", "Bajo", "Bajo", "Baja", "Evento de seguridad menor o informativo.", "30 min", "48 horas", "Soporte N2; escalar si aumenta el riesgo"],
+    ["Consulta", "Moderado", "Medio", "Media", "Consulta NOC o consulta cliente sin afectación confirmada.", "30 min", "4 días / 96 horas", "Mesa de ayuda / Soporte N2 según corresponda"],
   ],
   "Priorizacion",
-  [110, 170, 150, 430, 130, 160, 360],
+  [110, 110, 170, 150, 390, 130, 160, 330],
 );
 
 const escalamiento = wb.worksheets.add("04_Matriz_Escalamiento");
@@ -194,6 +202,8 @@ writeTable(
     "Canal",
   ],
   [
+    ["Monitoreo / NOC", "Alerta NOC", "Según prioridad", "NOC", "Soporte N2 / Infraestructura", "Al confirmar afectación, degradación, indisponibilidad o recurrencia", "Por definir", "Por definir", "7x24 / según matriz", "Por definir", "Por definir", "Si aplica", "15-30 min según prioridad", "Herramienta + llamada si crítico/alto"],
+    ["NOC", "Consulta NOC", "Moderado", "NOC", "Mesa de ayuda / Soporte N2", "Si se confirma afectación o requiere diagnóstico técnico", "Por definir", "Por definir", "Horario hábil / según matriz", "Por definir", "No aplica", "No aplica", "4 horas sin respuesta", "Herramienta + correo"],
     ["Plataforma / servicio crítico", "Caída total", "Crítico", "Soporte N2", "Infraestructura", "Inmediato", "Por definir", "Por definir", "7x24 / según matriz", "Por definir", "Por definir", "Si aplica", "15 min sin respuesta", "Correo + llamada + herramienta"],
     ["Plataforma / servicio crítico", "Degradación severa", "Alto", "Soporte N2", "Infraestructura", "Inmediato", "Por definir", "Por definir", "7x24 / según matriz", "Por definir", "Por definir", "Si aplica", "20 min sin respuesta", "Correo + llamada + herramienta"],
     ["Servidores / infraestructura", "Indisponibilidad / recurso saturado", "Crítico/Alto", "Soporte N2", "Infraestructura", "Inmediato", "Por definir", "Por definir", "7x24 / según matriz", "Por definir", "Por definir", "Si aplica", "15-20 min", "Correo + llamada + herramienta"],
@@ -205,9 +215,9 @@ writeTable(
   "MatrizEscalamiento",
   [210, 180, 120, 160, 220, 260, 180, 160, 150, 160, 160, 150, 160, 190],
 );
-addValidation(escalamiento, "C5:C200", ["Crítico", "Alto", "Moderado", "Bajo", "Crítico/Alto", "Según impacto", "No aplica"]);
+addValidation(escalamiento, "C5:C200", ["Crítico", "Alto", "Moderado", "Bajo", "Crítico/Alto", "Según impacto", "Según prioridad", "No aplica"]);
 addValidation(escalamiento, "D5:D200", ["Soporte N2", "NOC", "Responsable inicial", "Mesa de ayuda"]);
-addValidation(escalamiento, "E5:E200", ["Infraestructura", "Infraestructura / Redes", "Seguridad de la información / Riesgos", "Grupo según servicio", "Mesa de ayuda"]);
+addValidation(escalamiento, "E5:E200", ["Soporte N2 / Infraestructura", "Mesa de ayuda / Soporte N2", "Infraestructura", "Infraestructura / Redes", "Seguridad de la información / Riesgos", "Grupo según servicio", "Mesa de ayuda"]);
 
 const horario = wb.worksheets.add("05_Horario_No_Habil");
 setupSheet(horario, "Disponibilidad y horario no hábil", "Define cómo activar atención cuando NOC identifica un incidente fuera de horario laboral.", "J");
@@ -268,14 +278,14 @@ writeTable(
   "A4",
   ["KPI", "Qué mide", "Fórmula / cálculo sugerido", "Frecuencia", "Meta sugerida", "Dueño"],
   [
-    ["MTTA", "Tiempo medio hasta atención/asignación efectiva.", "Promedio(fecha primera atención - fecha creación).", "Mensual", "Según SLA por prioridad", "NOC / Soporte N2"],
-    ["MTTR", "Tiempo medio de resolución.", "Promedio(fecha solución - fecha creación).", "Mensual", "Según SLA por prioridad", "Soporte N2"],
-    ["Cumplimiento SLA", "Porcentaje de incidentes dentro del tiempo objetivo.", "Incidentes dentro de SLA / total incidentes.", "Mensual", ">= 85%", "NOC / Gestión"],
-    ["Reasignaciones", "Mala asignación o falta de claridad.", "Cantidad de reasignaciones por incidente y por área.", "Mensual", "Tendencia decreciente", "Soporte N2"],
-    ["Pendiente información", "Calidad del registro inicial.", "Entradas devueltas por falta de información / total entradas.", "Mensual", "Tendencia decreciente", "Mesa de ayuda / Soporte N2"],
-    ["Incidentes fuera de horario", "Carga operativa no hábil.", "Cantidad por prioridad y área.", "Mensual", "Visibilidad completa", "NOC"],
-    ["Dependencias de terceros", "Bloqueos por proveedor.", "Cantidad y tiempo acumulado en dependencia externa.", "Mensual", "Controlado por proveedor", "Soporte N2 / responsable servicio"],
-    ["Incidentes repetitivos", "Necesidad de gestión de problemas.", "Incidentes por servicio/causa repetidos.", "Mensual", "Activar gestión de problemas", "Gestión / Soporte N2"],
+    ["Volumen por tipificacion", "Distribucion entre Alerta NOC, Consulta NOC, Incidente Cliente Externo, Incidente Interno, Seguridad y Caso Cliente Externo.", "Conteo por tipificacion_final.", "Mensual", "Separacion completa", "Gestion / Soporte N2"],
+    ["SLA incidentes reales", "Cumplimiento solo de Incidente Cliente Externo, Incidente Interno e Incidente Seguridad.", "Incidentes reales cerrados dentro de SLA / incidentes reales cerrados con objetivo.", "Mensual", ">= 85%", "NOC / Gestion"],
+    ["Alertas NOC", "Volumen y recurrencia de alertas de monitoreo.", "Conteo Alerta NOC por servicio, causa y prioridad.", "Mensual", "Tendencia controlada", "NOC"],
+    ["Consultas NOC", "Carga operativa del NOC sin afectacion confirmada.", "Conteo Consulta NOC y tiempo de cierre.", "Mensual", "Visibilidad completa", "NOC"],
+    ["Caso Cliente Externo", "Registros cargados como incidente que debian ser caso/solicitud.", "Caso Cliente Externo / total registros de incidentes.", "Mensual", "Tendencia decreciente", "Mesa de ayuda / Soporte N2"],
+    ["MTTR por familia SLA", "Tiempo medio de resolucion por operativo, seguridad y consulta.", "Promedio duracion_horas agrupado por familia_sla y prioridad.", "Mensual", "Segun matriz SLA", "Soporte N2"],
+    ["Vencidos y proximos", "Control de abiertos vencidos o proximos a vencer.", "Horas abiertas contra sla_objetivo_horas; respaldo con vencimiento sistema.", "Diario", "Cero vencidos criticos/altos", "NOC / Soporte N2"],
+    ["Incidentes repetitivos", "Necesidad de gestion de problemas.", "Incidentes reales por servicio/causa repetidos.", "Mensual", "Activar gestion de problemas", "Gestion / Soporte N2"],
   ],
   "KPIs",
   [180, 300, 360, 130, 170, 180],

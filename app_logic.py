@@ -258,6 +258,38 @@ INCIDENT_SYMPTOM_RULES = [
     ("alerta de monitoreo", ["alerta", "alarma", "monitoreo", "zabbix", "grafana", "prometheus", "solarwinds"]),
 ]
 
+TIPIFICACIONES_INCIDENTE_REAL = {
+    "Incidente Cliente Externo",
+    "Incidente Interno",
+    "Incidente Seguridad",
+}
+
+TIPIFICACIONES_NOC = {
+    "Alerta NOC",
+    "Consulta NOC",
+}
+
+SLA_RESOLUCION_HORAS = {
+    "Operativo": {
+        "Critico": 4,
+        "Alto": 8,
+        "Moderado": 96,
+        "Bajo": 192,
+    },
+    "Seguridad": {
+        "Critico": 4,
+        "Alto": 8,
+        "Moderado": 24,
+        "Bajo": 48,
+    },
+    "Consulta": {
+        "Critico": 96,
+        "Alto": 96,
+        "Moderado": 96,
+        "Bajo": 96,
+    },
+}
+
 CASE_USAGE_KEYWORDS = [
     "contrasena",
     "password",
@@ -685,6 +717,78 @@ def es_caso_cliente_externo(row, texto=None, texto_resolucion=None):
         return False
 
     return any(frase in texto for frase in INCIDENT_EXTERNAL_CASE_HINTS)
+
+
+def contiene_noc(texto):
+    return re.search(r"(?<![a-z0-9])noc(?![a-z0-9])", normalizar_texto(texto)) is not None
+
+
+def es_origen_noc(row):
+    campos = ["creado_por", "grupo_asignacion", "solicitante", "asignado_a"]
+    return any(contiene_noc(valor_fila(row, campo)) for campo in campos)
+
+
+def categoria_es_consulta(row):
+    categoria = normalizar_texto(valor_fila(row, "categoria"))
+    return "consulta" in categoria or "ayuda" in categoria
+
+
+def categoria_es_seguridad(row):
+    categoria = normalizar_texto(valor_fila(row, "categoria"))
+    servicio = normalizar_texto(valor_fila(row, "servicio_negocio"))
+    texto = unir_textos(row, INCIDENT_CAUSE_FIELDS + ["servicio_negocio", "grupo_asignacion"])
+    palabras_seguridad = [
+        "seguridad",
+        "ciberseguridad",
+        "malware",
+        "phishing",
+        "vulnerabilidad",
+        "acceso no autorizado",
+        "fuga",
+        "indicador de compromiso",
+    ]
+    return (
+        "seguridad" in categoria
+        or "seguridad" in servicio
+        or any(palabra in texto for palabra in palabras_seguridad)
+    )
+
+
+def es_reportante_externo(row):
+    creado_por_original = safe_text(valor_fila(row, "creado_por"))
+    creado_por = normalizar_texto(creado_por_original)
+    if "@" not in creado_por_original:
+        return False
+    dominios_internos = ["certicamara.com", "certicamara.co"]
+    return not any(dominio in creado_por for dominio in dominios_internos)
+
+
+def es_empresa_externa(row):
+    empresa = normalizar_texto(valor_fila(row, "empresa"))
+    empresas_internas = {"", "sinempresa", "certicamara", "certicamara s a"}
+    return empresa not in empresas_internas
+
+
+def es_alerta_noc(row):
+    if categoria_es_consulta(row):
+        return False
+    texto = unir_textos(
+        row,
+        INCIDENT_CAUSE_FIELDS
+        + ["grupo_asignacion", "servicio_negocio", "impacto", "estado", "creado_por", "solicitante"],
+    )
+    return es_origen_noc(row) or any(palabra in texto for palabra in ALERT_KEYWORDS)
+
+
+def es_cliente_externo_incidente(row, texto=None, texto_resolucion=None):
+    texto = texto or unir_textos(row, INCIDENT_TEXT_FIELDS)
+    texto_resolucion = texto_resolucion or texto_resolucion_incidente(row)
+    return (
+        es_empresa_externa(row)
+        or es_reportante_externo(row)
+        or any(p in texto for p in EXTERNAL_KEYWORDS)
+        or es_caso_cliente_externo(row, texto, texto_resolucion)
+    )
 
 
 def get_conn():
@@ -1211,43 +1315,48 @@ def load_casos():
 
 
 def tipificacion_incidente(row):
-    categoria = normalizar_texto(valor_fila(row, "categoria"))
     texto = unir_textos(row, INCIDENT_TEXT_FIELDS)
     texto_resolucion = texto_resolucion_incidente(row)
-    es_externo = any(p in texto for p in EXTERNAL_KEYWORDS)
+    origen_noc = es_origen_noc(row)
+    es_externo = es_cliente_externo_incidente(row, texto, texto_resolucion)
     es_interno = any(p in texto for p in INTERNAL_KEYWORDS)
 
-    if "consulta" in categoria:
-        return "Consulta"
-    if "solicitud" in categoria:
+    if origen_noc and categoria_es_consulta(row):
+        return "Consulta NOC"
+    if origen_noc and es_alerta_noc(row):
+        return "Alerta NOC"
+    if categoria_es_consulta(row):
+        return "Consulta Cliente"
+    if "solicitud" in normalizar_texto(valor_fila(row, "categoria")):
         return "Solicitud"
-    if "noc" in texto:
-        return "NOC"
 
     if es_externo and es_caso_cliente_externo(row, texto, texto_resolucion):
         return "Caso Cliente Externo"
 
-    if "incidente" in categoria:
+    if categoria_es_seguridad(row):
+        return "Incidente Seguridad"
+
+    if "incidente" in normalizar_texto(valor_fila(row, "categoria")):
         if es_externo:
-            return "Cliente Externo"
+            return "Incidente Cliente Externo"
         if es_interno:
-            return "Cliente Interno"
-        return "Cliente Interno"
+            return "Incidente Interno"
+        return "Incidente Interno"
     if es_externo:
-        return "Cliente Externo"
+        return "Incidente Cliente Externo"
     if es_interno:
-        return "Cliente Interno"
-    return "Cliente Interno"
+        return "Incidente Interno"
+    return "Incidente Interno"
 
 
 def es_alerta_incidente(row, tipificacion=None):
     tipificacion = tipificacion or tipificacion_incidente(row)
     texto = unir_textos(row, INCIDENT_CAUSE_FIELDS + ["grupo_asignacion", "servicio_negocio", "impacto", "estado"])
-    if tipificacion == "Caso Cliente Externo":
+    if tipificacion in {"Caso Cliente Externo", "Consulta Cliente", "Consulta NOC", "Solicitud"}:
         return "No"
-    if tipificacion == "NOC":
+    if tipificacion == "Alerta NOC":
         return "Si"
-    if any(p in texto for p in ALERT_KEYWORDS):
+    if es_origen_noc(row) and any(p in texto for p in ALERT_KEYWORDS):
         return "Si"
     return "No"
 
@@ -1257,10 +1366,79 @@ def inferir_componente_incidente(texto, tipificacion=None, es_alerta=None):
         if any(palabra in texto for palabra in palabras):
             return etiqueta
 
-    if tipificacion == "NOC" or es_alerta == "Si":
+    if tipificacion == "Alerta NOC" or es_alerta == "Si":
         return "Monitoreo / NOC"
 
     return ""
+
+
+def normalizar_prioridad_incidente(valor):
+    texto = normalizar_texto(valor)
+    if re.search(r"(?<!\d)1(?!\d)", texto) or "crit" in texto:
+        return "Critico"
+    if re.search(r"(?<!\d)2(?!\d)", texto) or "alta" in texto or "alto" in texto:
+        return "Alto"
+    if re.search(r"(?<!\d)3(?!\d)", texto) or "moderad" in texto or "media" in texto:
+        return "Moderado"
+    if re.search(r"(?<!\d)4(?!\d)", texto) or "baja" in texto or "bajo" in texto:
+        return "Bajo"
+    return "Moderado"
+
+
+def familia_sla_incidente(tipificacion):
+    if tipificacion == "Incidente Seguridad":
+        return "Seguridad"
+    if tipificacion in {"Consulta Cliente", "Consulta NOC"}:
+        return "Consulta"
+    if tipificacion in TIPIFICACIONES_INCIDENTE_REAL or tipificacion == "Alerta NOC":
+        return "Operativo"
+    return "Sin SLA"
+
+
+def sla_objetivo_horas_incidente(row):
+    tipificacion = valor_fila(row, "tipificacion_auto") or tipificacion_incidente(row)
+    familia = familia_sla_incidente(tipificacion)
+    prioridad = normalizar_prioridad_incidente(valor_fila(row, "prioridad"))
+    return SLA_RESOLUCION_HORAS.get(familia, {}).get(prioridad)
+
+
+def aplica_sla_incidente(tipificacion):
+    return tipificacion in TIPIFICACIONES_INCIDENTE_REAL
+
+
+def estado_sla_incidente(row):
+    objetivo = safe_float(valor_fila(row, "sla_objetivo_horas"))
+    duracion = safe_float(valor_fila(row, "duracion_horas"))
+    if objetivo is None:
+        return "Sin objetivo"
+    if duracion is None:
+        return "Sin duracion"
+    return "Cumple" if duracion <= objetivo else "No cumple"
+
+
+def agregar_campos_sla_incidentes(df):
+    trabajo = df.copy()
+    columnas_default = {
+        "prioridad_normalizada": pd.Series(dtype="object"),
+        "familia_sla": pd.Series(dtype="object"),
+        "sla_objetivo_horas": pd.Series(dtype="float"),
+        "aplica_sla_incidente": pd.Series(dtype="bool"),
+        "estado_sla": pd.Series(dtype="object"),
+    }
+    if trabajo.empty:
+        for columna, serie in columnas_default.items():
+            trabajo[columna] = serie
+        return trabajo
+
+    if "tipificacion_auto" not in trabajo.columns:
+        trabajo["tipificacion_auto"] = trabajo.apply(tipificacion_incidente, axis=1)
+
+    trabajo["prioridad_normalizada"] = trabajo["prioridad"].apply(normalizar_prioridad_incidente)
+    trabajo["familia_sla"] = trabajo["tipificacion_auto"].apply(familia_sla_incidente)
+    trabajo["sla_objetivo_horas"] = trabajo.apply(sla_objetivo_horas_incidente, axis=1)
+    trabajo["aplica_sla_incidente"] = trabajo["tipificacion_auto"].apply(aplica_sla_incidente)
+    trabajo["estado_sla"] = trabajo.apply(estado_sla_incidente, axis=1)
+    return trabajo
 
 
 def inferir_sintoma_incidente(texto):
@@ -1462,22 +1640,28 @@ def construir_alertas_incidentes(df, sla_horas=24):
     if df is None or df.empty:
         return []
 
-    trabajo = df.copy()
-    trabajo = trabajo[trabajo["tipificacion_auto"].fillna("Cliente Interno") != "Caso Cliente Externo"].copy()
+    trabajo = agregar_campos_sla_incidentes(df)
+    trabajo = trabajo[
+        ~trabajo["tipificacion_auto"].fillna("").isin(["Caso Cliente Externo", "Consulta Cliente", "Consulta NOC", "Solicitud"])
+    ].copy()
     if trabajo.empty:
         return []
-    total = len(trabajo)
     trabajo["numero"] = trabajo["numero"].apply(safe_text)
     trabajo["causa_raiz_auto"] = trabajo["causa_raiz_auto"].replace("", pd.NA).fillna("Sin inferencia")
     trabajo["servicio_negocio"] = trabajo["servicio_negocio"].replace("", pd.NA).fillna("Sin servicio informado")
     trabajo["es_alerta_auto"] = trabajo["es_alerta_auto"].fillna("No")
     trabajo["duracion_horas"] = pd.to_numeric(trabajo["duracion_horas"], errors="coerce")
 
+    incidentes_reales = trabajo[trabajo["aplica_sla_incidente"]].copy()
+    total = len(incidentes_reales) if not incidentes_reales.empty else len(trabajo)
+
     alertas = []
     umbral_causa = umbral_alerta_por_volumen(total, proporcion=0.08, minimo=2)
     umbral_servicio = umbral_alerta_por_volumen(total, proporcion=0.1, minimo=3)
 
-    for causa, grupo in sorted(trabajo.groupby("causa_raiz_auto"), key=lambda item: len(item[1]), reverse=True):
+    base_recurrencia = incidentes_reales if not incidentes_reales.empty else trabajo
+
+    for causa, grupo in sorted(base_recurrencia.groupby("causa_raiz_auto"), key=lambda item: len(item[1]), reverse=True):
         cantidad = len(grupo)
         if causa == "Sin inferencia" or cantidad < umbral_causa:
             continue
@@ -1497,7 +1681,7 @@ def construir_alertas_incidentes(df, sla_horas=24):
             }
         )
 
-    for servicio, grupo in sorted(trabajo.groupby("servicio_negocio"), key=lambda item: len(item[1]), reverse=True):
+    for servicio, grupo in sorted(base_recurrencia.groupby("servicio_negocio"), key=lambda item: len(item[1]), reverse=True):
         cantidad = len(grupo)
         if servicio == "Sin servicio informado" or cantidad < umbral_servicio:
             continue
@@ -1517,15 +1701,18 @@ def construir_alertas_incidentes(df, sla_horas=24):
             }
         )
 
-    df_alertas = trabajo[trabajo["es_alerta_auto"] == "Si"].copy()
+    df_alertas = trabajo[
+        (trabajo["es_alerta_auto"] == "Si")
+        | (trabajo["tipificacion_auto"].fillna("") == "Alerta NOC")
+    ].copy()
     if not df_alertas.empty:
         cantidad = len(df_alertas)
         incidentes, adicionales = incidentes_relacionados(df_alertas, limite=8)
-        porcentaje = round((cantidad / total) * 100, 2)
+        porcentaje = round((cantidad / len(trabajo)) * 100, 2)
         top_causas = resumir_top_causas(df_alertas)
         detalle = (
-            f"Se tipificaron {cantidad} incidentes como alerta sobre {total} analizados ({porcentaje}%). "
-            "Este consolidado sale directamente de la tipificacion de incidentes cargados."
+            f"Se separaron {cantidad} registros como alertas NOC o alertas de monitoreo sobre "
+            f"{len(trabajo)} registros analizables ({porcentaje}%)."
         )
         if top_causas:
             detalle += f" Las causas mas repetidas dentro de este grupo son: {top_causas}."
@@ -1533,15 +1720,18 @@ def construir_alertas_incidentes(df, sla_horas=24):
             {
                 "tipo": "volumen_alertas",
                 "prioridad": cantidad,
-                "titulo": "Volumen de incidentes tipificados como alerta",
+                "titulo": "Volumen de alertas NOC / monitoreo",
                 "detalle": detalle,
                 "incidentes": incidentes,
                 "incidentes_adicionales": adicionales,
             }
         )
 
-    df_cerrados = trabajo[trabajo["estado"].fillna("") == "Cerrado"].copy()
-    df_fuera_sla = df_cerrados[df_cerrados["duracion_horas"] >= sla_horas].copy()
+    df_cerrados = incidentes_reales[incidentes_reales["estado"].fillna("") == "Cerrado"].copy()
+    df_fuera_sla = df_cerrados[
+        (df_cerrados["sla_objetivo_horas"].notna())
+        & (df_cerrados["duracion_horas"] > df_cerrados["sla_objetivo_horas"])
+    ].copy()
     if not df_fuera_sla.empty:
         cantidad = len(df_fuera_sla)
         base = len(df_cerrados) if len(df_cerrados) > 0 else total
@@ -1551,10 +1741,10 @@ def construir_alertas_incidentes(df, sla_horas=24):
             {
                 "tipo": "sla",
                 "prioridad": cantidad,
-                "titulo": f"Incidentes cerrados fuera de SLA de {sla_horas} horas",
+                "titulo": "Incidentes cerrados fuera de SLA",
                 "detalle": (
-                    f"Se encontraron {cantidad} incidentes cerrados con una duracion igual o superior a "
-                    f"{sla_horas} horas, equivalente al {porcentaje}% de los incidentes cerrados analizados."
+                    f"Se encontraron {cantidad} incidentes cerrados por encima de su objetivo "
+                    f"segun prioridad y familia SLA, equivalente al {porcentaje}% de los incidentes cerrados analizados."
                 ),
                 "incidentes": incidentes,
                 "incidentes_adicionales": adicionales,
