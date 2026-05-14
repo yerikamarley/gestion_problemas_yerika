@@ -4,6 +4,7 @@ import hmac
 import os
 import sqlite3
 import unicodedata
+import urllib.request
 from datetime import timedelta
 from math import ceil
 
@@ -17,7 +18,7 @@ def config_value(name, default=""):
     try:
         from streamlit.runtime.scriptrunner import get_script_run_ctx
 
-        if get_script_run_ctx() is None:
+        if get_script_run_ctx(suppress_warning=True) is None:
             return default
         import streamlit as st
 
@@ -27,6 +28,9 @@ def config_value(name, default=""):
 
 
 DB = config_value("APP_DB_PATH", "data.db")
+DB_URL = config_value("APP_DB_URL")
+DB_TOKEN = config_value("APP_DB_TOKEN")
+DB_REFRESH = str(config_value("APP_DB_REFRESH", "")).strip().lower() in {"1", "true", "yes", "si"}
 ADMIN_EMAIL = config_value("APP_ADMIN_EMAIL")
 INITIAL_ADMIN_PASSWORD = config_value("APP_ADMIN_PASSWORD")
 
@@ -808,10 +812,44 @@ def es_cliente_externo_incidente(row, texto=None, texto_resolucion=None):
 
 
 def get_conn():
-    db_dir = os.path.dirname(os.path.abspath(DB))
+    ensure_db_file()
+    return sqlite3.connect(DB, check_same_thread=False)
+
+
+def ensure_db_file():
+    db_path = os.path.abspath(DB)
+    db_dir = os.path.dirname(db_path)
     if db_dir:
         os.makedirs(db_dir, exist_ok=True)
-    return sqlite3.connect(DB, check_same_thread=False)
+
+    if not DB_URL:
+        return
+
+    db_exists = os.path.exists(db_path) and os.path.getsize(db_path) > 0
+    if db_exists and not DB_REFRESH:
+        return
+
+    request = urllib.request.Request(DB_URL)
+    if DB_TOKEN:
+        request.add_header("Authorization", f"Bearer {DB_TOKEN}")
+    request.add_header("User-Agent", "gestion-problemas-app")
+
+    tmp_path = f"{db_path}.download"
+    try:
+        with urllib.request.urlopen(request, timeout=60) as response:
+            data = response.read()
+        if not data:
+            raise RuntimeError("La descarga de la base privada no devolvio contenido.")
+        with open(tmp_path, "wb") as file:
+            file.write(data)
+        sqlite3.connect(tmp_path).execute("PRAGMA schema_version").fetchone()
+        os.replace(tmp_path, db_path)
+    except Exception as exc:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+        raise RuntimeError(
+            "No se pudo preparar la base privada. Revisa APP_DB_URL y APP_DB_TOKEN en Secrets."
+        ) from exc
 
 
 def normalizar_email(email):

@@ -30,7 +30,15 @@ APP_ADMIN_EMAIL = "admin@tu-dominio.com"
 APP_ADMIN_PASSWORD = "una-contrasena-segura"
 ```
 
-`APP_DB_PATH` es opcional. En Streamlit Cloud la base SQLite queda en el almacenamiento temporal del despliegue si no se conecta una base externa.
+Para ver en despliegue la misma base local sin publicarla en GitHub, guarda `data.db` en una ubicacion privada y configura:
+
+```toml
+APP_DB_URL = "https://raw.githubusercontent.com/usuario/repositorio-privado/main/data.db"
+APP_DB_TOKEN = "github_pat_con_permiso_de_lectura"
+APP_DB_PATH = "data.db"
+```
+
+`APP_DB_TOKEN` es opcional si la URL ya es privada por otro mecanismo. En Streamlit Cloud la base SQLite queda en almacenamiento temporal; si la app reinicia, vuelve a descargar la base desde `APP_DB_URL`.
 
 Si la base ya tiene usuarios, la app no crea un admin nuevo. Si la base esta vacia, exige `APP_ADMIN_EMAIL` y `APP_ADMIN_PASSWORD` para evitar credenciales quemadas en un repositorio publico.
 
