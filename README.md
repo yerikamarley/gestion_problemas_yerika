@@ -25,11 +25,12 @@ El repositorio puede ser publico, pero la base real debe mantenerse fuera de Git
 
 Variables recomendadas para despliegue:
 
-```powershell
-$env:APP_DB_PATH="C:\ruta\privada\data.db"
-$env:APP_ADMIN_EMAIL="admin@tu-dominio.com"
-$env:APP_ADMIN_PASSWORD="una-contrasena-segura"
+```toml
+APP_ADMIN_EMAIL = "admin@tu-dominio.com"
+APP_ADMIN_PASSWORD = "una-contrasena-segura"
 ```
+
+`APP_DB_PATH` es opcional. En Streamlit Cloud la base SQLite queda en el almacenamiento temporal del despliegue si no se conecta una base externa.
 
 Si la base ya tiene usuarios, la app no crea un admin nuevo. Si la base esta vacia, exige `APP_ADMIN_EMAIL` y `APP_ADMIN_PASSWORD` para evitar credenciales quemadas en un repositorio publico.
 

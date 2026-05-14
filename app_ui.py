@@ -3030,7 +3030,11 @@ def vista_administrar_usuarios():
 
 def run_app():
     aplicar_tema_visual()
-    init_db()
+    try:
+        init_db()
+    except RuntimeError as exc:
+        st.error(str(exc))
+        st.stop()
     if not login():
         return
 

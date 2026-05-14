@@ -10,9 +10,25 @@ from math import ceil
 import pandas as pd
 
 
-DB = os.environ.get("APP_DB_PATH", "data.db")
-ADMIN_EMAIL = os.environ.get("APP_ADMIN_EMAIL", "")
-INITIAL_ADMIN_PASSWORD = os.environ.get("APP_ADMIN_PASSWORD", "")
+def config_value(name, default=""):
+    value = os.environ.get(name)
+    if value not in (None, ""):
+        return value
+    try:
+        from streamlit.runtime.scriptrunner import get_script_run_ctx
+
+        if get_script_run_ctx() is None:
+            return default
+        import streamlit as st
+
+        return st.secrets.get(name, default)
+    except Exception:
+        return default
+
+
+DB = config_value("APP_DB_PATH", "data.db")
+ADMIN_EMAIL = config_value("APP_ADMIN_EMAIL")
+INITIAL_ADMIN_PASSWORD = config_value("APP_ADMIN_PASSWORD")
 
 CASE_ALIASES = {
     "numero": ["numero", "número", "numero de caso", "número de caso", "caso", "id caso"],
