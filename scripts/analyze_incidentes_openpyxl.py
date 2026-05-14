@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from collections import Counter
 from pathlib import Path
 
@@ -8,8 +9,15 @@ from openpyxl import load_workbook
 from openpyxl.cell.cell import MergedCell
 
 
-INPUT = Path(r"C:\Users\yerik\Downloads\CNC_MST-PR-002 Gestión de incidentes_v6.xlsx")
-OUT_DIR = Path("outputs") / "analisis_incidentes"
+PROJECT_DIR = Path(__file__).resolve().parents[1]
+DOWNLOADS_DIR = Path.home() / "Downloads"
+INPUT = Path(
+    os.environ.get(
+        "INCIDENTES_XLSX",
+        DOWNLOADS_DIR / "CNC_MST-PR-002 Gestión de incidentes_v6.xlsx",
+    )
+)
+OUT_DIR = PROJECT_DIR / "outputs" / "analisis_incidentes"
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
 

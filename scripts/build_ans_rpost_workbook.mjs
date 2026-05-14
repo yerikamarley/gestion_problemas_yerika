@@ -1,9 +1,13 @@
 import fs from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { FileBlob, SpreadsheetFile } from "@oai/artifact-tool";
 
-const workspace = "C:\\Users\\yerik\\OneDrive\\Desktop\\gestion_problemas_yerika";
-const sourcePath = "C:\\Users\\yerik\\Downloads\\ANS_RPOST_con_Dashboard.xlsx";
+const workspace = process.cwd();
+const sourcePath =
+  process.argv[2] ??
+  process.env.ANS_RPOST_SOURCE ??
+  path.join(os.homedir(), "Downloads", "ANS_RPOST_con_Dashboard.xlsx");
 const outDir = path.join(workspace, "outputs", "ans_rpost");
 const dataPath = path.join(outDir, "ans_rpost_analysis.json");
 const outputPath = path.join(outDir, "ANS_RPOST_analisis_afectacion.xlsx");

@@ -1850,6 +1850,9 @@ def tabla_resumen_tipologias_incidentes(df):
         no_cumple = int((con_sla["estado_sla"] == "No cumple").sum())
         total_sla = cumple + no_cumple
         promedio_horas = cerrados["_duracion_horas_num"].dropna().mean()
+        sla_porcentaje = f"{porcentaje(cumple, total_sla)}%" if total_sla else (
+            "Sin cierre" if sla_aplica else "No aplica"
+        )
         filas.append(
             {
                 "Tipologia": tipologia,
@@ -1861,15 +1864,20 @@ def tabla_resumen_tipologias_incidentes(df):
                 "Cerrados": len(cerrados),
                 "Abiertos": len(grupo) - len(cerrados),
                 "SLA aplica": "Si" if sla_aplica else "No aplica",
-                "Cumple SLA": cumple if sla_aplica else "",
-                "No cumple SLA": no_cumple if sla_aplica else "",
-                "SLA %": porcentaje(cumple, total_sla) if total_sla else ("Sin cierre" if sla_aplica else ""),
-                "Prom. horas": round(promedio_horas, 2) if pd.notna(promedio_horas) else "",
-                "Prom. dias": round(promedio_horas / 24, 2) if pd.notna(promedio_horas) else "",
+                "Cumple SLA": cumple if sla_aplica else pd.NA,
+                "No cumple SLA": no_cumple if sla_aplica else pd.NA,
+                "SLA %": sla_porcentaje,
+                "Prom. horas": round(promedio_horas, 2) if pd.notna(promedio_horas) else pd.NA,
+                "Prom. dias": round(promedio_horas / 24, 2) if pd.notna(promedio_horas) else pd.NA,
             }
         )
 
-    return pd.DataFrame(filas)
+    resumen = pd.DataFrame(filas)
+    for columna in ["Total", "Cerrados", "Abiertos", "Cumple SLA", "No cumple SLA"]:
+        resumen[columna] = resumen[columna].astype("Int64")
+    for columna in ["Prom. horas", "Prom. dias"]:
+        resumen[columna] = resumen[columna].astype("Float64")
+    return resumen
 
 
 def clasificar_causa_cliente_externo(causa):

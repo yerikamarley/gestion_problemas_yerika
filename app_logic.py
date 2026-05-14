@@ -10,9 +10,9 @@ from math import ceil
 import pandas as pd
 
 
-DB = "data.db"
-ADMIN_EMAIL = "yerika.basto@certicamara.com"
-INITIAL_ADMIN_PASSWORD = os.environ.get("APP_ADMIN_PASSWORD", "Yerika2026!")
+DB = os.environ.get("APP_DB_PATH", "data.db")
+ADMIN_EMAIL = os.environ.get("APP_ADMIN_EMAIL", "")
+INITIAL_ADMIN_PASSWORD = os.environ.get("APP_ADMIN_PASSWORD", "")
 
 CASE_ALIASES = {
     "numero": ["numero", "número", "numero de caso", "número de caso", "caso", "id caso"],
@@ -792,6 +792,9 @@ def es_cliente_externo_incidente(row, texto=None, texto_resolucion=None):
 
 
 def get_conn():
+    db_dir = os.path.dirname(os.path.abspath(DB))
+    if db_dir:
+        os.makedirs(db_dir, exist_ok=True)
     return sqlite3.connect(DB, check_same_thread=False)
 
 
@@ -969,12 +972,15 @@ def init_db():
         )
         """
     )
-    admin_email = normalizar_email(ADMIN_EMAIL)
-    admin_existe = conn.execute(
-        "SELECT 1 FROM app_users WHERE email = ?",
-        (admin_email,),
-    ).fetchone()
-    if not admin_existe:
+    usuarios_existen = conn.execute("SELECT 1 FROM app_users LIMIT 1").fetchone()
+    if not usuarios_existen:
+        admin_email = normalizar_email(ADMIN_EMAIL)
+        if not admin_email or not INITIAL_ADMIN_PASSWORD:
+            conn.close()
+            raise RuntimeError(
+                "Base sin usuarios. Configura APP_ADMIN_EMAIL y APP_ADMIN_PASSWORD "
+                "como variables privadas antes de iniciar la aplicacion."
+            )
         conn.execute(
             """
             INSERT INTO app_users (email, password_hash, role, active, created_at)

@@ -1,8 +1,42 @@
+# Local data and secrets
 data.db
 *.db
+*.sqlite
+*.sqlite3
+.env
+.env.*
+.streamlit/secrets.toml
+
+# Generated reports and local backups
+outputs/
+backups/
+
+# Logs
 *.log
 *.err.log
+streamlit_*.log
+streamlit_*.err.log
+
+# Python cache/build artifacts
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# JavaScript dependencies/build artifacts
 node_modules/
-.streamlit/secrets.toml
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Office/editor temp files
+~$*
+.DS_Store
+Thumbs.db

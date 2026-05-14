@@ -1,0 +1,16 @@
+* text=auto
+
+*.py text eol=lf
+*.mjs text eol=lf
+*.js text eol=lf
+*.toml text eol=lf
+*.md text eol=lf
+
+*.db binary
+*.sqlite binary
+*.xlsx binary
+*.xls binary
+*.docx binary
+*.png binary
+*.jpg binary
+*.jpeg binary

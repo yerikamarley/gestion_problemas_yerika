@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import statistics
 import unicodedata
@@ -10,9 +11,11 @@ from pathlib import Path
 import pandas as pd
 
 
-INCIDENT_SOURCE = Path(r"C:\Users\yerik\Downloads\incident (63).xlsx")
-ANS_SOURCE = Path(r"C:\Users\yerik\Downloads\ANS_RPOST_con_Dashboard.xlsx")
-OUT_DIR = Path(r"C:\Users\yerik\OneDrive\Desktop\gestion_problemas_yerika\outputs\ans_rpost")
+PROJECT_DIR = Path(__file__).resolve().parents[1]
+DOWNLOADS_DIR = Path.home() / "Downloads"
+INCIDENT_SOURCE = Path(os.environ.get("RPOST_INCIDENT_SOURCE", DOWNLOADS_DIR / "incident (63).xlsx"))
+ANS_SOURCE = Path(os.environ.get("ANS_RPOST_SOURCE", DOWNLOADS_DIR / "ANS_RPOST_con_Dashboard.xlsx"))
+OUT_DIR = PROJECT_DIR / "outputs" / "ans_rpost"
 OUT_JSON = OUT_DIR / "ans_rpost_analysis.json"
 
 ACUSE_CASE = {

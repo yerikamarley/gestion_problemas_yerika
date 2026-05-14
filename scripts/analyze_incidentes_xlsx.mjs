@@ -1,9 +1,12 @@
 import fs from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { FileBlob, SpreadsheetFile } from "@oai/artifact-tool";
 
 const inputPath =
-  "C:/Users/yerik/Downloads/CNC_MST-PR-002 Gestión de incidentes_v6.xlsx";
+  process.argv[2] ??
+  process.env.INCIDENTES_XLSX ??
+  path.join(os.homedir(), "Downloads", "CNC_MST-PR-002 Gestión de incidentes_v6.xlsx");
 const outputDir = path.resolve("outputs/analisis_incidentes");
 
 await fs.mkdir(outputDir, { recursive: true });

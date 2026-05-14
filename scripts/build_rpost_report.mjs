@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { SpreadsheetFile, Workbook } from "@oai/artifact-tool";
 
-const workspace = "C:\\Users\\yerik\\OneDrive\\Desktop\\gestion_problemas_yerika";
+const workspace = process.cwd();
 const outDir = path.join(workspace, "outputs", "rpost_incidentes");
 const dataPath = path.join(outDir, "rpost_report_data.json");
 const outputPath = path.join(outDir, "analisis_incidentes_rpost.xlsx");

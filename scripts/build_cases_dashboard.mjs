@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { SpreadsheetFile, Workbook } from "@oai/artifact-tool";
 
-const workspace = "C:\\Users\\yerik\\OneDrive\\Desktop\\gestion_problemas_yerika";
+const workspace = process.cwd();
 const inputJson = path.join(workspace, "outputs", "tablero_casos", "case_data.json");
 const outputDir = path.join(workspace, "outputs", "tablero_casos");
 const outputXlsx = path.join(outputDir, "tablero_tipificacion_tiempos_resolucion.xlsx");
