@@ -147,6 +147,68 @@ CASE_TIPIFICATION_GUIDE = [
     },
 ]
 
+AGENDA_CASE_TIPIFICATION = "9 - Redireccionamiento Agenda"
+AGENDA_DIRECT_CHANNEL_HINTS = ["calendario"]
+AGENDA_HELP_DESK_CHANNELS = {"web", "telefono", "correo electronico", "en persona", ""}
+AGENDA_REASON_RULES = [
+    (
+        "Token fisico / ePass",
+        [
+            "token fisico",
+            "token",
+            "epass",
+            "safenet",
+            "usb",
+            "dispositivo",
+            "no reconoce",
+        ],
+    ),
+    (
+        "Activacion o descarga de certificado",
+        [
+            "activacion",
+            "activar",
+            "descarga",
+            "descargar",
+            "certificado",
+            ".cer",
+            "cer ",
+        ],
+    ),
+    (
+        "Instalacion o reinstalacion",
+        [
+            "instalacion",
+            "instalar",
+            "instale",
+            "reinstalacion",
+            "reinstalar",
+            "configuracion",
+            "configurar",
+        ],
+    ),
+    (
+        "Firma o pruebas de uso",
+        [
+            "firma",
+            "firmar",
+            "certifirma",
+            "prueba de firma",
+            "pruebas de firma",
+        ],
+    ),
+    (
+        "Cita o redireccionamiento a agenda",
+        [
+            "agenda",
+            "agendar",
+            "agendamiento",
+            "cita",
+            "meetings.hubspot",
+        ],
+    ),
+]
+
 INCIDENT_TIPIFICATION_GUIDE = {
     "Alerta NOC": "Senales de monitoreo o eventos detectados por NOC que requieren validacion y seguimiento.",
     "Consulta NOC": "Revisiones o validaciones del NOC sin afectacion confirmada.",
@@ -1344,6 +1406,399 @@ def tabla_resumen_tipificaciones_casos(df):
     return resumen.sort_values(by=["Cantidad", "Tipificacion"], ascending=[False, True]).reset_index(drop=True)
 
 
+def es_tipificacion_agendamiento(valor):
+    return valor_limpio(valor) == AGENDA_CASE_TIPIFICATION
+
+
+def canal_agrupado_agendamiento(canal):
+    canal_normalizado = normalizar_texto(canal)
+    if any(pista in canal_normalizado for pista in AGENDA_DIRECT_CHANNEL_HINTS):
+        return "Agenda directa"
+    if canal_normalizado in AGENDA_HELP_DESK_CHANNELS:
+        return "Mesa de ayuda"
+    return "Otro canal"
+
+
+def texto_analisis_agendamiento(row):
+    campos = [
+        "descripcion",
+        "causa",
+        "codigo_resolucion",
+        "notas_resolucion",
+        "observaciones_adicionales",
+        "observaciones_trabajo",
+        "producto",
+    ]
+    return " ".join(normalizar_texto(row.get(campo)) for campo in campos).strip()
+
+
+def inferir_motivo_agendamiento(row):
+    texto = texto_analisis_agendamiento(row)
+    for motivo, palabras in AGENDA_REASON_RULES:
+        if any(palabra in texto for palabra in palabras):
+            return motivo
+    return "Sin detalle suficiente"
+
+
+def cliente_agendamiento(row):
+    cuenta = valor_limpio(row.get("cuenta"))
+    return cuenta if cuenta else "Sin cuenta"
+
+
+def fecha_corta(valor):
+    if pd.isna(valor):
+        return ""
+    return pd.Timestamp(valor).strftime("%Y-%m-%d")
+
+
+def inicio_periodo_agendamiento(agenda, mes_dashboard):
+    if mes_dashboard != "Todos":
+        try:
+            return pd.Period(mes_dashboard, freq="M").to_timestamp()
+        except Exception:
+            pass
+    fechas = agenda.get("_creado_dt_dashboard", pd.Series(dtype="datetime64[ns]")).dropna()
+    if fechas.empty:
+        return None
+    return fechas.min().normalize()
+
+
+def preparar_analisis_agendamiento(df_periodo, df_historico, mes_dashboard):
+    columnas_base = [
+        "Canal agrupado",
+        "Motivo inferido",
+        "Cliente agenda",
+        "Ciclo cliente",
+        "Cliente recurrente agenda",
+        "Casos historicos cliente",
+        "Agendas historicas cliente",
+    ]
+    if df_periodo.empty:
+        trabajo = df_periodo.copy()
+        for columna in columnas_base:
+            trabajo[columna] = pd.Series(dtype="object")
+        return trabajo
+
+    periodo = normalizar_tipificaciones_casos_df(df_periodo).copy()
+    historico = normalizar_tipificaciones_casos_df(df_historico).copy()
+    if "_creado_dt_dashboard" not in periodo.columns:
+        periodo = preparar_fechas_dashboard(periodo)
+    if "_creado_dt_dashboard" not in historico.columns:
+        historico = preparar_fechas_dashboard(historico)
+
+    agenda = periodo[periodo["tipificacion"].apply(es_tipificacion_agendamiento)].copy()
+    if agenda.empty:
+        for columna in columnas_base:
+            agenda[columna] = pd.Series(dtype="object")
+        return agenda
+
+    for columna in ["canal", "cuenta", "numero"]:
+        if columna not in agenda.columns:
+            agenda[columna] = ""
+        if columna not in historico.columns:
+            historico[columna] = ""
+
+    agenda["Canal agrupado"] = agenda["canal"].apply(canal_agrupado_agendamiento)
+    agenda["Motivo inferido"] = agenda.apply(inferir_motivo_agendamiento, axis=1)
+    agenda["Cliente agenda"] = agenda.apply(cliente_agendamiento, axis=1)
+    agenda["_cliente_norm_agenda"] = agenda["cuenta"].apply(normalizar_texto)
+
+    historico["_cliente_norm_agenda"] = historico["cuenta"].apply(normalizar_texto)
+    historico_validos = historico[historico["_cliente_norm_agenda"] != ""].copy()
+    if historico_validos.empty:
+        agenda["Primera atencion cliente"] = pd.NaT
+        agenda["Casos historicos cliente"] = 0
+        agenda["Agendas historicas cliente"] = 0
+    else:
+        historia_cliente = historico_validos.groupby("_cliente_norm_agenda").agg(
+            Primera_atencion_cliente=("_creado_dt_dashboard", "min"),
+            Casos_historicos_cliente=("numero", "nunique"),
+        )
+        historico_agenda = historico_validos[
+            historico_validos["tipificacion"].apply(es_tipificacion_agendamiento)
+        ].copy()
+        agendas_historicas = historico_agenda.groupby("_cliente_norm_agenda")["numero"].nunique()
+        agenda["Primera atencion cliente"] = agenda["_cliente_norm_agenda"].map(
+            historia_cliente["Primera_atencion_cliente"]
+        )
+        agenda["Casos historicos cliente"] = (
+            agenda["_cliente_norm_agenda"]
+            .map(historia_cliente["Casos_historicos_cliente"])
+            .fillna(0)
+            .astype(int)
+        )
+        agenda["Agendas historicas cliente"] = (
+            agenda["_cliente_norm_agenda"].map(agendas_historicas).fillna(0).astype(int)
+        )
+
+    inicio_periodo = inicio_periodo_agendamiento(agenda, mes_dashboard)
+
+    def clasificar_ciclo_cliente(row):
+        if row["_cliente_norm_agenda"] == "":
+            return "Sin cuenta"
+        primera = row.get("Primera atencion cliente")
+        if inicio_periodo is not None and pd.notna(primera) and primera < inicio_periodo:
+            return "Cliente con historial previo"
+        if row.get("Agendas historicas cliente", 0) > 1:
+            return "Cliente recurrente en el periodo"
+        return "Cliente nuevo en la base"
+
+    agenda["Ciclo cliente"] = agenda.apply(clasificar_ciclo_cliente, axis=1)
+    agenda["Cliente recurrente agenda"] = agenda["Agendas historicas cliente"].apply(
+        lambda valor: "Si" if valor > 1 else "No"
+    )
+    return agenda
+
+
+def lectura_ejecutiva_agendamiento(agenda, total_casos_periodo):
+    columnas = ["Pregunta", "Lectura", "Evidencia", "Accion sugerida"]
+    if agenda.empty:
+        return pd.DataFrame(columns=columnas)
+
+    total_agenda = len(agenda)
+    mesa = int((agenda["Canal agrupado"] == "Mesa de ayuda").sum())
+    directa = int((agenda["Canal agrupado"] == "Agenda directa").sum())
+    sin_cuenta = int((agenda["Cliente agenda"] == "Sin cuenta").sum())
+    clientes_identificados = agenda[agenda["_cliente_norm_agenda"] != ""]
+    clientes_total = clientes_identificados["_cliente_norm_agenda"].nunique()
+    clientes_previos = clientes_identificados[
+        clientes_identificados["Ciclo cliente"] == "Cliente con historial previo"
+    ]["_cliente_norm_agenda"].nunique()
+    recurrentes = clientes_identificados[
+        clientes_identificados["Cliente recurrente agenda"] == "Si"
+    ]["_cliente_norm_agenda"].nunique()
+    motivo_principal = valor_mas_frecuente(agenda["Motivo inferido"])
+    canal_principal = valor_mas_frecuente(agenda["canal"].replace("", "Sin canal"))
+    producto_principal = valor_mas_frecuente(agenda.get("producto", pd.Series(dtype="object")))
+
+    return pd.DataFrame(
+        [
+            {
+                "Pregunta": "Por que siguen entrando por mesa de ayuda?",
+                "Lectura": (
+                    "La mayoria no esta entrando por el calendario directo, sino por canales operativos "
+                    "que terminan en mesa de ayuda."
+                ),
+                "Evidencia": (
+                    f"{mesa} de {total_agenda} casos de agendamiento ({porcentaje(mesa, total_agenda)}%) "
+                    f"entraron por mesa de ayuda. Canal principal: {canal_principal}. "
+                    f"Agenda directa: {directa} casos."
+                ),
+                "Accion sugerida": (
+                    "Redirigir Web/telefono/correo al enlace de agenda antes de crear caso y marcar excepciones "
+                    "cuando mesa de ayuda deba tomarlo."
+                ),
+            },
+            {
+                "Pregunta": "Cual es la razon de tantos casos?",
+                "Lectura": (
+                    f"El motivo dominante es {motivo_principal}; esta tipologia concentra "
+                    f"{porcentaje(total_agenda, total_casos_periodo)}% de los casos del periodo."
+                ),
+                "Evidencia": f"Producto principal asociado: {producto_principal}.",
+                "Accion sugerida": (
+                    "Separar en el cierre si fue instalacion, activacion/descarga, token fisico o firma; "
+                    "asi la causa queda accionable y no solo como agendamiento."
+                ),
+            },
+            {
+                "Pregunta": "Son clientes viejos?",
+                "Lectura": (
+                    "La lectura debe hacerse sobre clientes con cuenta identificada; los casos sin cuenta "
+                    "no permiten confirmar antiguedad."
+                ),
+                "Evidencia": (
+                    f"{clientes_previos} de {clientes_total} clientes identificados tienen historial previo "
+                    f"en la base. {recurrentes} clientes ya tienen mas de un caso de agendamiento historico."
+                ),
+                "Accion sugerida": (
+                    "Revisar los clientes recurrentes y reforzar comunicacion del canal correcto de agenda "
+                    "despues de cada cierre."
+                ),
+            },
+            {
+                "Pregunta": "Que puede distorsionar el analisis?",
+                "Lectura": "La falta de cuenta limita saber si el caso viene de un cliente nuevo o antiguo.",
+                "Evidencia": f"{sin_cuenta} casos ({porcentaje(sin_cuenta, total_agenda)}%) estan sin cuenta.",
+                "Accion sugerida": "Hacer obligatorio el campo Cuenta o normalizarlo en la carga de casos.",
+            },
+        ],
+        columns=columnas,
+    )
+
+
+def resumen_clientes_agendamiento(agenda):
+    columnas = [
+        "Cliente",
+        "Casos agenda",
+        "Canal principal",
+        "Motivo principal",
+        "Ciclo cliente",
+        "Agendas historicas",
+        "Casos historicos",
+        "Primera agenda",
+        "Ultima agenda",
+    ]
+    if agenda.empty:
+        return pd.DataFrame(columns=columnas)
+
+    resumen = (
+        agenda.groupby("Cliente agenda", dropna=False)
+        .agg(
+            Casos_agenda=("numero", "count"),
+            Canal_principal=("Canal agrupado", valor_mas_frecuente),
+            Motivo_principal=("Motivo inferido", valor_mas_frecuente),
+            Ciclo_cliente=("Ciclo cliente", valor_mas_frecuente),
+            Agendas_historicas=("Agendas historicas cliente", "max"),
+            Casos_historicos=("Casos historicos cliente", "max"),
+            Primera_agenda=("_creado_dt_dashboard", "min"),
+            Ultima_agenda=("_creado_dt_dashboard", "max"),
+        )
+        .reset_index()
+        .rename(
+            columns={
+                "Cliente agenda": "Cliente",
+                "Casos_agenda": "Casos agenda",
+                "Canal_principal": "Canal principal",
+                "Motivo_principal": "Motivo principal",
+                "Ciclo_cliente": "Ciclo cliente",
+                "Agendas_historicas": "Agendas historicas",
+                "Casos_historicos": "Casos historicos",
+                "Primera_agenda": "Primera agenda",
+                "Ultima_agenda": "Ultima agenda",
+            }
+        )
+    )
+    resumen["Primera agenda"] = resumen["Primera agenda"].apply(fecha_corta)
+    resumen["Ultima agenda"] = resumen["Ultima agenda"].apply(fecha_corta)
+    return resumen.sort_values(by=["Casos agenda", "Cliente"], ascending=[False, True])[columnas]
+
+
+def resumen_canales_agendamiento(agenda):
+    columnas = ["Canal agrupado", "Canal", "Casos", "% agendamiento"]
+    if agenda.empty:
+        return pd.DataFrame(columns=columnas)
+
+    resumen = (
+        agenda.assign(Canal=agenda["canal"].replace("", "Sin canal"))
+        .groupby(["Canal agrupado", "Canal"], dropna=False)
+        .size()
+        .reset_index(name="Casos")
+        .sort_values(by=["Casos", "Canal"], ascending=[False, True])
+    )
+    total = len(agenda)
+    resumen["% agendamiento"] = resumen["Casos"].apply(lambda valor: porcentaje(valor, total))
+    return resumen[columnas]
+
+
+def render_analisis_agendamiento_mesa(df_periodo, df_historico, mes_dashboard):
+    agenda = preparar_analisis_agendamiento(df_periodo, df_historico, mes_dashboard)
+
+    st.subheader("Analisis de agendamiento por mesa de ayuda")
+    st.caption(
+        "Cruce para explicar por que los casos de redireccionamiento a agenda siguen llegando por mesa de ayuda, "
+        "que motivo operativo se repite y si hay clientes con historial previo."
+    )
+
+    if agenda.empty:
+        st.info("No hay casos de redireccionamiento a agenda en el periodo seleccionado.")
+        return
+
+    total_agenda = len(agenda)
+    mesa = int((agenda["Canal agrupado"] == "Mesa de ayuda").sum())
+    directa = int((agenda["Canal agrupado"] == "Agenda directa").sum())
+    clientes_identificados = agenda[agenda["_cliente_norm_agenda"] != ""]
+    clientes_previos = clientes_identificados[
+        clientes_identificados["Ciclo cliente"] == "Cliente con historial previo"
+    ]["_cliente_norm_agenda"].nunique()
+    sin_cuenta = int((agenda["Cliente agenda"] == "Sin cuenta").sum())
+
+    render_tarjetas(
+        [
+            ("Agendamiento", total_agenda),
+            ("Mesa ayuda", f"{porcentaje(mesa, total_agenda)}%"),
+            ("Agenda directa", directa),
+            ("Clientes previos", clientes_previos),
+            ("Sin cuenta", sin_cuenta),
+        ]
+    )
+
+    tab_lectura, tab_motivos, tab_clientes, tab_detalle = st.tabs(
+        ["Lectura", "Motivos", "Clientes", "Detalle"]
+    )
+
+    with tab_lectura:
+        st.dataframe(
+            lectura_ejecutiva_agendamiento(agenda, len(df_periodo)),
+            use_container_width=True,
+            hide_index=True,
+        )
+
+    with tab_motivos:
+        motivos = (
+            agenda["Motivo inferido"]
+            .value_counts()
+            .rename_axis("Motivo")
+            .reset_index(name="Casos")
+            .sort_values(by="Casos", ascending=True)
+        )
+        fig = px.bar(
+            motivos,
+            x="Casos",
+            y="Motivo",
+            orientation="h",
+            text="Casos",
+            color_discrete_sequence=[UI_PALETTE["yellow"]],
+        )
+        fig.update_traces(marker_color=UI_PALETTE["yellow"], textposition="outside")
+        st.plotly_chart(aplicar_estilo_figura(fig, "Motivo inferido"), use_container_width=True)
+
+    with tab_clientes:
+        resumen_clientes = resumen_clientes_agendamiento(agenda)
+        canales = resumen_canales_agendamiento(agenda)
+        top_clientes = resumen_clientes.head(15).copy()
+        if not top_clientes.empty:
+            fig = px.bar(
+                top_clientes.sort_values(by="Casos agenda", ascending=True),
+                x="Casos agenda",
+                y="Cliente",
+                orientation="h",
+                text="Casos agenda",
+                color="Ciclo cliente",
+                color_discrete_sequence=CHART_COLORS,
+            )
+            fig.update_traces(textposition="outside")
+            st.plotly_chart(aplicar_estilo_figura(fig, "Clientes con mas agendamiento"), use_container_width=True)
+        st.caption("Entrada por canal de los casos mostrados en este analisis.")
+        st.dataframe(canales, use_container_width=True, hide_index=True)
+        st.dataframe(resumen_clientes, use_container_width=True, hide_index=True)
+
+    with tab_detalle:
+        columnas = [
+            "numero",
+            "cuenta",
+            "canal",
+            "Canal agrupado",
+            "Motivo inferido",
+            "Ciclo cliente",
+            "Cliente recurrente agenda",
+            "Agendas historicas cliente",
+            "Casos historicos cliente",
+            "producto",
+            "asignado",
+            "creado",
+            "estado",
+            "descripcion",
+            "causa",
+        ]
+        visibles = [col for col in columnas if col in agenda.columns]
+        st.dataframe(
+            agenda.sort_values(by="_creado_dt_dashboard", ascending=False)[visibles],
+            use_container_width=True,
+            hide_index=True,
+        )
+
+
 def tabla_resumen_tipologias_incidentes(df):
     if df.empty:
         return pd.DataFrame(
@@ -1540,9 +1995,9 @@ def dashboard_casos():
         st.info("No hay datos de casos cargados.")
         return
 
-    df = preparar_fechas_dashboard(df)
-    mes_dashboard = selector_mes_dashboard(df, "dashboard_casos_mes")
-    df = filtrar_mes_dashboard(df, mes_dashboard)
+    df_historico = preparar_fechas_dashboard(df)
+    mes_dashboard = selector_mes_dashboard(df_historico, "dashboard_casos_mes")
+    df = filtrar_mes_dashboard(df_historico, mes_dashboard)
     if df.empty:
         st.info(f"No hay casos cargados para {mes_dashboard}.")
         return
@@ -1598,6 +2053,9 @@ def dashboard_casos():
         fig = px.bar(casos_dia, x="Fecha", y="casos", color_discrete_sequence=[UI_PALETTE["yellow"]])
         fig.update_traces(marker_color=UI_PALETTE["yellow"])
         st.plotly_chart(aplicar_estilo_figura(fig, "Casos por dia"), use_container_width=True)
+
+    st.divider()
+    render_analisis_agendamiento_mesa(df, df_historico, mes_dashboard)
 
     st.divider()
     st.subheader("Resumen de tipificaciones")
