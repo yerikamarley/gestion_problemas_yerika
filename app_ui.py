@@ -715,6 +715,39 @@ def login():
     return False
 
 
+def configurar_primer_admin():
+    estilos_login()
+    st.markdown('<div class="login-spacer"></div>', unsafe_allow_html=True)
+
+    _, col_setup, _ = st.columns([1.1, 0.8, 1.1])
+    with col_setup:
+        st.markdown('<div class="login-title">Configurar acceso</div>', unsafe_allow_html=True)
+        st.markdown(
+            '<div class="login-subtitle">Crea el primer usuario administrador para iniciar la app.</div>',
+            unsafe_allow_html=True,
+        )
+        correo = st.text_input("Correo administrador", key="setup_admin_email")
+        password = st.text_input("Contrasena", type="password", key="setup_admin_password")
+        confirmar = st.text_input("Confirmar contrasena", type="password", key="setup_admin_password_confirm")
+
+        if st.button("Crear administrador", key="btn_setup_admin"):
+            if not validar_email(correo):
+                st.error("Escribe un correo valido.")
+                return
+            if len(password or "") < 8:
+                st.error("La contrasena debe tener minimo 8 caracteres.")
+                return
+            if password != confirmar:
+                st.error("Las contrasenas no coinciden.")
+                return
+
+            guardar_usuario(correo, password, role="admin", active=True)
+            st.session_state.user = normalizar_email(correo)
+            st.session_state.role = "admin"
+            st.success("Administrador creado.")
+            st.rerun()
+
+
 def tarjeta(titulo, valor):
     titulo = html.escape(str(titulo))
     valor = html.escape(str(valor))
@@ -3030,11 +3063,10 @@ def vista_administrar_usuarios():
 
 def run_app():
     aplicar_tema_visual()
-    try:
-        init_db()
-    except RuntimeError as exc:
-        st.error(str(exc))
-        st.stop()
+    init_db()
+    if listar_usuarios().empty:
+        configurar_primer_admin()
+        return
     if not login():
         return
 

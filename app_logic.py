@@ -1027,14 +1027,8 @@ def init_db():
         """
     )
     usuarios_existen = conn.execute("SELECT 1 FROM app_users LIMIT 1").fetchone()
-    if not usuarios_existen:
+    if not usuarios_existen and ADMIN_EMAIL and INITIAL_ADMIN_PASSWORD:
         admin_email = normalizar_email(ADMIN_EMAIL)
-        if not admin_email or not INITIAL_ADMIN_PASSWORD:
-            conn.close()
-            raise RuntimeError(
-                "Base sin usuarios. Configura APP_ADMIN_EMAIL y APP_ADMIN_PASSWORD "
-                "como variables privadas antes de iniciar la aplicacion."
-            )
         conn.execute(
             """
             INSERT INTO app_users (email, password_hash, role, active, created_at)
