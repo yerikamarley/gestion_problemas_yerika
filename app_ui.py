@@ -1738,24 +1738,15 @@ def render_analisis_agendamiento_mesa(df_periodo, df_historico, mes_dashboard):
         return
 
     total_agenda = len(agenda)
-    mesa = int((agenda["Canal agrupado"] == "Mesa de ayuda").sum())
-    directa = int((agenda["Canal agrupado"] == "Agenda directa").sum())
     clientes_identificados = agenda[agenda["_cliente_norm_agenda"] != ""]
-    cuentas_identificadas = clientes_identificados["_cliente_norm_agenda"].nunique()
-    cuentas_registradas = clientes_identificados[
-        clientes_identificados["Ciclo cliente"] == "Cliente con historial previo"
-    ]["_cliente_norm_agenda"].nunique()
-    cuentas_nuevas = clientes_identificados[
-        clientes_identificados["Ciclo cliente"] != "Cliente con historial previo"
-    ]["_cliente_norm_agenda"].nunique()
+    casos_con_cuenta = len(clientes_identificados)
+    casos_sin_cuenta = total_agenda - casos_con_cuenta
 
     render_tarjetas(
         [
             ("Agendamiento", total_agenda),
-            ("Mesa ayuda", f"{porcentaje(mesa, total_agenda)}%"),
-            ("Agenda directa", directa),
-            ("% Ctas registradas", f"{porcentaje(cuentas_registradas, cuentas_identificadas)}%"),
-            ("% Ctas nuevas", f"{porcentaje(cuentas_nuevas, cuentas_identificadas)}%"),
+            ("% Ctas registradas", f"{porcentaje(casos_con_cuenta, total_agenda)}%"),
+            ("% Sin cuenta", f"{porcentaje(casos_sin_cuenta, total_agenda)}%"),
         ]
     )
 
