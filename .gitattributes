@@ -7,7 +7,6 @@
 *.md text eol=lf
 
 *.db binary
-*.sqlite binary
 *.xlsx binary
 *.xls binary
 *.docx binary

@@ -2,17 +2,40 @@ import re
 import hashlib
 import hmac
 import os
-import sqlite3
+import tomllib
 import unicodedata
-import urllib.request
 from datetime import timedelta
 from math import ceil
 
 import pandas as pd
 
 
+def streamlit_secrets_path():
+    project_secrets = os.path.join(os.path.dirname(__file__), ".streamlit", "secrets.toml")
+    user_secrets = os.path.join(os.path.expanduser("~"), ".streamlit", "secrets.toml")
+    if os.path.exists(project_secrets):
+        return project_secrets
+    if os.path.exists(user_secrets):
+        return user_secrets
+    return ""
+
+
+def local_secret_value(name, default=""):
+    secrets_path = streamlit_secrets_path()
+    if not secrets_path:
+        return default
+    try:
+        with open(secrets_path, "rb") as file:
+            return tomllib.load(file).get(name, default)
+    except Exception:
+        return default
+
+
 def config_value(name, default=""):
     value = os.environ.get(name)
+    if value not in (None, ""):
+        return value
+    value = local_secret_value(name)
     if value not in (None, ""):
         return value
     try:
@@ -27,15 +50,29 @@ def config_value(name, default=""):
         return default
 
 
-DB = config_value("APP_DB_PATH", "data.db")
-DB_URL = config_value("APP_DB_URL")
-DB_TOKEN = config_value("APP_DB_TOKEN")
-DB_REFRESH = str(config_value("APP_DB_REFRESH", "")).strip().lower() in {"1", "true", "yes", "si"}
+SUPABASE_URL = config_value("SUPABASE_URL")
+SUPABASE_PUBLISHABLE_KEY = config_value("SUPABASE_PUBLISHABLE_KEY")
+SUPABASE_DATABASE_URL = config_value("SUPABASE_DATABASE_URL")
 ADMIN_EMAIL = config_value("APP_ADMIN_EMAIL")
 INITIAL_ADMIN_PASSWORD = config_value("APP_ADMIN_PASSWORD")
 
+# Literales reutilizados para evitar duplicidad y facilitar mantenimiento.
+NUMERO_DE_CASO_TEXT = "numero de caso"
+CLAVE_SEGURA_TEXT = "clave segura"
+DIRECTORIO_ACTIVO_TEXT = "directorio activo"
+PENDIENTE_POR_DESCARGAR_TEXT = "pendiente por descargar"
+LINK_DESCARGA_TEXT = "link de descarga"
+NOMBRE_CERTIFICADO_TEXT = "nombre del certificado"
+ORDEN_TEXT = "orden "
+FIRMA_DIGITAL_TEXT = "firma digital"
+TOKEN_FISICO_TEXT = "token fisico"
+FALSA_ALARMA_TEXT = "falsa alarma"
+NO_RESPONDE_TEXT = "no responde"
+SIN_INFERENCIA_TEXT = "Sin inferencia"
+SIN_SERVICIO_INFORMADO_TEXT = "Sin servicio informado"
+
 CASE_ALIASES = {
-    "numero": ["numero", "número", "numero de caso", "número de caso", "caso", "id caso"],
+    "numero": ["numero", "número", NUMERO_DE_CASO_TEXT, "número de caso", "caso", "id caso"],
     "descripcion": ["breve descripcion", "breve descripción", "descripcion corta"],
     "contacto": ["contacto"],
     "cuenta": ["cuenta"],
@@ -139,13 +176,13 @@ EXTERNAL_KEYWORDS = [
     "portal",
     "ocsp",
     "tsa",
-    "clave segura",
+    CLAVE_SEGURA_TEXT,
     "certitoken",
 ]
 
 INTERNAL_KEYWORDS = [
     "ldap",
-    "directorio activo",
+    DIRECTORIO_ACTIVO_TEXT,
     "active directory",
     "servidor",
     "infraestructura",
@@ -201,36 +238,36 @@ INCIDENT_EXTERNAL_CASE_HINTS = [
     "manual",
     "activar",
     "activacion",
-    "pendiente por descargar",
-    "link de descarga",
-    "numero de caso",
+    PENDIENTE_POR_DESCARGAR_TEXT,
+    LINK_DESCARGA_TEXT,
+    NUMERO_DE_CASO_TEXT,
     "cambiar el nombre",
-    "nombre del certificado",
+    NOMBRE_CERTIFICADO_TEXT,
     "certificado intermedio",
     "renovacion",
     "compra",
-    "orden ",
+    ORDEN_TEXT,
     " op ",
     "pdf",
     "documento",
     "vuce",
-    "firma digital",
-    "token fisico",
+    FIRMA_DIGITAL_TEXT,
+    TOKEN_FISICO_TEXT,
 ]
 
 INCIDENT_EXTERNAL_CASE_STRONG_HINTS = [
     "descargar firma",
     "manual",
     "instalacion",
-    "numero de caso",
-    "pendiente por descargar",
-    "link de descarga",
-    "nombre del certificado",
+    NUMERO_DE_CASO_TEXT,
+    PENDIENTE_POR_DESCARGAR_TEXT,
+    LINK_DESCARGA_TEXT,
+    NOMBRE_CERTIFICADO_TEXT,
     "cambiar el nombre",
     "renovacion",
     "compra",
-    "orden ",
-    "token fisico",
+    ORDEN_TEXT,
+    TOKEN_FISICO_TEXT,
     "vuce",
     "activacion de una firma",
 ]
@@ -250,11 +287,59 @@ INCIDENT_TRUE_INCIDENT_HINTS = [
     "no se visualizan transacciones",
 ]
 
+INCIDENT_NO_IMPACT_HINTS = [
+    FALSA_ALARMA_TEXT,
+    "falso positivo",
+    "falsos positivos",
+    "sin afectacion",
+    "sin afectacion del servicio",
+    "sin indisponibilidad",
+    "servicio operativo",
+    "servicio estuvo operativo",
+    "ping ok",
+    "http 200",
+    "servidor up",
+    "se encuentra up",
+    "no se evidencia afectacion",
+    "no se evidencio afectacion",
+]
+
+EXTERNAL_SERVICE_KEYWORDS = [
+    "certificacion digital",
+    "certificación digital",
+    "certihuella",
+    "certifactura",
+    "certitoken",
+    CLAVE_SEGURA_TEXT,
+    "firma biometrica",
+    "firma biométrica",
+    FIRMA_DIGITAL_TEXT,
+    "ocsp",
+    "pagina web",
+    "página web",
+    "portal",
+    "rpost",
+    "ssl",
+    "ssps",
+    "token virtual",
+    "tsa",
+]
+
+INTERNAL_SERVICE_KEYWORDS = [
+    "aplicaciones de escritorio",
+    DIRECTORIO_ACTIVO_TEXT,
+    "infraestructura",
+    "ldap",
+    "red interna",
+    "servicios de infraestructura",
+    "vpn",
+]
+
 INCIDENT_COMPONENT_RULES = [
     ("OCSP", ["ocsp"]),
     ("Certitoken", ["certitoken", "token virtual", "token"]),
-    ("Clave Segura", ["clave segura"]),
-    ("LDAP / Directorio Activo", ["ldap", "directorio activo", "active directory"]),
+    ("Clave Segura", [CLAVE_SEGURA_TEXT]),
+    ("LDAP / Directorio Activo", ["ldap", DIRECTORIO_ACTIVO_TEXT, "active directory"]),
     ("Base de datos", ["base de datos", "database", "sql", "bd"]),
     ("Correo / Notificaciones", ["correo", "smtp", "mail"]),
     ("Certificado / cadena de confianza", ["ssl", "certificado ssl", "certificado", "cadena de confianza", "cadena de certificados"]),
@@ -268,8 +353,8 @@ INCIDENT_COMPONENT_RULES = [
 ]
 
 INCIDENT_SYMPTOM_RULES = [
-    ("falsa alarma", ["falsa alarma"]),
-    ("caida o indisponibilidad", ["caida", "caido", "indisponibilidad", "fuera de servicio", "down", "no responde"]),
+    (FALSA_ALARMA_TEXT, [FALSA_ALARMA_TEXT]),
+    ("caida o indisponibilidad", ["caida", "caido", "indisponibilidad", "fuera de servicio", "down", NO_RESPONDE_TEXT]),
     ("lentitud o degradacion", ["lentitud", "degradacion", "degradado", "intermitencia", "intermitente"]),
     ("timeout", ["timeout", "time out"]),
     ("falla de autenticacion o acceso", ["autenticacion", "login", "acceso", "credenciales"]),
@@ -278,15 +363,22 @@ INCIDENT_SYMPTOM_RULES = [
     ("alerta de monitoreo", ["alerta", "alarma", "monitoreo", "zabbix", "grafana", "prometheus", "solarwinds"]),
 ]
 
+TIPIFICACION_ATENCION_NOC = "Atencion NOC"
+TIPIFICACION_CASO_CLIENTE_EXTERNO = "Caso Cliente Externo"
+TIPIFICACION_INCIDENTE_CLIENTE_EXTERNO = "Incidente Cliente Externo"
+TIPIFICACION_INCIDENTE_INTERNO = "Incidente Interno"
+TIPO_INCIDENTE_OPERATIVO = "Operativo"
+TIPO_INCIDENTE_SEGURIDAD = "Seguridad"
+
 TIPIFICACIONES_INCIDENTE_REAL = {
-    "Incidente Cliente Externo",
-    "Incidente Interno",
-    "Incidente Seguridad",
+    TIPIFICACION_INCIDENTE_CLIENTE_EXTERNO,
+    TIPIFICACION_INCIDENTE_INTERNO,
 }
 
+NOC_TIPIFICATION = TIPIFICACION_ATENCION_NOC
+
 TIPIFICACIONES_NOC = {
-    "Alerta NOC",
-    "Consulta NOC",
+    NOC_TIPIFICATION,
 }
 
 SLA_RESOLUCION_HORAS = {
@@ -307,6 +399,18 @@ SLA_RESOLUCION_HORAS = {
         "Alto": 96,
         "Moderado": 96,
         "Bajo": 96,
+    },
+    "NOC": {
+        "Critico": 96,
+        "Alto": 96,
+        "Moderado": 96,
+        "Bajo": 96,
+    },
+    TIPIFICACION_CASO_CLIENTE_EXTERNO: {
+        "Critico": 36,
+        "Alto": 36,
+        "Moderado": 36,
+        "Bajo": 36,
     },
 }
 
@@ -369,7 +473,7 @@ CASE_INSTALLATION_CONTEXT_HINTS = [
     "instalaciones",
     "instalar",
     "activacion",
-    "firma digital",
+    FIRMA_DIGITAL_TEXT,
     "firma",
     "token",
     "certificado",
@@ -481,7 +585,7 @@ CASE_FAILURE_KEYWORDS = [
     "intermitencia",
     "timeout",
     "no funciona",
-    "no responde",
+    NO_RESPONDE_TEXT,
     "bug",
     "afectacion masiva",
     "degradacion",
@@ -496,7 +600,7 @@ CASE_STRONG_FAILURE_KEYWORDS = [
     "timeout",
     "degradacion",
     "lentitud",
-    "no responde",
+    NO_RESPONDE_TEXT,
     "no funciona",
     "bug",
 ]
@@ -739,6 +843,10 @@ def es_caso_cliente_externo(row, texto=None, texto_resolucion=None):
     return any(frase in texto for frase in INCIDENT_EXTERNAL_CASE_HINTS)
 
 
+def es_sin_afectacion_confirmada(texto):
+    return any(frase in texto for frase in INCIDENT_NO_IMPACT_HINTS)
+
+
 def contiene_noc(texto):
     return re.search(r"(?<![a-z0-9])noc(?![a-z0-9])", normalizar_texto(texto)) is not None
 
@@ -803,53 +911,111 @@ def es_alerta_noc(row):
 def es_cliente_externo_incidente(row, texto=None, texto_resolucion=None):
     texto = texto or unir_textos(row, INCIDENT_TEXT_FIELDS)
     texto_resolucion = texto_resolucion or texto_resolucion_incidente(row)
+    texto_servicio = normalizar_texto(valor_fila(row, "servicio_negocio"))
+    texto_completo = " ".join([texto, texto_servicio])
     return (
         es_empresa_externa(row)
         or es_reportante_externo(row)
-        or any(p in texto for p in EXTERNAL_KEYWORDS)
+        or any(p in texto_completo for p in EXTERNAL_KEYWORDS)
+        or any(p in texto_completo for p in EXTERNAL_SERVICE_KEYWORDS)
         or es_caso_cliente_externo(row, texto, texto_resolucion)
     )
 
 
+def es_cliente_interno_incidente(row, texto=None):
+    texto = texto or unir_textos(row, INCIDENT_TEXT_FIELDS)
+    texto_servicio = normalizar_texto(valor_fila(row, "servicio_negocio"))
+    texto_completo = " ".join([texto, texto_servicio])
+    return any(p in texto_completo for p in INTERNAL_KEYWORDS) or any(
+        p in texto_completo for p in INTERNAL_SERVICE_KEYWORDS
+    )
+
+
+def origen_incidente(row, texto=None, texto_resolucion=None):
+    if es_origen_noc(row):
+        return "NOC"
+    if es_cliente_externo_incidente(row, texto, texto_resolucion):
+        return "Cliente externo"
+    return "Cliente interno"
+
+
+def es_incidente_real(row, texto=None, texto_resolucion=None):
+    texto = texto or unir_textos(row, INCIDENT_TEXT_FIELDS)
+    texto_resolucion = texto_resolucion or texto_resolucion_incidente(row)
+    texto_completo = " ".join([texto, texto_resolucion])
+    categoria = normalizar_texto(valor_fila(row, "categoria"))
+
+    if es_caso_cliente_externo(row, texto, texto_resolucion):
+        return False
+    if "solicitud" in categoria:
+        return False
+    if es_sin_afectacion_confirmada(texto_completo):
+        return False
+    if categoria_es_seguridad(row):
+        return True
+    if "incidente" in categoria:
+        return True
+    if categoria_es_consulta(row):
+        return False
+    return any(frase in texto_completo for frase in INCIDENT_TRUE_INCIDENT_HINTS)
+
+
+def ambito_incidente(row, texto=None, texto_resolucion=None):
+    if es_cliente_externo_incidente(row, texto, texto_resolucion):
+        return "Cliente externo"
+    return "Cliente interno"
+
+
+def db_placeholder():
+    return "%s"
+
+
+def db_placeholders(count):
+    return ", ".join([db_placeholder()] * count)
+
+
+def db_sql(sql):
+    return sql.replace("?", "%s")
+
+
+def db_bool(value):
+    return bool(value)
+
+
 def get_conn():
-    ensure_db_file()
-    return sqlite3.connect(DB, check_same_thread=False)
+    if not SUPABASE_DATABASE_URL:
+        raise RuntimeError("Configura SUPABASE_DATABASE_URL en Secrets para conectar la base de datos.")
+
+    import psycopg
+
+    return psycopg.connect(SUPABASE_DATABASE_URL, connect_timeout=30)
 
 
-def ensure_db_file():
-    db_path = os.path.abspath(DB)
-    db_dir = os.path.dirname(db_path)
-    if db_dir:
-        os.makedirs(db_dir, exist_ok=True)
+def db_execute(conn, sql, params=()):
+    return conn.execute(db_sql(sql), params)
 
-    if not DB_URL:
-        return
 
-    db_exists = os.path.exists(db_path) and os.path.getsize(db_path) > 0
-    if db_exists and not DB_REFRESH:
-        return
+def read_table(table_name):
+    conn = get_conn()
+    cursor = db_execute(conn, f"SELECT * FROM {table_name}")
+    rows = cursor.fetchall()
+    columns = [column[0] for column in cursor.description]
+    conn.close()
+    return pd.DataFrame(rows, columns=columns)
 
-    request = urllib.request.Request(DB_URL)
-    if DB_TOKEN:
-        request.add_header("Authorization", f"Bearer {DB_TOKEN}")
-    request.add_header("User-Agent", "gestion-problemas-app")
 
-    tmp_path = f"{db_path}.download"
-    try:
-        with urllib.request.urlopen(request, timeout=60) as response:
-            data = response.read()
-        if not data:
-            raise RuntimeError("La descarga de la base privada no devolvio contenido.")
-        with open(tmp_path, "wb") as file:
-            file.write(data)
-        sqlite3.connect(tmp_path).execute("PRAGMA schema_version").fetchone()
-        os.replace(tmp_path, db_path)
-    except Exception as exc:
-        if os.path.exists(tmp_path):
-            os.remove(tmp_path)
-        raise RuntimeError(
-            "No se pudo preparar la base privada. Revisa APP_DB_URL y APP_DB_TOKEN en Secrets."
-        ) from exc
+def upsert_sql(table_name, columns, conflict_column):
+    column_sql = ", ".join(columns)
+    placeholder_sql = db_placeholders(len(columns))
+    updates = ", ".join(
+        f"{column} = EXCLUDED.{column}"
+        for column in columns
+        if column != conflict_column
+    )
+    return (
+        f"INSERT INTO {table_name} ({column_sql}) VALUES ({placeholder_sql}) "
+        f"ON CONFLICT ({conflict_column}) DO UPDATE SET {updates}"
+    )
 
 
 def normalizar_email(email):
@@ -886,7 +1052,8 @@ def verificar_password(password, password_hash):
 def usuario_por_email(email):
     email = normalizar_email(email)
     conn = get_conn()
-    row = conn.execute(
+    row = db_execute(
+        conn,
         """
         SELECT email, password_hash, role, active, created_at, last_login
         FROM app_users
@@ -915,7 +1082,8 @@ def autenticar_usuario(email, password):
         return None
 
     conn = get_conn()
-    conn.execute(
+    db_execute(
+        conn,
         "UPDATE app_users SET last_login = CURRENT_TIMESTAMP WHERE email = ?",
         (usuario["email"],),
     )
@@ -928,7 +1096,8 @@ def autenticar_usuario(email, password):
 
 def listar_usuarios():
     conn = get_conn()
-    rows = conn.execute(
+    rows = db_execute(
+        conn,
         """
         SELECT email, role, active, created_at, last_login
         FROM app_users
@@ -951,31 +1120,34 @@ def guardar_usuario(email, password, role="viewer", active=True):
         raise ValueError("La contrasena debe tener al menos 8 caracteres.")
 
     conn = get_conn()
-    existe = conn.execute("SELECT 1 FROM app_users WHERE email = ?", (email,)).fetchone()
+    existe = db_execute(conn, "SELECT 1 FROM app_users WHERE email = ?", (email,)).fetchone()
     if existe:
         if password:
-            conn.execute(
+            db_execute(
+                conn,
                 """
                 UPDATE app_users
                 SET password_hash = ?, role = ?, active = ?
                 WHERE email = ?
                 """,
-                (hash_password(password), role, int(active), email),
+                (hash_password(password), role, db_bool(active), email),
             )
         else:
-            conn.execute(
+            db_execute(
+                conn,
                 "UPDATE app_users SET role = ?, active = ? WHERE email = ?",
-                (role, int(active), email),
+                (role, db_bool(active), email),
             )
     else:
         if not password:
             raise ValueError("La contrasena es obligatoria para crear el usuario.")
-        conn.execute(
+        db_execute(
+            conn,
             """
             INSERT INTO app_users (email, password_hash, role, active, created_at)
             VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
             """,
-            (email, hash_password(password), role, int(active)),
+            (email, hash_password(password), role, db_bool(active)),
         )
     conn.commit()
     conn.close()
@@ -984,59 +1156,73 @@ def guardar_usuario(email, password, role="viewer", active=True):
 def eliminar_usuario(email):
     email = normalizar_email(email)
     conn = get_conn()
-    conn.execute("DELETE FROM app_users WHERE email = ?", (email,))
+    db_execute(conn, "DELETE FROM app_users WHERE email = ?", (email,))
     conn.commit()
     conn.close()
 
 
 def contar_incidentes():
     conn = get_conn()
-    total = conn.execute("SELECT COUNT(*) FROM incidents").fetchone()[0]
+    total = db_execute(conn, "SELECT COUNT(*) FROM incidents").fetchone()[0]
     conn.close()
     return total
 
 
 def limpiar_incidentes():
     conn = get_conn()
-    total = conn.execute("SELECT COUNT(*) FROM incidents").fetchone()[0]
-    conn.execute("DELETE FROM incidents")
+    total = db_execute(conn, "SELECT COUNT(*) FROM incidents").fetchone()[0]
+    db_execute(conn, "DELETE FROM incidents")
     conn.commit()
     conn.close()
     return total
 
 
 def ensure_table_columns(conn, table_name, columns):
-    existentes = {row[1] for row in conn.execute(f"PRAGMA table_info({table_name})").fetchall()}
+    existentes = {
+        row[0]
+        for row in db_execute(
+            conn,
+            """
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = ?
+            """,
+            (table_name,),
+        ).fetchall()
+    }
     for nombre, tipo in columns.items():
         if nombre not in existentes:
-            conn.execute(f"ALTER TABLE {table_name} ADD COLUMN {nombre} {tipo}")
+            db_execute(conn, f"ALTER TABLE {table_name} ADD COLUMN {nombre} {tipo}")
 
 
 def init_db():
     conn = get_conn()
-    conn.execute(
+    db_execute(
+        conn,
         """
         CREATE TABLE IF NOT EXISTS app_users (
             email TEXT PRIMARY KEY,
             password_hash TEXT NOT NULL,
             role TEXT NOT NULL DEFAULT 'viewer',
-            active INTEGER NOT NULL DEFAULT 1,
+            active BOOLEAN NOT NULL DEFAULT TRUE,
             created_at TEXT,
             last_login TEXT
         )
         """
     )
-    usuarios_existen = conn.execute("SELECT 1 FROM app_users LIMIT 1").fetchone()
+    usuarios_existen = db_execute(conn, "SELECT 1 FROM app_users LIMIT 1").fetchone()
     if not usuarios_existen and ADMIN_EMAIL and INITIAL_ADMIN_PASSWORD:
         admin_email = normalizar_email(ADMIN_EMAIL)
-        conn.execute(
+        db_execute(
+            conn,
             """
             INSERT INTO app_users (email, password_hash, role, active, created_at)
-            VALUES (?, ?, 'admin', 1, CURRENT_TIMESTAMP)
+            VALUES (?, ?, 'admin', TRUE, CURRENT_TIMESTAMP)
             """,
             (admin_email, hash_password(INITIAL_ADMIN_PASSWORD)),
         )
-    conn.execute(
+    db_execute(
+        conn,
         """
         CREATE TABLE IF NOT EXISTS cases (
             numero TEXT PRIMARY KEY,
@@ -1062,7 +1248,8 @@ def init_db():
         )
         """
     )
-    conn.execute(
+    db_execute(
+        conn,
         """
         CREATE TABLE IF NOT EXISTS incidents (
             numero TEXT PRIMARY KEY,
@@ -1093,7 +1280,9 @@ def init_db():
             lista_notas_trabajo TEXT,
             tipificacion_original TEXT,
             causa_raiz_original TEXT,
+            origen_auto TEXT,
             tipificacion_auto TEXT,
+            tipo_incidente_auto TEXT,
             causa_raiz_auto TEXT,
             es_alerta_auto TEXT,
             duracion_horas REAL
@@ -1131,7 +1320,9 @@ def init_db():
             "lista_notas_trabajo": "TEXT",
             "tipificacion_original": "TEXT",
             "causa_raiz_original": "TEXT",
+            "origen_auto": "TEXT",
             "tipificacion_auto": "TEXT",
+            "tipo_incidente_auto": "TEXT",
             "causa_raiz_auto": "TEXT",
             "es_alerta_auto": "TEXT",
             "duracion_horas": "REAL",
@@ -1179,34 +1370,13 @@ def tiempo(creado, cerrado):
         return "Error"
 
 
-def tipificar_caso(row):
+def textos_para_tipificacion_caso(row):
     descripcion = normalizar_texto(valor_fila(row, "descripcion"))
     causa = normalizar_texto(valor_fila(row, "causa"))
     codigo_resolucion = normalizar_texto(valor_fila(row, "codigo_resolucion"))
     notas_resolucion = normalizar_texto(valor_fila(row, "notas_resolucion"))
     observaciones_adicionales = normalizar_texto(valor_fila(row, "observaciones_adicionales"))
     observaciones_trabajo = normalizar_texto(valor_fila(row, "observaciones_trabajo"))
-
-    texto = " ".join(
-        [
-            descripcion,
-            causa,
-            codigo_resolucion,
-            notas_resolucion,
-            observaciones_adicionales,
-            observaciones_trabajo,
-        ]
-    )
-
-    if "phishing" in texto:
-        return "1 - phishing"
-
-    if es_agenda_sin_evidencia(texto):
-        return "10 - Cliente no asistio"
-
-    canal = normalizar_texto(valor_fila(row, "canal"))
-    if es_caso_instalacion(texto):
-        return "9 - Redireccionamiento Agenda"
 
     texto_resolucion = " ".join(
         [
@@ -1217,20 +1387,31 @@ def tipificar_caso(row):
         ]
     )
     texto_apertura = " ".join([descripcion, causa])
+    texto = " ".join([texto_apertura, texto_resolucion])
+    return texto, texto_apertura, texto_resolucion, codigo_resolucion, causa
 
+
+def clasificacion_directa_caso(texto, texto_apertura, texto_resolucion):
+    if "phishing" in texto:
+        return "1 - phishing"
+    if es_agenda_sin_evidencia(texto):
+        return "10 - Cliente no asistio"
+    if es_caso_instalacion(texto):
+        return "9 - Redireccionamiento Agenda"
     if es_caso_incidente(texto_apertura, texto_resolucion, texto):
         return "5 - incidente"
-
     if any(plataforma in texto for plataforma in CASE_EXTERNAL_PLATFORM_KEYWORDS):
         return "6 - Plataformas Ext"
+    return None
 
+
+def calcular_scores_caso(row, texto_apertura, texto_resolucion, codigo_resolucion, causa):
     uso_score = (
         puntuar_texto(texto_apertura, CASE_USAGE_KEYWORDS, 1)
         + puntuar_texto(texto_resolucion, CASE_USAGE_KEYWORDS, 2)
         + puntuar_texto(texto_resolucion, CASE_RESOLUTION_HINTS, 3)
         + puntuar_texto(texto_resolucion, CASE_STRONG_USAGE_HINTS, 4)
     )
-
     falla_score = (
         puntuar_texto(texto_apertura, CASE_FAILURE_KEYWORDS, 3)
         + puntuar_texto(texto_resolucion, CASE_FAILURE_KEYWORDS, 1)
@@ -1239,27 +1420,48 @@ def tipificar_caso(row):
 
     if "soporte" in codigo_resolucion or "soporte" in causa:
         uso_score += 2
-
     if caso_cerrado(row) and uso_score > 0:
         uso_score += 2
-
     if caso_cerrado(row) and any(p in texto_apertura for p in CASE_USAGE_REQUEST_HINTS):
         uso_score += 3
-
     if uso_score > 0 and "incidente" not in texto_apertura:
         uso_score += 1
 
+    return uso_score, falla_score
+
+
+def clasificacion_por_scores_caso(uso_score, falla_score):
     if uso_score > 0 and uso_score >= falla_score:
         return "2 - Soporte Uso"
     if falla_score > uso_score:
         return "3 - Soporte Falla"
+    return None
 
+
+def clasificacion_residual_caso(texto):
     if any(palabra in texto for palabra in ["cert", "pagar", "biometria"]):
         return "4 - solicitudes"
     if "externo" in texto:
         return "6 - Plataformas Ext"
     return "7 - No Aplica"
 
+
+def tipificar_caso(row):
+    texto, texto_apertura, texto_resolucion, codigo_resolucion, causa = textos_para_tipificacion_caso(row)
+
+    clasificacion = clasificacion_directa_caso(texto, texto_apertura, texto_resolucion)
+    if clasificacion:
+        return clasificacion
+
+    uso_score, falla_score = calcular_scores_caso(
+        row,
+        texto_apertura,
+        texto_resolucion,
+        codigo_resolucion,
+        causa,
+    )
+    clasificacion = clasificacion_por_scores_caso(uso_score, falla_score)
+    return clasificacion or clasificacion_residual_caso(texto)
 
 def preparar_casos(df):
     df = renombrar_columnas(df, CASE_ALIASES)
@@ -1280,6 +1482,30 @@ def meses_casos(df):
     return fechas.dropna().dt.to_period("M").astype(str).sort_values().unique().tolist()
 
 
+CASE_DB_COLUMNS = [
+    "numero",
+    "descripcion",
+    "contacto",
+    "cuenta",
+    "codigo_resolucion",
+    "canal",
+    "estado",
+    "prioridad",
+    "asignado",
+    "actualizado",
+    "creado_por",
+    "creado",
+    "producto",
+    "cerrado",
+    "causa",
+    "notas_resolucion",
+    "observaciones_adicionales",
+    "observaciones_trabajo",
+    "tipificacion",
+    "tiempo_respuesta",
+]
+
+
 def guardar_casos(df, reemplazar_meses=False):
     conn = get_conn()
     cargados = 0
@@ -1290,12 +1516,12 @@ def guardar_casos(df, reemplazar_meses=False):
         conn.close()
         return 0, 0, 0, [], duplicados_archivo
 
-    cur = conn.cursor()
     meses_reemplazados = meses_casos(df) if reemplazar_meses else []
     eliminados = 0
     if meses_reemplazados:
-        placeholders_meses = ", ".join(["?"] * len(meses_reemplazados))
-        eliminados = cur.execute(
+        placeholders_meses = db_placeholders(len(meses_reemplazados))
+        eliminados = db_execute(
+            conn,
             f"DELETE FROM cases WHERE substr(creado, 1, 7) IN ({placeholders_meses})",
             meses_reemplazados,
         ).rowcount
@@ -1303,10 +1529,11 @@ def guardar_casos(df, reemplazar_meses=False):
     numeros = [safe_text(valor_fila(row, "numero")) for _, row in df.iterrows()]
     existentes = set()
     if numeros:
-        placeholders = ", ".join(["?"] * len(numeros))
+        placeholders = db_placeholders(len(numeros))
         existentes = {
             fila[0]
-            for fila in cur.execute(
+            for fila in db_execute(
+                conn,
                 f"SELECT numero FROM cases WHERE numero IN ({placeholders})",
                 numeros,
             ).fetchall()
@@ -1337,10 +1564,7 @@ def guardar_casos(df, reemplazar_meses=False):
             tipificar_caso(row),
             tiempo(normalizar_fecha(valor_fila(row, "creado")), normalizar_fecha(valor_fila(row, "cerrado"))),
         )
-        cur.execute(
-            "INSERT OR REPLACE INTO cases VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            data,
-        )
+        db_execute(conn, upsert_sql("cases", CASE_DB_COLUMNS, "numero"), data)
         cargados += 1
     conn.commit()
     conn.close()
@@ -1348,23 +1572,23 @@ def guardar_casos(df, reemplazar_meses=False):
 
 
 def load_casos():
-    conn = get_conn()
-    df = pd.read_sql("SELECT * FROM cases", conn)
+    df = read_table("cases")
 
     if not df.empty:
         tipificaciones = df.apply(tipificar_caso, axis=1)
         cambios = df["tipificacion"].fillna("") != tipificaciones.fillna("")
         if cambios.any():
-            cur = conn.cursor()
+            conn = get_conn()
             for numero, tipificacion in zip(df.loc[cambios, "numero"], tipificaciones.loc[cambios]):
-                cur.execute(
+                db_execute(
+                    conn,
                     "UPDATE cases SET tipificacion=? WHERE numero=?",
                     (tipificacion, numero),
                 )
             conn.commit()
+            conn.close()
         df["tipificacion"] = tipificaciones
 
-    conn.close()
     return df
 
 
@@ -1373,46 +1597,117 @@ def tipificacion_incidente(row):
     texto_resolucion = texto_resolucion_incidente(row)
     origen_noc = es_origen_noc(row)
     es_externo = es_cliente_externo_incidente(row, texto, texto_resolucion)
-    es_interno = any(p in texto for p in INTERNAL_KEYWORDS)
+    incidente_real = es_incidente_real(row, texto, texto_resolucion)
 
-    if origen_noc and categoria_es_consulta(row):
-        return "Consulta NOC"
-    if origen_noc and es_alerta_noc(row):
-        return "Alerta NOC"
+    if origen_noc and not incidente_real:
+        return TIPIFICACION_ATENCION_NOC
     if categoria_es_consulta(row):
-        return "Consulta Cliente"
+        return TIPIFICACION_CASO_CLIENTE_EXTERNO if es_externo else TIPIFICACION_ATENCION_NOC
     if "solicitud" in normalizar_texto(valor_fila(row, "categoria")):
-        return "Solicitud"
+        return TIPIFICACION_CASO_CLIENTE_EXTERNO
 
     if es_externo and es_caso_cliente_externo(row, texto, texto_resolucion):
-        return "Caso Cliente Externo"
+        return TIPIFICACION_CASO_CLIENTE_EXTERNO
 
-    if categoria_es_seguridad(row):
-        return "Incidente Seguridad"
+    if origen_noc and not incidente_real:
+        return TIPIFICACION_ATENCION_NOC
 
-    if "incidente" in normalizar_texto(valor_fila(row, "categoria")):
-        if es_externo:
-            return "Incidente Cliente Externo"
-        if es_interno:
-            return "Incidente Interno"
-        return "Incidente Interno"
+    if incidente_real and es_externo:
+        return TIPIFICACION_INCIDENTE_CLIENTE_EXTERNO
+    if incidente_real:
+        return TIPIFICACION_INCIDENTE_INTERNO
     if es_externo:
-        return "Incidente Cliente Externo"
-    if es_interno:
-        return "Incidente Interno"
-    return "Incidente Interno"
+        return TIPIFICACION_CASO_CLIENTE_EXTERNO
+    return TIPIFICACION_INCIDENTE_INTERNO
 
 
 def es_alerta_incidente(row, tipificacion=None):
     tipificacion = tipificacion or tipificacion_incidente(row)
     texto = unir_textos(row, INCIDENT_CAUSE_FIELDS + ["grupo_asignacion", "servicio_negocio", "impacto", "estado"])
-    if tipificacion in {"Caso Cliente Externo", "Consulta Cliente", "Consulta NOC", "Solicitud"}:
-        return "No"
-    if tipificacion == "Alerta NOC":
-        return "Si"
     if es_origen_noc(row) and any(p in texto for p in ALERT_KEYWORDS):
         return "Si"
     return "No"
+
+
+def tipo_incidente_auto(row, tipificacion=None):
+    tipificacion = tipificacion or tipificacion_incidente(row)
+    if tipificacion not in TIPIFICACIONES_INCIDENTE_REAL:
+        return "No aplica"
+    if categoria_es_seguridad(row):
+        return TIPO_INCIDENTE_SEGURIDAD
+    return TIPO_INCIDENTE_OPERATIVO
+
+
+def motivo_caso_cliente_externo(row):
+    texto = unir_textos(
+        row,
+        INCIDENT_CAUSE_FIELDS
+        + ["grupo_asignacion", "servicio_negocio", "impacto", "estado", "empresa", "solicitante"],
+    )
+    reglas = [
+        (
+            "Instalacion / activacion",
+            [
+                "instalacion",
+                "instalar",
+                "activar",
+                "activacion",
+                TOKEN_FISICO_TEXT,
+                "captores biometricos",
+                "biometricos",
+            ],
+        ),
+        (
+            "Descarga / entrega",
+            [
+                "descargar",
+                "descarga",
+                LINK_DESCARGA_TEXT,
+                PENDIENTE_POR_DESCARGAR_TEXT,
+                "correo de descarga",
+            ],
+        ),
+        (
+            "Tramite / orden",
+            [
+                ORDEN_TEXT,
+                " op ",
+                "compra",
+                "pago",
+                "solicitud",
+                "solicitudes",
+                "tramite",
+                "vuce",
+            ],
+        ),
+        (
+            "Guia / uso",
+            [
+                "manual",
+                "guia",
+                "instructivo",
+                "como",
+                "paso a paso",
+                "orientacion",
+            ],
+        ),
+        (
+            "Validacion / documento",
+            [
+                "validar",
+                "validez",
+                "desconocida",
+                "pdf",
+                "documento",
+                "certificado intermedio",
+                NOMBRE_CERTIFICADO_TEXT,
+            ],
+        ),
+    ]
+    for motivo, palabras in reglas:
+        if any(palabra in texto for palabra in palabras):
+            return motivo
+    return "Otro caso cliente externo"
 
 
 def inferir_componente_incidente(texto, tipificacion=None, es_alerta=None):
@@ -1420,7 +1715,7 @@ def inferir_componente_incidente(texto, tipificacion=None, es_alerta=None):
         if any(palabra in texto for palabra in palabras):
             return etiqueta
 
-    if tipificacion == "Alerta NOC" or es_alerta == "Si":
+    if tipificacion == NOC_TIPIFICATION or es_alerta == "Si":
         return "Monitoreo / NOC"
 
     return ""
@@ -1439,19 +1734,22 @@ def normalizar_prioridad_incidente(valor):
     return "Moderado"
 
 
-def familia_sla_incidente(tipificacion):
-    if tipificacion == "Incidente Seguridad":
+def familia_sla_incidente(tipificacion, tipo_incidente=None):
+    if tipificacion in TIPIFICACIONES_INCIDENTE_REAL and tipo_incidente == TIPO_INCIDENTE_SEGURIDAD:
         return "Seguridad"
-    if tipificacion in {"Consulta Cliente", "Consulta NOC"}:
-        return "Consulta"
-    if tipificacion in TIPIFICACIONES_INCIDENTE_REAL or tipificacion == "Alerta NOC":
+    if tipificacion == NOC_TIPIFICATION:
+        return "NOC"
+    if tipificacion == TIPIFICACION_CASO_CLIENTE_EXTERNO:
+        return TIPIFICACION_CASO_CLIENTE_EXTERNO
+    if tipificacion in TIPIFICACIONES_INCIDENTE_REAL:
         return "Operativo"
     return "Sin SLA"
 
 
 def sla_objetivo_horas_incidente(row):
     tipificacion = valor_fila(row, "tipificacion_auto") or tipificacion_incidente(row)
-    familia = familia_sla_incidente(tipificacion)
+    tipo_incidente = valor_fila(row, "tipo_incidente_auto") or tipo_incidente_auto(row, tipificacion)
+    familia = familia_sla_incidente(tipificacion, tipo_incidente)
     prioridad = normalizar_prioridad_incidente(valor_fila(row, "prioridad"))
     return SLA_RESOLUCION_HORAS.get(familia, {}).get(prioridad)
 
@@ -1460,9 +1758,30 @@ def aplica_sla_incidente(tipificacion):
     return tipificacion in TIPIFICACIONES_INCIDENTE_REAL
 
 
+def aplica_sla_caso_cliente_externo(tipificacion):
+    return tipificacion == TIPIFICACION_CASO_CLIENTE_EXTERNO
+
+
+def aplica_sla_atencion_noc(tipificacion):
+    return tipificacion == TIPIFICACION_ATENCION_NOC
+
+
+def duracion_sla_horas_incidente(row):
+    tipificacion = valor_fila(row, "tipificacion_auto") or tipificacion_incidente(row)
+    if tipificacion == TIPIFICACION_CASO_CLIENTE_EXTERNO:
+        horas = tiempo(normalizar_fecha(valor_fila(row, "creado")), normalizar_fecha(valor_fila(row, "cerrado")))
+        return horas if isinstance(horas, (int, float)) else None
+    duracion = safe_float(valor_fila(row, "duracion_horas"))
+    if duracion is not None:
+        return duracion
+    return segundos_a_horas(safe_float(valor_fila(row, "duracion_segundos")))
+
+
 def estado_sla_incidente(row):
     objetivo = safe_float(valor_fila(row, "sla_objetivo_horas"))
-    duracion = safe_float(valor_fila(row, "duracion_horas"))
+    duracion = safe_float(valor_fila(row, "duracion_sla_horas"))
+    if duracion is None:
+        duracion = safe_float(valor_fila(row, "duracion_horas"))
     if objetivo is None:
         return "Sin objetivo"
     if duracion is None:
@@ -1473,10 +1792,15 @@ def estado_sla_incidente(row):
 def agregar_campos_sla_incidentes(df):
     trabajo = df.copy()
     columnas_default = {
+        "origen_auto": pd.Series(dtype="object"),
+        "tipo_incidente_auto": pd.Series(dtype="object"),
         "prioridad_normalizada": pd.Series(dtype="object"),
         "familia_sla": pd.Series(dtype="object"),
         "sla_objetivo_horas": pd.Series(dtype="float"),
+        "duracion_sla_horas": pd.Series(dtype="float"),
         "aplica_sla_incidente": pd.Series(dtype="bool"),
+        "aplica_sla_caso_cliente_externo": pd.Series(dtype="bool"),
+        "aplica_sla_atencion_noc": pd.Series(dtype="bool"),
         "estado_sla": pd.Series(dtype="object"),
     }
     if trabajo.empty:
@@ -1484,13 +1808,20 @@ def agregar_campos_sla_incidentes(df):
             trabajo[columna] = serie
         return trabajo
 
-    if "tipificacion_auto" not in trabajo.columns:
-        trabajo["tipificacion_auto"] = trabajo.apply(tipificacion_incidente, axis=1)
+    clasificaciones = trabajo.apply(clasificacion_incidente_detallada, axis=1, result_type="expand")
+    for columna in ["origen_auto", "tipificacion_auto", "tipo_incidente_auto", "es_alerta_auto", "causa_raiz_auto"]:
+        trabajo[columna] = clasificaciones[columna]
 
     trabajo["prioridad_normalizada"] = trabajo["prioridad"].apply(normalizar_prioridad_incidente)
-    trabajo["familia_sla"] = trabajo["tipificacion_auto"].apply(familia_sla_incidente)
+    trabajo["familia_sla"] = trabajo.apply(
+        lambda row: familia_sla_incidente(row["tipificacion_auto"], row["tipo_incidente_auto"]),
+        axis=1,
+    )
     trabajo["sla_objetivo_horas"] = trabajo.apply(sla_objetivo_horas_incidente, axis=1)
+    trabajo["duracion_sla_horas"] = trabajo.apply(duracion_sla_horas_incidente, axis=1)
     trabajo["aplica_sla_incidente"] = trabajo["tipificacion_auto"].apply(aplica_sla_incidente)
+    trabajo["aplica_sla_caso_cliente_externo"] = trabajo["tipificacion_auto"].apply(aplica_sla_caso_cliente_externo)
+    trabajo["aplica_sla_atencion_noc"] = trabajo["tipificacion_auto"].apply(aplica_sla_atencion_noc)
     trabajo["estado_sla"] = trabajo.apply(estado_sla_incidente, axis=1)
     return trabajo
 
@@ -1526,6 +1857,9 @@ def causa_raiz_incidente(row, tipificacion=None, es_alerta=None):
     tipificacion = tipificacion or tipificacion_incidente(row)
     es_alerta = es_alerta or es_alerta_incidente(row, tipificacion)
 
+    if tipificacion == TIPIFICACION_CASO_CLIENTE_EXTERNO:
+        return motivo_caso_cliente_externo(row)
+
     texto = unir_textos(
         row,
         INCIDENT_CAUSE_FIELDS + ["grupo_asignacion", "servicio_negocio", "impacto", "estado"],
@@ -1556,6 +1890,22 @@ def clasificacion_incidente(row):
     return tipificacion, alerta, causa
 
 
+def clasificacion_incidente_detallada(row):
+    texto = unir_textos(row, INCIDENT_TEXT_FIELDS)
+    texto_resolucion = texto_resolucion_incidente(row)
+    tipificacion = tipificacion_incidente(row)
+    alerta = es_alerta_incidente(row, tipificacion)
+    tipo_incidente = tipo_incidente_auto(row, tipificacion)
+    causa = causa_raiz_incidente(row, tipificacion, alerta)
+    return {
+        "origen_auto": origen_incidente(row, texto, texto_resolucion),
+        "tipificacion_auto": tipificacion,
+        "tipo_incidente_auto": tipo_incidente,
+        "es_alerta_auto": alerta,
+        "causa_raiz_auto": causa,
+    }
+
+
 def preparar_incidentes(df):
     df = renombrar_columnas(df, INCIDENT_ALIASES)
     for columna in list(INCIDENT_ALIASES.keys()) + ["tipificacion_original", "causa_raiz_original"]:
@@ -1569,6 +1919,44 @@ def preparar_incidentes(df):
     return df.drop_duplicates(subset=["numero"], keep="last")
 
 
+INCIDENT_DB_COLUMNS = [
+    "numero",
+    "solicitante",
+    "breve_descripcion",
+    "categoria",
+    "prioridad",
+    "estado",
+    "grupo_asignacion",
+    "asignado_a",
+    "descripcion",
+    "despues_aprobacion",
+    "despues_rechazo",
+    "duracion_segundos",
+    "minutos",
+    "fecha_vencimiento_sla",
+    "tipo_falla",
+    "empresa",
+    "creado_por",
+    "cerrado",
+    "escalado_proveedor",
+    "servicio_negocio",
+    "creado",
+    "observaciones_trabajo",
+    "observaciones_adicionales",
+    "actualizaciones",
+    "impacto",
+    "lista_notas_trabajo",
+    "tipificacion_original",
+    "causa_raiz_original",
+    "origen_auto",
+    "tipificacion_auto",
+    "tipo_incidente_auto",
+    "causa_raiz_auto",
+    "es_alerta_auto",
+    "duracion_horas",
+]
+
+
 def guardar_incidentes(df):
     conn = get_conn()
     cargados = 0
@@ -1577,14 +1965,14 @@ def guardar_incidentes(df):
         conn.close()
         return 0, 0
 
-    cur = conn.cursor()
     numeros = [safe_text(valor_fila(row, "numero")) for _, row in df.iterrows()]
     existentes = set()
     if numeros:
-        placeholders = ", ".join(["?"] * len(numeros))
+        placeholders = db_placeholders(len(numeros))
         existentes = {
             fila[0]
-            for fila in cur.execute(
+            for fila in db_execute(
+                conn,
                 f"SELECT numero FROM incidents WHERE numero IN ({placeholders})",
                 numeros,
             ).fetchall()
@@ -1593,7 +1981,7 @@ def guardar_incidentes(df):
 
     for _, row in df.iterrows():
         numero = safe_text(valor_fila(row, "numero"))
-        tipificacion_auto, es_alerta_auto, causa_raiz_auto = clasificacion_incidente(row)
+        clasificacion = clasificacion_incidente_detallada(row)
         duracion_segundos = safe_float(valor_fila(row, "duracion_segundos"))
         duracion_horas = segundos_a_horas(duracion_segundos)
         data = (
@@ -1625,25 +2013,14 @@ def guardar_incidentes(df):
             safe_text(valor_fila(row, "lista_notas_trabajo")),
             safe_text(valor_fila(row, "tipificacion_original")),
             safe_text(valor_fila(row, "causa_raiz_original")),
-            tipificacion_auto,
-            causa_raiz_auto,
-            es_alerta_auto,
+            clasificacion["origen_auto"],
+            clasificacion["tipificacion_auto"],
+            clasificacion["tipo_incidente_auto"],
+            clasificacion["causa_raiz_auto"],
+            clasificacion["es_alerta_auto"],
             duracion_horas,
         )
-        cur.execute(
-            """
-            INSERT OR REPLACE INTO incidents (
-                numero, solicitante, breve_descripcion, categoria, prioridad, estado,
-                grupo_asignacion, asignado_a, descripcion, despues_aprobacion, despues_rechazo,
-                duracion_segundos, minutos, fecha_vencimiento_sla, tipo_falla, empresa, creado_por,
-                cerrado, escalado_proveedor, servicio_negocio, creado, observaciones_trabajo,
-                observaciones_adicionales, actualizaciones, impacto, lista_notas_trabajo,
-                tipificacion_original, causa_raiz_original, tipificacion_auto, causa_raiz_auto,
-                es_alerta_auto, duracion_horas
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            data,
-        )
+        db_execute(conn, upsert_sql("incidents", INCIDENT_DB_COLUMNS, "numero"), data)
         cargados += 1
     conn.commit()
     conn.close()
@@ -1651,13 +2028,11 @@ def guardar_incidentes(df):
 
 
 def load_incidentes():
-    conn = get_conn()
-    df = pd.read_sql("SELECT * FROM incidents", conn)
-    conn.close()
+    df = read_table("incidents")
     if not df.empty:
-        clasificaciones = df.apply(clasificacion_incidente, axis=1, result_type="expand")
-        clasificaciones.columns = ["tipificacion_auto", "es_alerta_auto", "causa_raiz_auto"]
-        df[["tipificacion_auto", "es_alerta_auto", "causa_raiz_auto"]] = clasificaciones
+        clasificaciones = df.apply(clasificacion_incidente_detallada, axis=1, result_type="expand")
+        for columna in ["origen_auto", "tipificacion_auto", "tipo_incidente_auto", "es_alerta_auto", "causa_raiz_auto"]:
+            df[columna] = clasificaciones[columna]
     return df
 
 
@@ -1680,7 +2055,7 @@ def resumir_top_causas(grupo, limite=3):
     causas = (
         grupo["causa_raiz_auto"]
         .replace("", pd.NA)
-        .fillna("Sin inferencia")
+        .fillna(SIN_INFERENCIA_TEXT)
         .value_counts()
         .head(limite)
     )
@@ -1690,34 +2065,15 @@ def resumir_top_causas(grupo, limite=3):
     return ", ".join(resumen)
 
 
-def construir_alertas_incidentes(df, sla_horas=24):
-    if df is None or df.empty:
-        return []
-
-    trabajo = agregar_campos_sla_incidentes(df)
-    trabajo = trabajo[
-        ~trabajo["tipificacion_auto"].fillna("").isin(["Caso Cliente Externo", "Consulta Cliente", "Consulta NOC", "Solicitud"])
-    ].copy()
-    if trabajo.empty:
-        return []
-    trabajo["numero"] = trabajo["numero"].apply(safe_text)
-    trabajo["causa_raiz_auto"] = trabajo["causa_raiz_auto"].replace("", pd.NA).fillna("Sin inferencia")
-    trabajo["servicio_negocio"] = trabajo["servicio_negocio"].replace("", pd.NA).fillna("Sin servicio informado")
-    trabajo["es_alerta_auto"] = trabajo["es_alerta_auto"].fillna("No")
-    trabajo["duracion_horas"] = pd.to_numeric(trabajo["duracion_horas"], errors="coerce")
-
-    incidentes_reales = trabajo[trabajo["aplica_sla_incidente"]].copy()
-    total = len(incidentes_reales) if not incidentes_reales.empty else len(trabajo)
-
-    alertas = []
-    umbral_causa = umbral_alerta_por_volumen(total, proporcion=0.08, minimo=2)
-    umbral_servicio = umbral_alerta_por_volumen(total, proporcion=0.1, minimo=3)
-
-    base_recurrencia = incidentes_reales if not incidentes_reales.empty else trabajo
-
-    for causa, grupo in sorted(base_recurrencia.groupby("causa_raiz_auto"), key=lambda item: len(item[1]), reverse=True):
+def agregar_alertas_causas_recurrentes(alertas, base_recurrencia, total, umbral_causa):
+    grupos = sorted(
+        base_recurrencia.groupby("causa_raiz_auto"),
+        key=lambda item: len(item[1]),
+        reverse=True,
+    )
+    for causa, grupo in grupos:
         cantidad = len(grupo)
-        if causa == "Sin inferencia" or cantidad < umbral_causa:
+        if causa == SIN_INFERENCIA_TEXT or cantidad < umbral_causa:
             continue
         incidentes, adicionales = incidentes_relacionados(grupo)
         porcentaje = round((cantidad / total) * 100, 2)
@@ -1735,9 +2091,16 @@ def construir_alertas_incidentes(df, sla_horas=24):
             }
         )
 
-    for servicio, grupo in sorted(base_recurrencia.groupby("servicio_negocio"), key=lambda item: len(item[1]), reverse=True):
+
+def agregar_alertas_servicio_concentrado(alertas, base_recurrencia, total, umbral_servicio):
+    grupos = sorted(
+        base_recurrencia.groupby("servicio_negocio"),
+        key=lambda item: len(item[1]),
+        reverse=True,
+    )
+    for servicio, grupo in grupos:
         cantidad = len(grupo)
-        if servicio == "Sin servicio informado" or cantidad < umbral_servicio:
+        if servicio == SIN_SERVICIO_INFORMADO_TEXT or cantidad < umbral_servicio:
             continue
         incidentes, adicionales = incidentes_relacionados(grupo)
         porcentaje = round((cantidad / total) * 100, 2)
@@ -1755,54 +2118,106 @@ def construir_alertas_incidentes(df, sla_horas=24):
             }
         )
 
+
+def agregar_alerta_volumen_noc(alertas, trabajo):
     df_alertas = trabajo[
         (trabajo["es_alerta_auto"] == "Si")
-        | (trabajo["tipificacion_auto"].fillna("") == "Alerta NOC")
+        | (trabajo["tipificacion_auto"].fillna("") == NOC_TIPIFICATION)
     ].copy()
-    if not df_alertas.empty:
-        cantidad = len(df_alertas)
-        incidentes, adicionales = incidentes_relacionados(df_alertas, limite=8)
-        porcentaje = round((cantidad / len(trabajo)) * 100, 2)
-        top_causas = resumir_top_causas(df_alertas)
-        detalle = (
-            f"Se separaron {cantidad} registros como alertas NOC o alertas de monitoreo sobre "
-            f"{len(trabajo)} registros analizables ({porcentaje}%)."
-        )
-        if top_causas:
-            detalle += f" Las causas mas repetidas dentro de este grupo son: {top_causas}."
-        alertas.append(
-            {
-                "tipo": "volumen_alertas",
-                "prioridad": cantidad,
-                "titulo": "Volumen de alertas NOC / monitoreo",
-                "detalle": detalle,
-                "incidentes": incidentes,
-                "incidentes_adicionales": adicionales,
-            }
-        )
+    if df_alertas.empty:
+        return
 
+    cantidad = len(df_alertas)
+    incidentes, adicionales = incidentes_relacionados(df_alertas, limite=8)
+    porcentaje = round((cantidad / len(trabajo)) * 100, 2)
+    top_causas = resumir_top_causas(df_alertas)
+    detalle = (
+        f"Se separaron {cantidad} registros como alertas NOC o alertas de monitoreo sobre "
+        f"{len(trabajo)} registros analizables ({porcentaje}%)."
+    )
+    if top_causas:
+        detalle += f" Las causas mas repetidas dentro de este grupo son: {top_causas}."
+    alertas.append(
+        {
+            "tipo": "volumen_alertas",
+            "prioridad": cantidad,
+            "titulo": "Volumen de alertas NOC / monitoreo",
+            "detalle": detalle,
+            "incidentes": incidentes,
+            "incidentes_adicionales": adicionales,
+        }
+    )
+
+
+def agregar_alerta_sla(alertas, incidentes_reales, total):
     df_cerrados = incidentes_reales[incidentes_reales["estado"].fillna("") == "Cerrado"].copy()
     df_fuera_sla = df_cerrados[
         (df_cerrados["sla_objetivo_horas"].notna())
         & (df_cerrados["duracion_horas"] > df_cerrados["sla_objetivo_horas"])
     ].copy()
-    if not df_fuera_sla.empty:
-        cantidad = len(df_fuera_sla)
-        base = len(df_cerrados) if len(df_cerrados) > 0 else total
-        incidentes, adicionales = incidentes_relacionados(df_fuera_sla)
-        porcentaje = round((cantidad / base) * 100, 2) if base > 0 else 0
-        alertas.append(
-            {
-                "tipo": "sla",
-                "prioridad": cantidad,
-                "titulo": "Incidentes cerrados fuera de SLA",
-                "detalle": (
-                    f"Se encontraron {cantidad} incidentes cerrados por encima de su objetivo "
-                    f"segun prioridad y familia SLA, equivalente al {porcentaje}% de los incidentes cerrados analizados."
-                ),
-                "incidentes": incidentes,
-                "incidentes_adicionales": adicionales,
-            }
-        )
+    if df_fuera_sla.empty:
+        return
 
+    cantidad = len(df_fuera_sla)
+    base = len(df_cerrados) if len(df_cerrados) > 0 else total
+    incidentes, adicionales = incidentes_relacionados(df_fuera_sla)
+    porcentaje = round((cantidad / base) * 100, 2) if base > 0 else 0
+    alertas.append(
+        {
+            "tipo": "sla",
+            "prioridad": cantidad,
+            "titulo": "Incidentes cerrados fuera de SLA",
+            "detalle": (
+                f"Se encontraron {cantidad} incidentes cerrados por encima de su objetivo "
+                f"segun prioridad y familia SLA, equivalente al {porcentaje}% de los incidentes cerrados analizados."
+            ),
+            "incidentes": incidentes,
+            "incidentes_adicionales": adicionales,
+        }
+    )
+
+
+def preparar_base_alertas_incidentes(df):
+    trabajo = agregar_campos_sla_incidentes(df)
+    trabajo = trabajo[
+        ~trabajo["tipificacion_auto"].fillna("").isin([TIPIFICACION_CASO_CLIENTE_EXTERNO, NOC_TIPIFICATION])
+    ].copy()
+    if trabajo.empty:
+        return trabajo
+
+    trabajo["numero"] = trabajo["numero"].apply(safe_text)
+    trabajo["causa_raiz_auto"] = trabajo["causa_raiz_auto"].replace("", pd.NA).fillna(SIN_INFERENCIA_TEXT)
+    trabajo["servicio_negocio"] = trabajo["servicio_negocio"].replace("", pd.NA).fillna(SIN_SERVICIO_INFORMADO_TEXT)
+    trabajo["es_alerta_auto"] = trabajo["es_alerta_auto"].fillna("No")
+    trabajo["duracion_horas"] = pd.to_numeric(trabajo["duracion_horas"], errors="coerce")
+    return trabajo
+
+
+def construir_alertas_incidentes(df):
+    if df is None or df.empty:
+        return []
+
+    trabajo = preparar_base_alertas_incidentes(df)
+    if trabajo.empty:
+        return []
+
+    incidentes_reales = trabajo[trabajo["aplica_sla_incidente"]].copy()
+    total = len(incidentes_reales) if not incidentes_reales.empty else len(trabajo)
+    base_recurrencia = incidentes_reales if not incidentes_reales.empty else trabajo
+
+    alertas = []
+    agregar_alertas_causas_recurrentes(
+        alertas,
+        base_recurrencia,
+        total,
+        umbral_alerta_por_volumen(total, proporcion=0.08, minimo=2),
+    )
+    agregar_alertas_servicio_concentrado(
+        alertas,
+        base_recurrencia,
+        total,
+        umbral_alerta_por_volumen(total, proporcion=0.1, minimo=3),
+    )
+    agregar_alerta_volumen_noc(alertas, trabajo)
+    agregar_alerta_sla(alertas, incidentes_reales, total)
     return sorted(alertas, key=lambda alerta: alerta["prioridad"], reverse=True)

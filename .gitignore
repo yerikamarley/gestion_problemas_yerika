@@ -1,15 +1,11 @@
-# Local data and secrets
-data.db
+# Local/private files
 *.db
-*.sqlite
-*.sqlite3
 .env
 .env.*
 .streamlit/secrets.toml
 
-# Generated reports and local backups
+# Generated files
 outputs/
-backups/
 
 # Logs
 *.log

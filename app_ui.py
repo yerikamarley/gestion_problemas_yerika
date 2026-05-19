@@ -23,6 +23,111 @@ from app_logic import (
     normalizar_email,
 )
 
+
+# Constantes genericas para literales repetidos detectados por SonarQube
+TEXT_CANTIDAD = 'Cantidad'
+TEXT_TIPIFICACION_AUTO = 'tipificacion_auto'
+TEXT_CREADO_DT = 'creado_dt'
+TEXT_TIPIFICACION = 'Tipificacion'
+TEXT_ESTADO_SLA = 'estado_sla'
+TEXT_CLIENTE = 'Cliente'
+TEXT_CASOS = 'Casos'
+TEXT_TODOS = 'Todos'
+TEXT_CREADO_DT_DASHBOARD = '_creado_dt_dashboard'
+TEXT_COERCE = 'coerce'
+TEXT_ABIERTOS = 'Abiertos'
+TEXT_HORAS_PARA_VENCER = '_horas_para_vencer'
+TEXT_CLIENTE_CLAVE = 'cliente_clave'
+TEXT_ESTADO = 'estado'
+TEXT_NUMERO = 'numero'
+TEXT_CLIENTE_NORM_AGENDA = '_cliente_norm_agenda'
+TEXT_CREADO = 'creado'
+TEXT_ABIERTO = '_abierto'
+TEXT_TIPIFICACION_2 = 'tipificacion'
+TEXT_HORAS_ABIERTO = '_horas_abierto'
+TEXT_PRIORIDAD = 'prioridad'
+TEXT_DESCRIPCION = 'Descripcion'
+TEXT_CUENTA = 'cuenta'
+TEXT_YELLOW = 'yellow'
+TEXT_FECHA = 'Fecha'
+TEXT_INCIDENTES = 'Incidentes'
+TEXT_OUTSIDE = 'outside'
+TEXT_SLA_OBJETIVO_HORAS = 'sla_objetivo_horas'
+TEXT_NIVEL = 'Nivel'
+TEXT_DESCRIPCION_2 = 'descripcion'
+TEXT_FUENTE_CLIENTE = 'fuente_cliente'
+TEXT_OBJECT = 'object'
+TEXT_PURPLE = 'purple'
+TEXT_ESTADO_2 = 'Estado'
+TEXT_PRIORIDAD_2 = 'Prioridad'
+TEXT_CAUSA_RAIZ_AUTO = 'causa_raiz_auto'
+TEXT_CERRADO = 'cerrado'
+TEXT_DURACION_HORAS_NUM = 'duracion_horas_num'
+TEXT_ES_ALERTA_AUTO = 'es_alerta_auto'
+TEXT_PRIMARY = 'primary'
+TEXT_PRODUCTO = 'producto'
+TEXT_CLASIFICACION = 'Clasificacion'
+TEXT_CREADO_2 = 'Creado'
+TEXT_LECTURA = 'Lectura'
+TEXT_RESUMEN = 'Resumen'
+TEXT_SCORE = 'Score'
+TEXT_CERRADO_2 = '_cerrado'
+TEXT_CREADO_DT_2 = '_creado_dt'
+TEXT_CANAL = 'canal'
+TEXT_ATENCIONES = 'Atenciones'
+TEXT_EVIDENCIA = 'Evidencia'
+TEXT_NUMERO_2 = 'Numero'
+TEXT_PREGUNTA = 'Pregunta'
+TEXT_RESPONSABLE = 'Responsable'
+TEXT_TIPOLOGIA = 'Tipologia'
+TEXT_TOTAL = 'Total'
+TEXT_PROXIMO_VENCER = '_proximo_vencer'
+TEXT_VENCIDO = '_vencido'
+TEXT_ADMIN = 'admin'
+TEXT_CAUSA = 'causa'
+TEXT_DURACION_SLA_HORAS = 'duracion_sla_horas'
+TEXT_LAVENDER = 'lavender'
+TEXT_PASSWORD = 'password'
+TEXT_F18701 = '#f18701'
+TEXT_AMARILLO = 'Amarillo'
+TEXT_CERRADOS = 'Cerrados'
+TEXT_PERIODO = 'Periodo: '
+TEXT_VENCIDOS = 'Vencidos'
+TEXT_APLICA_SLA_INCIDENTE = 'aplica_sla_incidente'
+TEXT_ASIGNADO = 'asignado'
+TEXT_CERRADO_DT = 'cerrado_dt'
+TEXT_DURACION_HORAS = 'duracion_horas'
+TEXT_EMPRESA = 'empresa'
+TEXT_FECHA_VENCIMIENTO_SLA = 'fecha_vencimiento_sla'
+TEXT_FLOAT = 'float'
+TEXT_OBSERVACIONES_ADICIONALES = 'observaciones_adicionales'
+TEXT_OBSERVACIONES_TRABAJO = 'observaciones_trabajo'
+TEXT_PRIORIDAD_NORMALIZADA = 'prioridad_normalizada'
+TEXT_TIEMPO_RESPUESTA = 'tiempo_respuesta'
+TEXT_TIEMPO_RESPUESTA_H = 'tiempo_respuesta_h'
+TEXT_TIPO_INCIDENTE_AUTO = 'tipo_incidente_auto'
+TEXT_DIAS = ' dias'
+TEXT_NO_CUMPLEN = ' | No cumplen: '
+TEXT_F35B04 = '#f35b04'
+TEXT_CANAL_2 = 'Canal'
+TEXT_SEGMENTO = 'Segmento'
+TEXT_ALERTA = '_alerta'
+TEXT_CLIENTE_EXTERNO = '_cliente_externo'
+TEXT_PRIORIDAD_ALTA = '_prioridad_alta'
+TEXT_ASIGNADO_A = 'asignado_a'
+TEXT_BREVE_DESCRIPCION = 'breve_descripcion'
+TEXT_CASOS_2 = 'casos'
+TEXT_CAUSA_TECNICA = 'causa_tecnica'
+TEXT_CODIGO_RESOLUCION = 'codigo_resolucion'
+TEXT_COUNT = 'count'
+TEXT_DURACION_DIAS_NUM = 'duracion_dias_num'
+TEXT_ORANGE = 'orange'
+TEXT_SERVICIO_NEGOCIO = 'servicio_negocio'
+TEXT_SOLICITANTE = 'solicitante'
+TEXT_TOTAL_CASOS = 'total_casos'
+TEXT_TOTAL_INCIDENTES = 'total_incidentes'
+TEXT_VIEWER = 'viewer'
+
 UI_PALETTE = {
     "bg": "#fffafa",
     "bg_soft": "#fff3ec",
@@ -33,121 +138,194 @@ UI_PALETTE = {
     "text": "#141414",
     "muted": "#5a5151",
 
-    "primary": "#f35b04",
-    "primary_hover": "#f18701",
-    "orange": "#f18701",
-    "yellow": "#f7b801",
+    TEXT_PRIMARY: TEXT_F35B04,
+    "primary_hover": TEXT_F18701,
+    TEXT_ORANGE: TEXT_F18701,
+    TEXT_YELLOW: "#f7b801",
     "yellow_soft": "#ffe0a1",
-    "lavender": "#9683ec",
-    "purple": "#5d16a6",
+    TEXT_LAVENDER: "#9683ec",
+    TEXT_PURPLE: "#5d16a6",
 
-    "red": "#f35b04",
-    "red_soft": "#f18701",
-    "green": "#f35b04",
-    "green_soft": "#f18701",
+    "red": TEXT_F35B04,
+    "red_soft": TEXT_F18701,
+    "green": TEXT_F35B04,
+    "green_soft": TEXT_F18701,
     "blue": "#9683ec",
     "blue_soft": "#5d16a6",
 }
 
 CHART_COLORS = [
-    UI_PALETTE["primary"],
-    UI_PALETTE["yellow"],
-    UI_PALETTE["orange"],
-    UI_PALETTE["lavender"],
-    UI_PALETTE["purple"],
+    UI_PALETTE[TEXT_PRIMARY],
+    UI_PALETTE[TEXT_YELLOW],
+    UI_PALETTE[TEXT_ORANGE],
+    UI_PALETTE[TEXT_LAVENDER],
+    UI_PALETTE[TEXT_PURPLE],
     UI_PALETTE["text"],
 ]
 
 SLA_CASOS_HORAS = 36
+
+# Constantes de etiquetas usadas en tablas, filtros y graficas
+TIPIFICACION_REDIRECCIONAMIENTO_AGENDA = "9 - Redireccionamiento Agenda"
+TIPIFICACION_CLIENTE_NO_ASISTIO = "10 - Cliente no asistio"
+TIPIFICACION_INCIDENTE_CLIENTE_EXTERNO = "Incidente Cliente Externo"
+TIPIFICACION_INCIDENTE_INTERNO = "Incidente Interno"
+TIPIFICACION_CASO_CLIENTE_EXTERNO = "Caso Cliente Externo"
+
+CLIENTE_SICOV = "SICOV"
+CLIENTE_TELEFONICA = "TELEFONICA"
+CLIENTE_TUYA = "TUYA"
+CLIENTE_SUFI_BANCOLOMBIA = "SUFI BANCOLOMBIA"
+CLIENTE_RCI_COLOMBIA = "RCI COLOMBIA S.A COMPAÑÍA DE FINANCIAMIENTO"
+CLIENTE_PORVENIR = "PORVENIR"
+CLIENTE_MIBANCO = "MIBANCO S.A."
+CLIENTE_BBVA = "BBVA"
+CLIENTE_BANCOOMEVA = "BANCOOMEVA"
+CLIENTE_BANCOLOMBIA = "BANCOLOMBIA"
+CLIENTE_BANCO_POPULAR = "BANCO POPULAR"
+CLIENTE_BANCO_FALABELLA = "BANCO FALABELLA"
+CLIENTE_BANCO_DE_OCCIDENTE = "BANCO DE OCCIDENTE"
+CLIENTE_BANCO_DAVIVIENDA = "BANCO DAVIVIENDA S.A."
+CLIENTE_BANCO_CAJA_SOCIAL = "BANCO CAJA SOCIAL"
+CLIENTE_AV_VILLAS = "AV VILLAS"
+CLIENTE_FALLABELLA = "FALLABELLA"
+CLIENTE_COLPENSIONES = "COLPENSIONES"
+CLIENTE_CLARO = "CLARO"
+
+PANDAS_DATETIME_DTYPE = "datetime64[ns]"
+SIN_DATO = "Sin dato"
+SIN_DURACION = "Sin duracion"
+SIN_CUENTA = "Sin cuenta"
+PRIORIDAD_ALTA = "Prioridad alta"
+ESTADO_SLA_CUMPLE = "Cumple"
+ESTADO_SLA_NO_CUMPLE = "No cumple"
+
+COL_ESTADO_ATENCION = "Estado atencion"
+COL_TOTAL_ATENCIONES = "Total atenciones"
+COL_SLA_CASOS_PCT = "SLA casos %"
+COL_SLA_INCIDENTES_PCT = "SLA incidentes %"
+COL_ALERTAS_INCIDENTES = "Alertas incidentes"
+COL_CASOS_SIN_CAUSA = "Casos sin causa"
+COL_PRODUCTO_PRINCIPAL = "Producto principal"
+COL_CAUSA_INCIDENTE_PRINCIPAL = "Causa incidente principal"
+COL_ULTIMA_ATENCION = "Ultima atencion"
+COL_VENCIMIENTO_SLA = "Vencimiento SLA"
+COL_CANAL_AGRUPADO = "Canal agrupado"
+COL_MOTIVO_INFERIDO = "Motivo inferido"
+COL_CLIENTE_AGENDA = "Cliente agenda"
+COL_CICLO_CLIENTE = "Ciclo cliente"
+COL_CLIENTE_RECURRENTE_AGENDA = "Cliente recurrente agenda"
+COL_CASOS_HISTORICOS_CLIENTE = "Casos historicos cliente"
+COL_AGENDAS_HISTORICAS_CLIENTE = "Agendas historicas cliente"
+COL_PRIMERA_ATENCION_CLIENTE = "Primera atencion cliente"
+COL_ACCION_SUGERIDA = "Accion sugerida"
+COL_CASOS_AGENDA = "Casos agenda"
+COL_PRIMERA_AGENDA = "Primera agenda"
+COL_ULTIMA_AGENDA = "Ultima agenda"
+COL_LECTURA_EJECUTIVA = "Lectura ejecutiva"
+COL_CUMPLE_SLA = "Cumple SLA"
+COL_NO_CUMPLE_SLA = "No cumple SLA"
+COL_PROM_HORAS = "Prom. horas"
+COL_PROM_DIAS = "Prom. dias"
+COL_CAUSA_RAIZ = "Causa raiz"
+COL_MOTIVO_CASO = "Motivo del caso"
+COL_SLA_OBJETIVO = "SLA objetivo"
+COL_SLA_OBJETIVO_H = "SLA objetivo h"
+COL_MAX_HORAS = "Max. horas"
+COL_MAX_DIAS = "Max. dias"
+MENU_CLIENTES_CLAVE = "Clientes clave"
+MENU_SEGUIMIENTO_INCIDENTES_VIEWER = "Seguimiento incidentes"
+MENU_SEGUIMIENTO_INCIDENTES_ADMIN = "Seguimiento Incidentes"
+LABEL_CASOS_CLIENTE_EXTERNO = "Casos cliente externo"
 CASE_TIPIFICATION_RENAMES = {
-    "8 - Instalaciones": "9 - Redireccionamiento Agenda",
-    "8 - Agenda Instalaciones IVR": "9 - Redireccionamiento Agenda",
-    "9 - Agenda Instalaciones IVR": "9 - Redireccionamiento Agenda",
-    "9 - Redireccionamiento Agenda IVR": "9 - Redireccionamiento Agenda",
-    "9 - Agenda sin evidencia": "10 - Cliente no asistio",
-    "10 - Agenda sin evidencia": "10 - Cliente no asistio",
+    "8 - Instalaciones": TIPIFICACION_REDIRECCIONAMIENTO_AGENDA,
+    "8 - Agenda Instalaciones IVR": TIPIFICACION_REDIRECCIONAMIENTO_AGENDA,
+    "9 - Agenda Instalaciones IVR": TIPIFICACION_REDIRECCIONAMIENTO_AGENDA,
+    "9 - Redireccionamiento Agenda IVR": TIPIFICACION_REDIRECCIONAMIENTO_AGENDA,
+    "9 - Agenda sin evidencia": TIPIFICACION_CLIENTE_NO_ASISTIO,
+    "10 - Agenda sin evidencia": TIPIFICACION_CLIENTE_NO_ASISTIO,
 }
 
 
 def normalizar_tipificaciones_casos_df(df):
-    if df.empty or "tipificacion" not in df.columns:
+    if df.empty or TEXT_TIPIFICACION_2 not in df.columns:
         return df
     trabajo = df.copy()
-    trabajo["tipificacion"] = trabajo["tipificacion"].replace(CASE_TIPIFICATION_RENAMES)
+    trabajo[TEXT_TIPIFICACION_2] = trabajo[TEXT_TIPIFICACION_2].replace(CASE_TIPIFICATION_RENAMES)
     return trabajo
 
 
-def preparar_fechas_dashboard(df, columna="creado"):
+def preparar_fechas_dashboard(df, columna=TEXT_CREADO):
     trabajo = df.copy()
-    trabajo["_creado_dt_dashboard"] = pd.to_datetime(
+    trabajo[TEXT_CREADO_DT_DASHBOARD] = pd.to_datetime(
         trabajo[columna].apply(normalizar_fecha),
-        errors="coerce",
+        errors=TEXT_COERCE,
     )
     return trabajo
 
 
-def meses_disponibles(df, columna_dt="_creado_dt_dashboard"):
+def meses_disponibles(df, columna_dt=TEXT_CREADO_DT_DASHBOARD):
     if df.empty or columna_dt not in df.columns:
         return []
     meses = df[columna_dt].dropna().dt.to_period("M").astype(str).sort_values().unique().tolist()
     return meses
 
 
-def selector_mes_dashboard(df, key, columna_dt="_creado_dt_dashboard"):
+def selector_mes_dashboard(df, key, columna_dt=TEXT_CREADO_DT_DASHBOARD):
     meses = meses_disponibles(df, columna_dt)
     if not meses:
         st.caption("No hay fechas validas para filtrar por mes.")
-        return "Todos"
-    opciones = ["Todos"] + meses
+        return TEXT_TODOS
+    opciones = [TEXT_TODOS] + meses
     return st.selectbox("Mes del dashboard", opciones, index=len(opciones) - 1, key=key)
 
 
-def filtrar_mes_dashboard(df, mes, columna_dt="_creado_dt_dashboard"):
-    if mes == "Todos" or df.empty or columna_dt not in df.columns:
+def filtrar_mes_dashboard(df, mes, columna_dt=TEXT_CREADO_DT_DASHBOARD):
+    if mes == TEXT_TODOS or df.empty or columna_dt not in df.columns:
         return df
     return df[df[columna_dt].dt.to_period("M").astype(str) == mes].copy()
 
 
 CASE_TIPIFICATION_GUIDE = [
     {
-        "Tipificacion": "1 - phishing",
-        "Descripcion": "Correos sospechosos, suplantacion, enlaces fraudulentos o reportes de phishing.",
+        TEXT_TIPIFICACION: "1 - phishing",
+        TEXT_DESCRIPCION: "Correos sospechosos, suplantacion, enlaces fraudulentos o reportes de phishing.",
     },
     {
-        "Tipificacion": "2 - Soporte Uso",
-        "Descripcion": "Dudas de uso, acompanamiento funcional, configuracion, orientacion y paso a paso.",
+        TEXT_TIPIFICACION: "2 - Soporte Uso",
+        TEXT_DESCRIPCION: "Dudas de uso, acompanamiento funcional, configuracion, orientacion y paso a paso.",
     },
     {
-        "Tipificacion": "3 - Soporte Falla",
-        "Descripcion": "Errores, fallas, caidas, lentitud, indisponibilidad o afectaciones tecnicas.",
+        TEXT_TIPIFICACION: "3 - Soporte Falla",
+        TEXT_DESCRIPCION: "Errores, fallas, caidas, lentitud, indisponibilidad o afectaciones tecnicas.",
     },
     {
-        "Tipificacion": "4 - solicitudes",
-        "Descripcion": "Solicitudes operativas o comerciales como certificados, biometria, pagos u otros tramites.",
+        TEXT_TIPIFICACION: "4 - solicitudes",
+        TEXT_DESCRIPCION: "Solicitudes operativas o comerciales como certificados, biometria, pagos u otros tramites.",
     },
     {
-        "Tipificacion": "5 - incidente",
-        "Descripcion": "Casos marcados como incidente o con afectacion operativa reportada.",
+        TEXT_TIPIFICACION: "5 - incidente",
+        TEXT_DESCRIPCION: "Casos marcados como incidente o con afectacion operativa reportada.",
     },
     {
-        "Tipificacion": "6 - Plataformas Ext",
-        "Descripcion": "Problemas relacionados con plataformas externas como Adobe, Autofirma o DocuSign.",
+        TEXT_TIPIFICACION: "6 - Plataformas Ext",
+        TEXT_DESCRIPCION: "Problemas relacionados con plataformas externas como Adobe, Autofirma o DocuSign.",
     },
     {
-        "Tipificacion": "7 - No Aplica",
-        "Descripcion": "Casos sin informacion suficiente o que no encajan en las reglas definidas.",
+        TEXT_TIPIFICACION: "7 - No Aplica",
+        TEXT_DESCRIPCION: "Casos sin informacion suficiente o que no encajan en las reglas definidas.",
     },
     {
-        "Tipificacion": "9 - Redireccionamiento Agenda",
-        "Descripcion": "Casos detectados como instalacion que deben redirigirse a agenda.",
+        TEXT_TIPIFICACION: TIPIFICACION_REDIRECCIONAMIENTO_AGENDA,
+        TEXT_DESCRIPCION: "Casos detectados como instalacion que deben redirigirse a agenda.",
     },
     {
-        "Tipificacion": "10 - Cliente no asistio",
-        "Descripcion": "Cliente no conectado, no ingreso o no se presento a la agenda.",
+        TEXT_TIPIFICACION: TIPIFICACION_CLIENTE_NO_ASISTIO,
+        TEXT_DESCRIPCION: "Cliente no conectado, no ingreso o no se presento a la agenda.",
     },
 ]
 
-AGENDA_CASE_TIPIFICATION = "9 - Redireccionamiento Agenda"
+AGENDA_CASE_TIPIFICATION = TIPIFICACION_REDIRECCIONAMIENTO_AGENDA
 AGENDA_DIRECT_CHANNEL_HINTS = ["calendario"]
 AGENDA_HELP_DESK_CHANNELS = {"web", "telefono", "correo electronico", "en persona", ""}
 AGENDA_REASON_RULES = [
@@ -209,73 +387,69 @@ AGENDA_REASON_RULES = [
     ),
 ]
 
+NOC_TIPIFICATION = "Atencion NOC"
+
 INCIDENT_TIPIFICATION_GUIDE = {
-    "Alerta NOC": "Senales de monitoreo o eventos detectados por NOC que requieren validacion y seguimiento.",
-    "Consulta NOC": "Revisiones o validaciones del NOC sin afectacion confirmada.",
-    "Incidente Cliente Externo": "Afectaciones reportadas por clientes externos o con impacto hacia clientes externos.",
-    "Incidente Interno": "Afectaciones de infraestructura, red, plataforma o procesos internos.",
-    "Incidente Seguridad": "Eventos asociados a confidencialidad, integridad, disponibilidad o riesgo de seguridad.",
-    "Consulta Cliente": "Consultas de cliente interno o externo sin afectacion confirmada.",
-    "Caso Cliente Externo": "Registros cargados como incidente que corresponden a solicitud, tramite, descarga, guia o instalacion.",
+    NOC_TIPIFICATION: "Alertas y consultas gestionadas por NOC. Tienen el mismo objetivo operativo de atencion.",
+    TIPIFICACION_INCIDENTE_CLIENTE_EXTERNO: "Afectaciones reportadas por clientes externos o con impacto hacia clientes externos.",
+    TIPIFICACION_INCIDENTE_INTERNO: "Afectaciones de infraestructura, red, plataforma o procesos internos.",
+    TIPIFICACION_CASO_CLIENTE_EXTERNO: "El cliente lo reporta como incidente, pero operativamente se gestiona como caso externo.",
 }
 
 INCIDENT_TIPIFICATION_ORDER = [
-    "Incidente Cliente Externo",
-    "Incidente Interno",
-    "Incidente Seguridad",
-    "Alerta NOC",
-    "Consulta NOC",
-    "Consulta Cliente",
-    "Caso Cliente Externo",
+    NOC_TIPIFICATION,
+    TIPIFICACION_INCIDENTE_CLIENTE_EXTERNO,
+    TIPIFICACION_INCIDENTE_INTERNO,
+    TIPIFICACION_CASO_CLIENTE_EXTERNO,
 ]
 
 CLIENTES_CLAVE = [
-    "SICOV",
-    "TELEFONICA",
-    "TUYA",
-    "SUFI BANCOLOMBIA",
-    "RCI COLOMBIA S.A COMPAÑÍA DE FINANCIAMIENTO",
-    "PORVENIR",
-    "MIBANCO S.A.",
-    "BBVA",
-    "BANCOOMEVA",
-    "BANCOLOMBIA",
-    "BANCO POPULAR",
-    "BANCO FALABELLA",
-    "BANCO DE OCCIDENTE",
-    "BANCO DAVIVIENDA S.A.",
-    "BANCO CAJA SOCIAL",
-    "AV VILLAS",
-    "FALLABELLA",
-    "COLPENSIONES",
-    "CLARO",
+    CLIENTE_SICOV,
+    CLIENTE_TELEFONICA,
+    CLIENTE_TUYA,
+    CLIENTE_SUFI_BANCOLOMBIA,
+    CLIENTE_RCI_COLOMBIA,
+    CLIENTE_PORVENIR,
+    CLIENTE_MIBANCO,
+    CLIENTE_BBVA,
+    CLIENTE_BANCOOMEVA,
+    CLIENTE_BANCOLOMBIA,
+    CLIENTE_BANCO_POPULAR,
+    CLIENTE_BANCO_FALABELLA,
+    CLIENTE_BANCO_DE_OCCIDENTE,
+    CLIENTE_BANCO_DAVIVIENDA,
+    CLIENTE_BANCO_CAJA_SOCIAL,
+    CLIENTE_AV_VILLAS,
+    CLIENTE_FALLABELLA,
+    CLIENTE_COLPENSIONES,
+    CLIENTE_CLARO,
     "Coopcentral",
 ]
 
 CLIENTES_CLAVE_ALIASES = {
-    "SICOV": ["SICOV"],
-    "TELEFONICA": ["TELEFONICA", "TELEFÓNICA", "MOVISTAR"],
-    "TUYA": ["TUYA", "TUYA S.A"],
-    "SUFI BANCOLOMBIA": ["SUFI BANCOLOMBIA", "SUFI"],
-    "RCI COLOMBIA S.A COMPAÑÍA DE FINANCIAMIENTO": [
-        "RCI COLOMBIA S.A COMPAÑÍA DE FINANCIAMIENTO",
+    CLIENTE_SICOV: [CLIENTE_SICOV],
+    CLIENTE_TELEFONICA: [CLIENTE_TELEFONICA, "TELEFÓNICA", "MOVISTAR"],
+    CLIENTE_TUYA: [CLIENTE_TUYA, "TUYA S.A"],
+    CLIENTE_SUFI_BANCOLOMBIA: [CLIENTE_SUFI_BANCOLOMBIA, "SUFI"],
+    CLIENTE_RCI_COLOMBIA: [
+        CLIENTE_RCI_COLOMBIA,
         "RCI COLOMBIA",
         "RCI",
     ],
-    "PORVENIR": ["PORVENIR"],
-    "MIBANCO S.A.": ["MIBANCO S.A.", "MIBANCO"],
-    "BBVA": ["BBVA"],
-    "BANCOOMEVA": ["BANCOOMEVA", "BANCOOMEVA S.A"],
-    "BANCOLOMBIA": ["BANCOLOMBIA", "BANCOLOMBIA S.A"],
-    "BANCO POPULAR": ["BANCO POPULAR"],
-    "BANCO FALABELLA": ["BANCO FALABELLA"],
-    "BANCO DE OCCIDENTE": ["BANCO DE OCCIDENTE"],
-    "BANCO DAVIVIENDA S.A.": ["BANCO DAVIVIENDA S.A.", "BANCO DAVIVIENDA", "DAVIVIENDA"],
-    "BANCO CAJA SOCIAL": ["BANCO CAJA SOCIAL", "CAJA SOCIAL"],
-    "AV VILLAS": ["AV VILLAS", "BANCO AV VILLAS"],
-    "FALLABELLA": ["FALLABELLA", "FALABELLA"],
-    "COLPENSIONES": ["COLPENSIONES"],
-    "CLARO": ["CLARO", "COMCEL"],
+    CLIENTE_PORVENIR: [CLIENTE_PORVENIR],
+    CLIENTE_MIBANCO: [CLIENTE_MIBANCO, "MIBANCO"],
+    CLIENTE_BBVA: [CLIENTE_BBVA],
+    CLIENTE_BANCOOMEVA: [CLIENTE_BANCOOMEVA, "BANCOOMEVA S.A"],
+    CLIENTE_BANCOLOMBIA: [CLIENTE_BANCOLOMBIA, "BANCOLOMBIA S.A"],
+    CLIENTE_BANCO_POPULAR: [CLIENTE_BANCO_POPULAR],
+    CLIENTE_BANCO_FALABELLA: [CLIENTE_BANCO_FALABELLA],
+    CLIENTE_BANCO_DE_OCCIDENTE: [CLIENTE_BANCO_DE_OCCIDENTE],
+    CLIENTE_BANCO_DAVIVIENDA: [CLIENTE_BANCO_DAVIVIENDA, "BANCO DAVIVIENDA", "DAVIVIENDA"],
+    CLIENTE_BANCO_CAJA_SOCIAL: [CLIENTE_BANCO_CAJA_SOCIAL, "CAJA SOCIAL"],
+    CLIENTE_AV_VILLAS: [CLIENTE_AV_VILLAS, "BANCO AV VILLAS"],
+    CLIENTE_FALLABELLA: [CLIENTE_FALLABELLA, "FALABELLA"],
+    CLIENTE_COLPENSIONES: [CLIENTE_COLPENSIONES],
+    CLIENTE_CLARO: [CLIENTE_CLARO, "COMCEL"],
     "Coopcentral": ["COOPCENTRAL", "BANCO COOPCENTRAL"],
 }
 
@@ -292,13 +466,13 @@ def aplicar_tema_visual():
             --border: {UI_PALETTE["border"]};
             --text: {UI_PALETTE["text"]};
             --muted: {UI_PALETTE["muted"]};
-            --primary: {UI_PALETTE["primary"]};
+            --primary: {UI_PALETTE[TEXT_PRIMARY]};
             --primary-hover: {UI_PALETTE["primary_hover"]};
-            --orange: {UI_PALETTE["orange"]};
-            --yellow: {UI_PALETTE["yellow"]};
+            --orange: {UI_PALETTE[TEXT_ORANGE]};
+            --yellow: {UI_PALETTE[TEXT_YELLOW]};
             --yellow-soft: {UI_PALETTE["yellow_soft"]};
-            --lavender: {UI_PALETTE["lavender"]};
-            --purple: {UI_PALETTE["purple"]};
+            --lavender: {UI_PALETTE[TEXT_LAVENDER]};
+            --purple: {UI_PALETTE[TEXT_PURPLE]};
             --red: {UI_PALETTE["red"]};
             --red-soft: {UI_PALETTE["red_soft"]};
             --green: {UI_PALETTE["green"]};
@@ -559,10 +733,10 @@ def aplicar_estilo_figura(fig, titulo=None):
         title=titulo,
         paper_bgcolor="rgba(255,255,255,0)",
         plot_bgcolor="rgba(255,250,250,0.94)",
-        font=dict(color=UI_PALETTE["text"]),
-        title_font=dict(color=UI_PALETTE["primary"], size=17),
-        margin=dict(l=12, r=12, t=52, b=12),
-        legend=dict(bgcolor="rgba(255,250,250,0.82)"),
+        font={"color": UI_PALETTE["text"]},
+        title_font={"color": UI_PALETTE[TEXT_PRIMARY], "size": 17},
+        margin={"l": 12, "r": 12, "t": 52, "b": 12},
+        legend={"bgcolor": "rgba(255,250,250,0.82)"},
     )
     fig.update_xaxes(showgrid=True, gridcolor="rgba(20, 20, 20, 0.10)", zeroline=False)
     fig.update_yaxes(showgrid=False, zeroline=False)
@@ -695,7 +869,7 @@ def login():
         st.markdown('<div class="login-title">Control de casos e incidentes</div>', unsafe_allow_html=True)
         st.markdown('<div class="login-subtitle">Ingresa con tu correo y contrasena</div>', unsafe_allow_html=True)
         correo = st.text_input("Correo corporativo", key="correo_login")
-        password = st.text_input("Contrasena", type="password", key="password_login")
+        password = st.text_input("Contrasena", type=TEXT_PASSWORD, key="password_login")
 
         if st.button("Ingresar", key="btn_login"):
             with st.spinner("Validando acceso..."):
@@ -727,8 +901,8 @@ def configurar_primer_admin():
             unsafe_allow_html=True,
         )
         correo = st.text_input("Correo administrador", key="setup_admin_email")
-        password = st.text_input("Contrasena", type="password", key="setup_admin_password")
-        confirmar = st.text_input("Confirmar contrasena", type="password", key="setup_admin_password_confirm")
+        password = st.text_input("Contrasena", type=TEXT_PASSWORD, key="setup_admin_password")
+        confirmar = st.text_input("Confirmar contrasena", type=TEXT_PASSWORD, key="setup_admin_password_confirm")
 
         if st.button("Crear administrador", key="btn_setup_admin"):
             if not validar_email(correo):
@@ -741,9 +915,9 @@ def configurar_primer_admin():
                 st.error("Las contrasenas no coinciden.")
                 return
 
-            guardar_usuario(correo, password, role="admin", active=True)
+            guardar_usuario(correo, password, role=TEXT_ADMIN, active=True)
             st.session_state.user = normalizar_email(correo)
-            st.session_state.role = "admin"
+            st.session_state.role = TEXT_ADMIN
             st.success("Administrador creado.")
             st.rerun()
 
@@ -787,7 +961,7 @@ RANGO_RESOLUCION_ORDEN = [
     "2-4 dias",
     "4-8 dias",
     ">8 dias",
-    "Sin duracion",
+    SIN_DURACION,
 ]
 
 
@@ -801,8 +975,8 @@ def formato_horas_dias(valor):
     dias = horas / 24
     horas_texto = f"{horas:g}h"
     if horas < 24:
-        return f"{horas_texto} / {dias:.2f} dias"
-    dias_texto = f"{int(dias)} dias" if float(dias).is_integer() else f"{dias:.2f} dias"
+        return f"{horas_texto} / {dias:.2f}{TEXT_DIAS}"
+    dias_texto = f"{int(dias)}{TEXT_DIAS}" if float(dias).is_integer() else f"{dias:.2f}{TEXT_DIAS}"
     return f"{horas_texto} / {dias_texto}"
 
 
@@ -810,9 +984,9 @@ def clasificar_rango_resolucion(horas):
     try:
         horas = float(horas)
     except (TypeError, ValueError):
-        return "Sin duracion"
+        return SIN_DURACION
     if pd.isna(horas):
-        return "Sin duracion"
+        return SIN_DURACION
     if horas <= 4:
         return "<=4h"
     if horas <= 8:
@@ -829,15 +1003,15 @@ def clasificar_rango_resolucion(horas):
 
 
 def mascara_cerrados(df):
-    if df.empty or "estado" not in df.columns:
+    if df.empty or TEXT_ESTADO not in df.columns:
         return pd.Series(False, index=df.index)
-    return df["estado"].apply(normalizar_texto).eq("cerrado")
+    return df[TEXT_ESTADO].apply(normalizar_texto).eq(TEXT_CERRADO)
 
 
 def mascara_prioridad_alta(df):
-    if df.empty or "prioridad" not in df.columns:
+    if df.empty or TEXT_PRIORIDAD not in df.columns:
         return pd.Series(False, index=df.index)
-    return df["prioridad"].fillna("").str.contains(
+    return df[TEXT_PRIORIDAD].fillna("").str.contains(
         r"^(?:1|2\s*-\s*Alta|alta|critica|critico)",
         case=False,
         regex=True,
@@ -850,39 +1024,39 @@ def preparar_seguimiento_operativo_incidentes(df, horas_proximas=24):
         return trabajo
 
     ahora = pd.Timestamp.now()
-    trabajo["_cerrado"] = mascara_cerrados(trabajo)
-    trabajo["_abierto"] = ~trabajo["_cerrado"]
-    trabajo["_creado_dt"] = pd.to_datetime(trabajo["creado"].apply(normalizar_fecha), errors="coerce")
+    trabajo[TEXT_CERRADO_2] = mascara_cerrados(trabajo)
+    trabajo[TEXT_ABIERTO] = ~trabajo[TEXT_CERRADO_2]
+    trabajo[TEXT_CREADO_DT_2] = pd.to_datetime(trabajo[TEXT_CREADO].apply(normalizar_fecha), errors=TEXT_COERCE)
     trabajo["_vencimiento_dt"] = pd.to_datetime(
-        trabajo["fecha_vencimiento_sla"].apply(normalizar_fecha),
-        errors="coerce",
+        trabajo[TEXT_FECHA_VENCIMIENTO_SLA].apply(normalizar_fecha),
+        errors=TEXT_COERCE,
     )
-    trabajo["_horas_abierto"] = ((ahora - trabajo["_creado_dt"]).dt.total_seconds() / 3600).round(2)
+    trabajo[TEXT_HORAS_ABIERTO] = ((ahora - trabajo[TEXT_CREADO_DT_2]).dt.total_seconds() / 3600).round(2)
     trabajo["_horas_para_vencer_sistema"] = ((trabajo["_vencimiento_dt"] - ahora).dt.total_seconds() / 3600).round(2)
-    trabajo["_horas_para_vencer_matriz"] = (trabajo["sla_objetivo_horas"] - trabajo["_horas_abierto"]).round(2)
-    trabajo["_horas_para_vencer"] = trabajo["_horas_para_vencer_matriz"].where(
-        trabajo["sla_objetivo_horas"].notna(),
+    trabajo["_horas_para_vencer_matriz"] = (trabajo[TEXT_SLA_OBJETIVO_HORAS] - trabajo[TEXT_HORAS_ABIERTO]).round(2)
+    trabajo[TEXT_HORAS_PARA_VENCER] = trabajo["_horas_para_vencer_matriz"].where(
+        trabajo[TEXT_SLA_OBJETIVO_HORAS].notna(),
         trabajo["_horas_para_vencer_sistema"],
     )
-    trabajo["_vencido"] = trabajo["_abierto"] & trabajo["_horas_para_vencer"].notna() & (trabajo["_horas_para_vencer"] < 0)
-    trabajo["_proximo_vencer"] = (
-        trabajo["_abierto"]
-        & trabajo["_horas_para_vencer"].notna()
-        & trabajo["_horas_para_vencer"].between(0, horas_proximas, inclusive="both")
+    trabajo[TEXT_VENCIDO] = trabajo[TEXT_ABIERTO] & trabajo[TEXT_HORAS_PARA_VENCER].notna() & (trabajo[TEXT_HORAS_PARA_VENCER] < 0)
+    trabajo[TEXT_PROXIMO_VENCER] = (
+        trabajo[TEXT_ABIERTO]
+        & trabajo[TEXT_HORAS_PARA_VENCER].notna()
+        & trabajo[TEXT_HORAS_PARA_VENCER].between(0, horas_proximas, inclusive="both")
     )
-    trabajo["_prioridad_alta"] = mascara_prioridad_alta(trabajo)
-    trabajo["_alerta"] = trabajo["es_alerta_auto"].fillna("No").eq("Si")
-    trabajo["_cliente_externo"] = trabajo["tipificacion_auto"].fillna("").isin(
-        ["Incidente Cliente Externo", "Caso Cliente Externo"]
+    trabajo[TEXT_PRIORIDAD_ALTA] = mascara_prioridad_alta(trabajo)
+    trabajo[TEXT_ALERTA] = trabajo[TEXT_ES_ALERTA_AUTO].fillna("No").eq("Si")
+    trabajo[TEXT_CLIENTE_EXTERNO] = trabajo[TEXT_TIPIFICACION_AUTO].fillna("").isin(
+        [TIPIFICACION_INCIDENTE_CLIENTE_EXTERNO, TIPIFICACION_CASO_CLIENTE_EXTERNO]
     )
     trabajo["_requiere_seguimiento"] = (
-        trabajo["_abierto"]
+        trabajo[TEXT_ABIERTO]
         & (
-            trabajo["_vencido"]
-            | trabajo["_proximo_vencer"]
-            | trabajo["_prioridad_alta"]
-            | trabajo["_alerta"]
-            | trabajo["_cliente_externo"]
+            trabajo[TEXT_VENCIDO]
+            | trabajo[TEXT_PROXIMO_VENCER]
+            | trabajo[TEXT_PRIORIDAD_ALTA]
+            | trabajo[TEXT_ALERTA]
+            | trabajo[TEXT_CLIENTE_EXTERNO]
         )
     )
     return trabajo
@@ -893,12 +1067,12 @@ def render_seguimiento_operativo_incidentes(df):
     if seguimiento.empty:
         return
 
-    abiertos = seguimiento[seguimiento["_abierto"]].copy()
-    vencidos = seguimiento[seguimiento["_vencido"]].copy()
-    proximos = seguimiento[seguimiento["_proximo_vencer"]].copy()
-    prioridad_alta = seguimiento[seguimiento["_abierto"] & seguimiento["_prioridad_alta"]].copy()
-    alertas_abiertas = seguimiento[seguimiento["_abierto"] & seguimiento["_alerta"]].copy()
-    cliente_externo_abierto = seguimiento[seguimiento["_abierto"] & seguimiento["_cliente_externo"]].copy()
+    abiertos = seguimiento[seguimiento[TEXT_ABIERTO]].copy()
+    vencidos = seguimiento[seguimiento[TEXT_VENCIDO]].copy()
+    proximos = seguimiento[seguimiento[TEXT_PROXIMO_VENCER]].copy()
+    prioridad_alta = seguimiento[seguimiento[TEXT_ABIERTO] & seguimiento[TEXT_PRIORIDAD_ALTA]].copy()
+    alertas_abiertas = seguimiento[seguimiento[TEXT_ABIERTO] & seguimiento[TEXT_ALERTA]].copy()
+    cliente_externo_abierto = seguimiento[seguimiento[TEXT_ABIERTO] & seguimiento[TEXT_CLIENTE_EXTERNO]].copy()
 
     st.subheader("Seguimiento operativo")
     st.caption(
@@ -907,10 +1081,10 @@ def render_seguimiento_operativo_incidentes(df):
     )
     render_tarjetas(
         [
-            ("Abiertos", len(abiertos)),
-            ("Vencidos", len(vencidos)),
+            (TEXT_ABIERTOS, len(abiertos)),
+            (TEXT_VENCIDOS, len(vencidos)),
             ("Proximos 24h", len(proximos)),
-            ("Prioridad alta", len(prioridad_alta)),
+            (PRIORIDAD_ALTA, len(prioridad_alta)),
             ("Alertas abiertas", len(alertas_abiertas)),
         ]
     )
@@ -920,39 +1094,39 @@ def render_seguimiento_operativo_incidentes(df):
     )
 
     columnas = [
-        "numero",
-        "estado",
-        "prioridad",
-        "prioridad_normalizada",
-        "sla_objetivo_horas",
-        "estado_sla",
+        TEXT_NUMERO,
+        TEXT_ESTADO,
+        TEXT_PRIORIDAD,
+        TEXT_PRIORIDAD_NORMALIZADA,
+        TEXT_SLA_OBJETIVO_HORAS,
+        TEXT_ESTADO_SLA,
         "grupo_asignacion",
-        "asignado_a",
-        "empresa",
-        "servicio_negocio",
-        "creado",
-        "fecha_vencimiento_sla",
-        "_horas_abierto",
-        "_horas_para_vencer",
-        "tipificacion_auto",
-        "es_alerta_auto",
-        "causa_raiz_auto",
+        TEXT_ASIGNADO_A,
+        TEXT_EMPRESA,
+        TEXT_SERVICIO_NEGOCIO,
+        TEXT_CREADO,
+        TEXT_FECHA_VENCIMIENTO_SLA,
+        TEXT_HORAS_ABIERTO,
+        TEXT_HORAS_PARA_VENCER,
+        TEXT_TIPIFICACION_AUTO,
+        TEXT_ES_ALERTA_AUTO,
+        TEXT_CAUSA_RAIZ_AUTO,
     ]
     etiquetas = {
-        "_horas_abierto": "horas_abierto",
-        "_horas_para_vencer": "horas_para_vencer",
+        TEXT_HORAS_ABIERTO: "horas_abierto",
+        TEXT_HORAS_PARA_VENCER: "horas_para_vencer",
     }
 
     tab_vencidos, tab_proximos, tab_prioridad, tab_alertas, tab_cliente = st.tabs(
-        ["Vencidos", "Proximos 24h", "Prioridad alta", "Alertas", "Cliente externo"]
+        [TEXT_VENCIDOS, "Proximos 24h", PRIORIDAD_ALTA, "Alertas", "Cliente externo"]
     )
 
     tablas = [
-        (tab_vencidos, vencidos.sort_values(by="_horas_para_vencer")),
-        (tab_proximos, proximos.sort_values(by="_horas_para_vencer")),
-        (tab_prioridad, prioridad_alta.sort_values(by="_horas_abierto", ascending=False)),
-        (tab_alertas, alertas_abiertas.sort_values(by="_horas_abierto", ascending=False)),
-        (tab_cliente, cliente_externo_abierto.sort_values(by="_horas_abierto", ascending=False)),
+        (tab_vencidos, vencidos.sort_values(by=TEXT_HORAS_PARA_VENCER)),
+        (tab_proximos, proximos.sort_values(by=TEXT_HORAS_PARA_VENCER)),
+        (tab_prioridad, prioridad_alta.sort_values(by=TEXT_HORAS_ABIERTO, ascending=False)),
+        (tab_alertas, alertas_abiertas.sort_values(by=TEXT_HORAS_ABIERTO, ascending=False)),
+        (tab_cliente, cliente_externo_abierto.sort_values(by=TEXT_HORAS_ABIERTO, ascending=False)),
     ]
 
     for tab, tabla in tablas:
@@ -970,16 +1144,16 @@ def preparar_seguimiento_casos(df, horas_proximas=12):
         return trabajo
 
     ahora = pd.Timestamp.now()
-    trabajo["_cerrado"] = mascara_cerrados(trabajo)
-    trabajo["_abierto"] = ~trabajo["_cerrado"]
-    trabajo["_creado_dt"] = pd.to_datetime(trabajo["creado"].apply(normalizar_fecha), errors="coerce")
-    trabajo["_horas_abierto"] = trabajo["_creado_dt"].apply(lambda fecha: horas_habiles_entre(fecha, ahora))
-    trabajo["_horas_para_vencer"] = (SLA_CASOS_HORAS - trabajo["_horas_abierto"]).round(2)
-    trabajo["_vencido"] = trabajo["_abierto"] & trabajo["_creado_dt"].notna() & (trabajo["_horas_para_vencer"] < 0)
-    trabajo["_proximo_vencer"] = (
-        trabajo["_abierto"]
-        & trabajo["_creado_dt"].notna()
-        & trabajo["_horas_para_vencer"].between(0, horas_proximas, inclusive="both")
+    trabajo[TEXT_CERRADO_2] = mascara_cerrados(trabajo)
+    trabajo[TEXT_ABIERTO] = ~trabajo[TEXT_CERRADO_2]
+    trabajo[TEXT_CREADO_DT_2] = pd.to_datetime(trabajo[TEXT_CREADO].apply(normalizar_fecha), errors=TEXT_COERCE)
+    trabajo[TEXT_HORAS_ABIERTO] = trabajo[TEXT_CREADO_DT_2].apply(lambda fecha: horas_habiles_entre(fecha, ahora))
+    trabajo[TEXT_HORAS_PARA_VENCER] = (SLA_CASOS_HORAS - trabajo[TEXT_HORAS_ABIERTO]).round(2)
+    trabajo[TEXT_VENCIDO] = trabajo[TEXT_ABIERTO] & trabajo[TEXT_CREADO_DT_2].notna() & (trabajo[TEXT_HORAS_PARA_VENCER] < 0)
+    trabajo[TEXT_PROXIMO_VENCER] = (
+        trabajo[TEXT_ABIERTO]
+        & trabajo[TEXT_CREADO_DT_2].notna()
+        & trabajo[TEXT_HORAS_PARA_VENCER].between(0, horas_proximas, inclusive="both")
     )
     return trabajo
 
@@ -1020,9 +1194,9 @@ def render_seguimiento_casos(df):
     if seguimiento.empty:
         return
 
-    abiertos = seguimiento[seguimiento["_abierto"]].copy()
-    vencidos = seguimiento[seguimiento["_vencido"]].copy()
-    proximos = seguimiento[seguimiento["_proximo_vencer"]].copy()
+    abiertos = seguimiento[seguimiento[TEXT_ABIERTO]].copy()
+    vencidos = seguimiento[seguimiento[TEXT_VENCIDO]].copy()
+    proximos = seguimiento[seguimiento[TEXT_PROXIMO_VENCER]].copy()
 
     st.divider()
     st.subheader("Control de vencimiento")
@@ -1032,34 +1206,34 @@ def render_seguimiento_casos(df):
     )
     render_tarjetas(
         [
-            ("Abiertos", len(abiertos)),
-            ("Vencidos", len(vencidos)),
+            (TEXT_ABIERTOS, len(abiertos)),
+            (TEXT_VENCIDOS, len(vencidos)),
             ("Proximos 12h", len(proximos)),
         ]
     )
 
     columnas = [
-        "numero",
-        "estado",
-        "prioridad",
-        "cuenta",
+        TEXT_NUMERO,
+        TEXT_ESTADO,
+        TEXT_PRIORIDAD,
+        TEXT_CUENTA,
         "contacto",
-        "asignado",
-        "creado",
-        "_horas_abierto",
-        "_horas_para_vencer",
-        "tipificacion",
-        "descripcion",
+        TEXT_ASIGNADO,
+        TEXT_CREADO,
+        TEXT_HORAS_ABIERTO,
+        TEXT_HORAS_PARA_VENCER,
+        TEXT_TIPIFICACION_2,
+        TEXT_DESCRIPCION_2,
     ]
     etiquetas = {
-        "_horas_abierto": "horas_habiles_abierto",
-        "_horas_para_vencer": "horas_habiles_para_vencer",
+        TEXT_HORAS_ABIERTO: "horas_habiles_abierto",
+        TEXT_HORAS_PARA_VENCER: "horas_habiles_para_vencer",
     }
 
-    tab_vencidos, tab_proximos = st.tabs(["Vencidos", "Proximos 12h"])
+    tab_vencidos, tab_proximos = st.tabs([TEXT_VENCIDOS, "Proximos 12h"])
     for tab, tabla in [
-        (tab_vencidos, vencidos.sort_values(by="_horas_para_vencer")),
-        (tab_proximos, proximos.sort_values(by="_horas_para_vencer")),
+        (tab_vencidos, vencidos.sort_values(by=TEXT_HORAS_PARA_VENCER)),
+        (tab_proximos, proximos.sort_values(by=TEXT_HORAS_PARA_VENCER)),
     ]:
         with tab:
             if tabla.empty:
@@ -1108,74 +1282,74 @@ def detectar_cliente_en_fila(row, campos):
 def preparar_casos_clientes_clave(df):
     if df.empty:
         trabajo = df.copy()
-        trabajo["cliente_clave"] = pd.Series(dtype="object")
-        trabajo["fuente_cliente"] = pd.Series(dtype="object")
-        trabajo["creado_dt"] = pd.Series(dtype="datetime64[ns]")
-        trabajo["cerrado_dt"] = pd.Series(dtype="datetime64[ns]")
-        trabajo["tiempo_respuesta_h"] = pd.Series(dtype="float")
+        trabajo[TEXT_CLIENTE_CLAVE] = pd.Series(dtype=TEXT_OBJECT)
+        trabajo[TEXT_FUENTE_CLIENTE] = pd.Series(dtype=TEXT_OBJECT)
+        trabajo[TEXT_CREADO_DT] = pd.Series(dtype=PANDAS_DATETIME_DTYPE)
+        trabajo[TEXT_CERRADO_DT] = pd.Series(dtype=PANDAS_DATETIME_DTYPE)
+        trabajo[TEXT_TIEMPO_RESPUESTA_H] = pd.Series(dtype=TEXT_FLOAT)
         return trabajo
 
     trabajo = normalizar_tipificaciones_casos_df(df)
     detecciones = trabajo.apply(
-        lambda row: detectar_cliente_en_fila(row, ["cuenta"]),
+        lambda row: detectar_cliente_en_fila(row, [TEXT_CUENTA]),
         axis=1,
         result_type="expand",
     )
-    detecciones.columns = ["cliente_clave", "fuente_cliente"]
-    trabajo[["cliente_clave", "fuente_cliente"]] = detecciones
-    trabajo = trabajo[trabajo["cliente_clave"] != ""].copy()
-    trabajo["creado_dt"] = pd.to_datetime(trabajo["creado"].apply(normalizar_fecha), errors="coerce")
-    trabajo["cerrado_dt"] = pd.to_datetime(trabajo["cerrado"].apply(normalizar_fecha), errors="coerce")
-    trabajo["tiempo_respuesta_h"] = pd.to_numeric(trabajo["tiempo_respuesta"], errors="coerce")
+    detecciones.columns = [TEXT_CLIENTE_CLAVE, TEXT_FUENTE_CLIENTE]
+    trabajo[[TEXT_CLIENTE_CLAVE, TEXT_FUENTE_CLIENTE]] = detecciones
+    trabajo = trabajo[trabajo[TEXT_CLIENTE_CLAVE] != ""].copy()
+    trabajo[TEXT_CREADO_DT] = pd.to_datetime(trabajo[TEXT_CREADO].apply(normalizar_fecha), errors=TEXT_COERCE)
+    trabajo[TEXT_CERRADO_DT] = pd.to_datetime(trabajo[TEXT_CERRADO].apply(normalizar_fecha), errors=TEXT_COERCE)
+    trabajo[TEXT_TIEMPO_RESPUESTA_H] = pd.to_numeric(trabajo[TEXT_TIEMPO_RESPUESTA], errors=TEXT_COERCE)
     return trabajo
 
 
 def preparar_incidentes_clientes_clave(df):
     if df.empty:
         trabajo = agregar_campos_sla_incidentes(df)
-        trabajo["cliente_clave"] = pd.Series(dtype="object")
-        trabajo["fuente_cliente"] = pd.Series(dtype="object")
-        trabajo["creado_dt"] = pd.Series(dtype="datetime64[ns]")
-        trabajo["cerrado_dt"] = pd.Series(dtype="datetime64[ns]")
-        trabajo["duracion_horas_num"] = pd.Series(dtype="float")
+        trabajo[TEXT_CLIENTE_CLAVE] = pd.Series(dtype=TEXT_OBJECT)
+        trabajo[TEXT_FUENTE_CLIENTE] = pd.Series(dtype=TEXT_OBJECT)
+        trabajo[TEXT_CREADO_DT] = pd.Series(dtype=PANDAS_DATETIME_DTYPE)
+        trabajo[TEXT_CERRADO_DT] = pd.Series(dtype=PANDAS_DATETIME_DTYPE)
+        trabajo[TEXT_DURACION_HORAS_NUM] = pd.Series(dtype=TEXT_FLOAT)
         return trabajo
 
     trabajo = agregar_campos_sla_incidentes(df)
     campos = [
-        "empresa",
-        "solicitante",
-        "breve_descripcion",
-        "descripcion",
-        "observaciones_trabajo",
-        "observaciones_adicionales",
+        TEXT_EMPRESA,
+        TEXT_SOLICITANTE,
+        TEXT_BREVE_DESCRIPCION,
+        TEXT_DESCRIPCION_2,
+        TEXT_OBSERVACIONES_TRABAJO,
+        TEXT_OBSERVACIONES_ADICIONALES,
     ]
     detecciones = trabajo.apply(
         lambda row: detectar_cliente_en_fila(row, campos),
         axis=1,
         result_type="expand",
     )
-    detecciones.columns = ["cliente_clave", "fuente_cliente"]
-    trabajo[["cliente_clave", "fuente_cliente"]] = detecciones
-    trabajo = trabajo[trabajo["cliente_clave"] != ""].copy()
-    trabajo["creado_dt"] = pd.to_datetime(trabajo["creado"].apply(normalizar_fecha), errors="coerce")
-    trabajo["cerrado_dt"] = pd.to_datetime(trabajo["cerrado"].apply(normalizar_fecha), errors="coerce")
-    trabajo["duracion_horas_num"] = pd.to_numeric(trabajo["duracion_horas"], errors="coerce")
+    detecciones.columns = [TEXT_CLIENTE_CLAVE, TEXT_FUENTE_CLIENTE]
+    trabajo[[TEXT_CLIENTE_CLAVE, TEXT_FUENTE_CLIENTE]] = detecciones
+    trabajo = trabajo[trabajo[TEXT_CLIENTE_CLAVE] != ""].copy()
+    trabajo[TEXT_CREADO_DT] = pd.to_datetime(trabajo[TEXT_CREADO].apply(normalizar_fecha), errors=TEXT_COERCE)
+    trabajo[TEXT_CERRADO_DT] = pd.to_datetime(trabajo[TEXT_CERRADO].apply(normalizar_fecha), errors=TEXT_COERCE)
+    trabajo[TEXT_DURACION_HORAS_NUM] = pd.to_numeric(trabajo[TEXT_DURACION_HORAS], errors=TEXT_COERCE)
     return trabajo
 
 
 def fecha_maxima_cliente(casos_cliente, incidentes_cliente):
     fechas = []
     if not casos_cliente.empty:
-        fechas.append(casos_cliente["creado_dt"].max())
+        fechas.append(casos_cliente[TEXT_CREADO_DT].max())
     if not incidentes_cliente.empty:
-        fechas.append(incidentes_cliente["creado_dt"].max())
+        fechas.append(incidentes_cliente[TEXT_CREADO_DT].max())
     fechas_validas = [fecha for fecha in fechas if pd.notna(fecha)]
     if not fechas_validas:
         return ""
     return max(fechas_validas).strftime("%Y-%m-%d %H:%M")
 
 
-def valor_mas_frecuente(serie, default="Sin dato"):
+def valor_mas_frecuente(serie, default=SIN_DATO):
     if serie.empty:
         return default
     valores = serie.replace("", pd.NA).dropna()
@@ -1209,130 +1383,136 @@ def nivel_atencion_cliente(
     if score >= 85:
         return "Verde", "Estable", score
     if score >= 65:
-        return "Amarillo", "Seguimiento", score
+        return TEXT_AMARILLO, "Seguimiento", score
     return "Rojo", "Prioritario", score
+
+
+def fila_cliente_sin_actividad(cliente):
+    return {
+        TEXT_CLIENTE: cliente,
+        TEXT_NIVEL: "Sin actividad",
+        COL_ESTADO_ATENCION: "Sin actividad",
+        TEXT_SCORE: 100,
+        TEXT_CASOS: 0,
+        TEXT_INCIDENTES: 0,
+        COL_TOTAL_ATENCIONES: 0,
+        TEXT_ABIERTOS: 0,
+        COL_SLA_CASOS_PCT: None,
+        COL_SLA_INCIDENTES_PCT: None,
+        COL_ALERTAS_INCIDENTES: 0,
+        PRIORIDAD_ALTA: 0,
+        COL_CASOS_SIN_CAUSA: 0,
+        COL_PRODUCTO_PRINCIPAL: SIN_DATO,
+        COL_CAUSA_INCIDENTE_PRINCIPAL: SIN_DATO,
+        COL_ULTIMA_ATENCION: "",
+    }
+
+
+def metricas_casos_cliente(casos_cliente):
+    if casos_cliente.empty:
+        return 0, None, 0
+
+    casos_cerrados = casos_cliente[mascara_cerrados(casos_cliente)]
+    tiempos_casos = casos_cerrados[TEXT_TIEMPO_RESPUESTA_H].dropna()
+    sla_casos = (
+        porcentaje(len(tiempos_casos[tiempos_casos < SLA_CASOS_HORAS]), len(tiempos_casos))
+        if len(tiempos_casos)
+        else None
+    )
+    casos_sin_causa = len(
+        casos_cliente[
+            casos_cliente[TEXT_CAUSA].replace("", pd.NA).fillna(SIN_DATO).str.lower().isin(["sin dato"])
+        ]
+    )
+    return len(casos_cliente) - len(casos_cerrados), sla_casos, casos_sin_causa
+
+
+def metricas_incidentes_cliente(incidentes_cliente):
+    if incidentes_cliente.empty:
+        return 0, None, 0, 0
+
+    incidentes_cerrados_todos = incidentes_cliente[mascara_cerrados(incidentes_cliente)]
+    incidentes_cerrados = incidentes_cerrados_todos[
+        incidentes_cerrados_todos[TEXT_APLICA_SLA_INCIDENTE].fillna(False)
+    ]
+    sla_incidentes_base = incidentes_cerrados[
+        incidentes_cerrados[TEXT_ESTADO_SLA].isin([ESTADO_SLA_CUMPLE, ESTADO_SLA_NO_CUMPLE])
+    ]
+    sla_incidentes = (
+        porcentaje(
+            len(sla_incidentes_base[sla_incidentes_base[TEXT_ESTADO_SLA] == ESTADO_SLA_CUMPLE]),
+            len(sla_incidentes_base),
+        )
+        if len(sla_incidentes_base)
+        else None
+    )
+    alertas = len(
+        incidentes_cliente[
+            (incidentes_cliente[TEXT_ES_ALERTA_AUTO].fillna("No") == "Si")
+            | (incidentes_cliente[TEXT_TIPIFICACION_AUTO].fillna("") == NOC_TIPIFICATION)
+        ]
+    )
+    prioridad_alta = len(
+        incidentes_cliente[
+            incidentes_cliente[TEXT_PRIORIDAD].fillna("").str.contains(
+                r"^(?:1|2\s*-\s*Alta)", case=False, regex=True
+            )
+        ]
+    )
+    return len(incidentes_cliente) - len(incidentes_cerrados_todos), sla_incidentes, alertas, prioridad_alta
+
+
+def fila_cliente_con_actividad(cliente, casos_cliente, incidentes_cliente):
+    total_casos = len(casos_cliente)
+    total_incidentes = len(incidentes_cliente)
+    casos_abiertos, sla_casos, casos_sin_causa = metricas_casos_cliente(casos_cliente)
+    incidentes_abiertos, sla_incidentes, alertas, prioridad_alta = metricas_incidentes_cliente(incidentes_cliente)
+    abiertos = casos_abiertos + incidentes_abiertos
+    nivel, estado_atencion, score = nivel_atencion_cliente(
+        abiertos,
+        incidentes_abiertos,
+        alertas,
+        prioridad_alta,
+        sla_casos,
+        sla_incidentes,
+        casos_sin_causa,
+    )
+
+    return {
+        TEXT_CLIENTE: cliente,
+        TEXT_NIVEL: nivel,
+        COL_ESTADO_ATENCION: estado_atencion,
+        TEXT_SCORE: score,
+        TEXT_CASOS: total_casos,
+        TEXT_INCIDENTES: total_incidentes,
+        COL_TOTAL_ATENCIONES: total_casos + total_incidentes,
+        TEXT_ABIERTOS: abiertos,
+        COL_SLA_CASOS_PCT: sla_casos,
+        COL_SLA_INCIDENTES_PCT: sla_incidentes,
+        COL_ALERTAS_INCIDENTES: alertas,
+        PRIORIDAD_ALTA: prioridad_alta,
+        COL_CASOS_SIN_CAUSA: casos_sin_causa,
+        COL_PRODUCTO_PRINCIPAL: valor_mas_frecuente(casos_cliente.get(TEXT_PRODUCTO, pd.Series(dtype=TEXT_OBJECT))),
+        COL_CAUSA_INCIDENTE_PRINCIPAL: valor_mas_frecuente(
+            incidentes_cliente.get(TEXT_CAUSA_RAIZ_AUTO, pd.Series(dtype=TEXT_OBJECT))
+        ),
+        COL_ULTIMA_ATENCION: fecha_maxima_cliente(casos_cliente, incidentes_cliente),
+    }
 
 
 def resumen_clientes_clave(casos, incidentes):
     filas = []
     for cliente in CLIENTES_CLAVE:
-        casos_cliente = casos[casos["cliente_clave"] == cliente] if not casos.empty else pd.DataFrame()
+        casos_cliente = casos[casos[TEXT_CLIENTE_CLAVE] == cliente] if not casos.empty else pd.DataFrame()
         incidentes_cliente = (
-            incidentes[incidentes["cliente_clave"] == cliente] if not incidentes.empty else pd.DataFrame()
+            incidentes[incidentes[TEXT_CLIENTE_CLAVE] == cliente] if not incidentes.empty else pd.DataFrame()
         )
-
-        total_casos = len(casos_cliente)
-        total_incidentes = len(incidentes_cliente)
-        if total_casos == 0 and total_incidentes == 0:
-            filas.append(
-                {
-                    "Cliente": cliente,
-                    "Nivel": "Sin actividad",
-                    "Estado atencion": "Sin actividad",
-                    "Score": 100,
-                    "Casos": 0,
-                    "Incidentes": 0,
-                    "Total atenciones": 0,
-                    "Abiertos": 0,
-                    "SLA casos %": None,
-                    "SLA incidentes %": None,
-                    "Alertas incidentes": 0,
-                    "Prioridad alta": 0,
-                    "Casos sin causa": 0,
-                    "Producto principal": "Sin dato",
-                    "Causa incidente principal": "Sin dato",
-                    "Ultima atencion": "",
-                }
-            )
+        if casos_cliente.empty and incidentes_cliente.empty:
+            filas.append(fila_cliente_sin_actividad(cliente))
             continue
-
-        if total_casos:
-            casos_cerrados = casos_cliente[mascara_cerrados(casos_cliente)]
-            casos_abiertos = total_casos - len(casos_cerrados)
-            tiempos_casos = casos_cerrados["tiempo_respuesta_h"].dropna()
-            sla_casos = (
-                porcentaje(len(tiempos_casos[tiempos_casos < SLA_CASOS_HORAS]), len(tiempos_casos))
-                if len(tiempos_casos)
-                else None
-            )
-            casos_sin_causa = len(
-                casos_cliente[
-                    casos_cliente["causa"].replace("", pd.NA).fillna("Sin dato").str.lower().isin(["sin dato"])
-                ]
-            )
-        else:
-            casos_abiertos = 0
-            sla_casos = None
-            casos_sin_causa = 0
-
-        if total_incidentes:
-            incidentes_cerrados_todos = incidentes_cliente[mascara_cerrados(incidentes_cliente)]
-            incidentes_cerrados = incidentes_cerrados_todos[
-                incidentes_cerrados_todos["aplica_sla_incidente"].fillna(False)
-            ]
-            incidentes_abiertos = total_incidentes - len(incidentes_cerrados_todos)
-            sla_incidentes_base = incidentes_cerrados[
-                incidentes_cerrados["estado_sla"].isin(["Cumple", "No cumple"])
-            ]
-            sla_incidentes = (
-                porcentaje(len(sla_incidentes_base[sla_incidentes_base["estado_sla"] == "Cumple"]), len(sla_incidentes_base))
-                if len(sla_incidentes_base)
-                else None
-            )
-            alertas = len(
-                incidentes_cliente[
-                    (incidentes_cliente["es_alerta_auto"].fillna("No") == "Si")
-                    | (incidentes_cliente["tipificacion_auto"].fillna("") == "Alerta NOC")
-                ]
-            )
-            prioridad_alta = len(
-                incidentes_cliente[
-                    incidentes_cliente["prioridad"].fillna("").str.contains(
-                        r"^(?:1|2\s*-\s*Alta)", case=False, regex=True
-                    )
-                ]
-            )
-        else:
-            incidentes_abiertos = 0
-            sla_incidentes = None
-            alertas = 0
-            prioridad_alta = 0
-        abiertos = casos_abiertos + incidentes_abiertos
-        nivel, estado_atencion, score = nivel_atencion_cliente(
-            abiertos,
-            incidentes_abiertos,
-            alertas,
-            prioridad_alta,
-            sla_casos,
-            sla_incidentes,
-            casos_sin_causa,
-        )
-
-        filas.append(
-            {
-                "Cliente": cliente,
-                "Nivel": nivel,
-                "Estado atencion": estado_atencion,
-                "Score": score,
-                "Casos": total_casos,
-                "Incidentes": total_incidentes,
-                "Total atenciones": total_casos + total_incidentes,
-                "Abiertos": abiertos,
-                "SLA casos %": sla_casos,
-                "SLA incidentes %": sla_incidentes,
-                "Alertas incidentes": alertas,
-                "Prioridad alta": prioridad_alta,
-                "Casos sin causa": casos_sin_causa,
-                "Producto principal": valor_mas_frecuente(casos_cliente.get("producto", pd.Series(dtype="object"))),
-                "Causa incidente principal": valor_mas_frecuente(
-                    incidentes_cliente.get("causa_raiz_auto", pd.Series(dtype="object"))
-                ),
-                "Ultima atencion": fecha_maxima_cliente(casos_cliente, incidentes_cliente),
-            }
-        )
+        filas.append(fila_cliente_con_actividad(cliente, casos_cliente, incidentes_cliente))
 
     return pd.DataFrame(filas)
-
 
 def tabla_atenciones_abiertas_clientes(casos, incidentes):
     tablas = []
@@ -1340,28 +1520,28 @@ def tabla_atenciones_abiertas_clientes(casos, incidentes):
         abiertos_casos = casos[~mascara_cerrados(casos)].copy()
         if not abiertos_casos.empty:
             abiertos_casos["Tipo"] = "Caso"
-            abiertos_casos["Cliente"] = abiertos_casos["cliente_clave"]
-            abiertos_casos["Numero"] = abiertos_casos["numero"]
-            abiertos_casos["Estado"] = abiertos_casos["estado"]
-            abiertos_casos["Prioridad"] = abiertos_casos["prioridad"]
-            abiertos_casos["Responsable"] = abiertos_casos["asignado"]
-            abiertos_casos["Creado"] = abiertos_casos["creado"]
-            abiertos_casos["Vencimiento SLA"] = ""
-            abiertos_casos["Clasificacion"] = abiertos_casos["tipificacion"]
-            abiertos_casos["Resumen"] = abiertos_casos["descripcion"]
+            abiertos_casos[TEXT_CLIENTE] = abiertos_casos[TEXT_CLIENTE_CLAVE]
+            abiertos_casos[TEXT_NUMERO_2] = abiertos_casos[TEXT_NUMERO]
+            abiertos_casos[TEXT_ESTADO_2] = abiertos_casos[TEXT_ESTADO]
+            abiertos_casos[TEXT_PRIORIDAD_2] = abiertos_casos[TEXT_PRIORIDAD]
+            abiertos_casos[TEXT_RESPONSABLE] = abiertos_casos[TEXT_ASIGNADO]
+            abiertos_casos[TEXT_CREADO_2] = abiertos_casos[TEXT_CREADO]
+            abiertos_casos[COL_VENCIMIENTO_SLA] = ""
+            abiertos_casos[TEXT_CLASIFICACION] = abiertos_casos[TEXT_TIPIFICACION_2]
+            abiertos_casos[TEXT_RESUMEN] = abiertos_casos[TEXT_DESCRIPCION_2]
             tablas.append(
                 abiertos_casos[
                     [
                         "Tipo",
-                        "Cliente",
-                        "Numero",
-                        "Estado",
-                        "Prioridad",
-                        "Responsable",
-                        "Creado",
-                        "Vencimiento SLA",
-                        "Clasificacion",
-                        "Resumen",
+                        TEXT_CLIENTE,
+                        TEXT_NUMERO_2,
+                        TEXT_ESTADO_2,
+                        TEXT_PRIORIDAD_2,
+                        TEXT_RESPONSABLE,
+                        TEXT_CREADO_2,
+                        COL_VENCIMIENTO_SLA,
+                        TEXT_CLASIFICACION,
+                        TEXT_RESUMEN,
                     ]
                 ]
             )
@@ -1370,30 +1550,30 @@ def tabla_atenciones_abiertas_clientes(casos, incidentes):
         abiertos_incidentes = incidentes[~mascara_cerrados(incidentes)].copy()
         if not abiertos_incidentes.empty:
             abiertos_incidentes["Tipo"] = "Incidente"
-            abiertos_incidentes["Cliente"] = abiertos_incidentes["cliente_clave"]
-            abiertos_incidentes["Numero"] = abiertos_incidentes["numero"]
-            abiertos_incidentes["Estado"] = abiertos_incidentes["estado"]
-            abiertos_incidentes["Prioridad"] = abiertos_incidentes["prioridad"]
-            abiertos_incidentes["Responsable"] = abiertos_incidentes["asignado_a"]
-            abiertos_incidentes["Creado"] = abiertos_incidentes["creado"]
-            abiertos_incidentes["Vencimiento SLA"] = abiertos_incidentes["fecha_vencimiento_sla"]
-            abiertos_incidentes["Clasificacion"] = abiertos_incidentes["tipificacion_auto"]
-            abiertos_incidentes["Resumen"] = abiertos_incidentes["breve_descripcion"].replace("", pd.NA).fillna(
-                abiertos_incidentes["descripcion"]
+            abiertos_incidentes[TEXT_CLIENTE] = abiertos_incidentes[TEXT_CLIENTE_CLAVE]
+            abiertos_incidentes[TEXT_NUMERO_2] = abiertos_incidentes[TEXT_NUMERO]
+            abiertos_incidentes[TEXT_ESTADO_2] = abiertos_incidentes[TEXT_ESTADO]
+            abiertos_incidentes[TEXT_PRIORIDAD_2] = abiertos_incidentes[TEXT_PRIORIDAD]
+            abiertos_incidentes[TEXT_RESPONSABLE] = abiertos_incidentes[TEXT_ASIGNADO_A]
+            abiertos_incidentes[TEXT_CREADO_2] = abiertos_incidentes[TEXT_CREADO]
+            abiertos_incidentes[COL_VENCIMIENTO_SLA] = abiertos_incidentes[TEXT_FECHA_VENCIMIENTO_SLA]
+            abiertos_incidentes[TEXT_CLASIFICACION] = abiertos_incidentes[TEXT_TIPIFICACION_AUTO]
+            abiertos_incidentes[TEXT_RESUMEN] = abiertos_incidentes[TEXT_BREVE_DESCRIPCION].replace("", pd.NA).fillna(
+                abiertos_incidentes[TEXT_DESCRIPCION_2]
             )
             tablas.append(
                 abiertos_incidentes[
                     [
                         "Tipo",
-                        "Cliente",
-                        "Numero",
-                        "Estado",
-                        "Prioridad",
-                        "Responsable",
-                        "Creado",
-                        "Vencimiento SLA",
-                        "Clasificacion",
-                        "Resumen",
+                        TEXT_CLIENTE,
+                        TEXT_NUMERO_2,
+                        TEXT_ESTADO_2,
+                        TEXT_PRIORIDAD_2,
+                        TEXT_RESPONSABLE,
+                        TEXT_CREADO_2,
+                        COL_VENCIMIENTO_SLA,
+                        TEXT_CLASIFICACION,
+                        TEXT_RESUMEN,
                     ]
                 ]
             )
@@ -1402,41 +1582,41 @@ def tabla_atenciones_abiertas_clientes(casos, incidentes):
         return pd.DataFrame(
             columns=[
                 "Tipo",
-                "Cliente",
-                "Numero",
-                "Estado",
-                "Prioridad",
-                "Responsable",
-                "Creado",
-                "Vencimiento SLA",
-                "Clasificacion",
-                "Resumen",
+                TEXT_CLIENTE,
+                TEXT_NUMERO_2,
+                TEXT_ESTADO_2,
+                TEXT_PRIORIDAD_2,
+                TEXT_RESPONSABLE,
+                TEXT_CREADO_2,
+                COL_VENCIMIENTO_SLA,
+                TEXT_CLASIFICACION,
+                TEXT_RESUMEN,
             ]
         )
-    return pd.concat(tablas, ignore_index=True).sort_values(by=["Cliente", "Tipo", "Creado"])
+    return pd.concat(tablas, ignore_index=True).sort_values(by=[TEXT_CLIENTE, "Tipo", TEXT_CREADO_2])
 
 
 def tabla_resumen_tipificaciones_casos(df):
-    conteo_tipificaciones = df["tipificacion"].value_counts()
+    conteo_tipificaciones = df[TEXT_TIPIFICACION_2].value_counts()
     resumen = pd.DataFrame(CASE_TIPIFICATION_GUIDE)
-    resumen["Cantidad"] = resumen["Tipificacion"].map(conteo_tipificaciones).fillna(0).astype(int)
+    resumen[TEXT_CANTIDAD] = resumen[TEXT_TIPIFICACION].map(conteo_tipificaciones).fillna(0).astype(int)
 
     tipificaciones_faltantes = [
         tipificacion
         for tipificacion in conteo_tipificaciones.index.tolist()
-        if tipificacion not in resumen["Tipificacion"].tolist()
+        if tipificacion not in resumen[TEXT_TIPIFICACION].tolist()
     ]
     if tipificaciones_faltantes:
         adicionales = pd.DataFrame(
             {
-                "Tipificacion": tipificaciones_faltantes,
-                "Descripcion": ["Tipificacion detectada sin descripcion configurada."] * len(tipificaciones_faltantes),
-                "Cantidad": [int(conteo_tipificaciones[tip]) for tip in tipificaciones_faltantes],
+                TEXT_TIPIFICACION: tipificaciones_faltantes,
+                TEXT_DESCRIPCION: ["Tipificacion detectada sin descripcion configurada."] * len(tipificaciones_faltantes),
+                TEXT_CANTIDAD: [int(conteo_tipificaciones[tip]) for tip in tipificaciones_faltantes],
             }
         )
         resumen = pd.concat([resumen, adicionales], ignore_index=True)
 
-    return resumen.sort_values(by=["Cantidad", "Tipificacion"], ascending=[False, True]).reset_index(drop=True)
+    return resumen.sort_values(by=[TEXT_CANTIDAD, TEXT_TIPIFICACION], ascending=[False, True]).reset_index(drop=True)
 
 
 def es_tipificacion_agendamiento(valor):
@@ -1454,13 +1634,13 @@ def canal_agrupado_agendamiento(canal):
 
 def texto_analisis_agendamiento(row):
     campos = [
-        "descripcion",
-        "causa",
-        "codigo_resolucion",
+        TEXT_DESCRIPCION_2,
+        TEXT_CAUSA,
+        TEXT_CODIGO_RESOLUCION,
         "notas_resolucion",
-        "observaciones_adicionales",
-        "observaciones_trabajo",
-        "producto",
+        TEXT_OBSERVACIONES_ADICIONALES,
+        TEXT_OBSERVACIONES_TRABAJO,
+        TEXT_PRODUCTO,
     ]
     return " ".join(normalizar_texto(row.get(campo)) for campo in campos).strip()
 
@@ -1474,8 +1654,8 @@ def inferir_motivo_agendamiento(row):
 
 
 def cliente_agendamiento(row):
-    cuenta = valor_limpio(row.get("cuenta"))
-    return cuenta if cuenta else "Sin cuenta"
+    cuenta = valor_limpio(row.get(TEXT_CUENTA))
+    return cuenta if cuenta else SIN_CUENTA
 
 
 def fecha_corta(valor):
@@ -1485,175 +1665,199 @@ def fecha_corta(valor):
 
 
 def inicio_periodo_agendamiento(agenda, mes_dashboard):
-    if mes_dashboard != "Todos":
+    if mes_dashboard != TEXT_TODOS:
         try:
             return pd.Period(mes_dashboard, freq="M").to_timestamp()
         except Exception:
             pass
-    fechas = agenda.get("_creado_dt_dashboard", pd.Series(dtype="datetime64[ns]")).dropna()
+    fechas = agenda.get(TEXT_CREADO_DT_DASHBOARD, pd.Series(dtype=PANDAS_DATETIME_DTYPE)).dropna()
     if fechas.empty:
         return None
     return fechas.min().normalize()
 
 
-def preparar_analisis_agendamiento(df_periodo, df_historico, mes_dashboard):
-    columnas_base = [
-        "Canal agrupado",
-        "Motivo inferido",
-        "Cliente agenda",
-        "Ciclo cliente",
-        "Cliente recurrente agenda",
-        "Casos historicos cliente",
-        "Agendas historicas cliente",
-    ]
-    if df_periodo.empty:
-        trabajo = df_periodo.copy()
-        for columna in columnas_base:
-            trabajo[columna] = pd.Series(dtype="object")
-        return trabajo
+AGENDAMIENTO_COLUMNAS_BASE = [
+    COL_CANAL_AGRUPADO,
+    COL_MOTIVO_INFERIDO,
+    COL_CLIENTE_AGENDA,
+    COL_CICLO_CLIENTE,
+    COL_CLIENTE_RECURRENTE_AGENDA,
+    COL_CASOS_HISTORICOS_CLIENTE,
+    COL_AGENDAS_HISTORICAS_CLIENTE,
+]
 
+
+def agregar_columnas_agendamiento_vacias(df):
+    trabajo = df.copy()
+    for columna in AGENDAMIENTO_COLUMNAS_BASE:
+        trabajo[columna] = pd.Series(dtype=TEXT_OBJECT)
+    return trabajo
+
+
+def preparar_fuentes_agendamiento(df_periodo, df_historico):
     periodo = normalizar_tipificaciones_casos_df(df_periodo).copy()
     historico = normalizar_tipificaciones_casos_df(df_historico).copy()
-    if "_creado_dt_dashboard" not in periodo.columns:
+    if TEXT_CREADO_DT_DASHBOARD not in periodo.columns:
         periodo = preparar_fechas_dashboard(periodo)
-    if "_creado_dt_dashboard" not in historico.columns:
+    if TEXT_CREADO_DT_DASHBOARD not in historico.columns:
         historico = preparar_fechas_dashboard(historico)
+    return periodo, historico
 
-    agenda = periodo[periodo["tipificacion"].apply(es_tipificacion_agendamiento)].copy()
-    if agenda.empty:
-        for columna in columnas_base:
-            agenda[columna] = pd.Series(dtype="object")
-        return agenda
 
-    for columna in ["canal", "cuenta", "numero"]:
+def asegurar_columnas_agenda(agenda, historico):
+    for columna in [TEXT_CANAL, TEXT_CUENTA, TEXT_NUMERO]:
         if columna not in agenda.columns:
             agenda[columna] = ""
         if columna not in historico.columns:
             historico[columna] = ""
 
-    agenda["Canal agrupado"] = agenda["canal"].apply(canal_agrupado_agendamiento)
-    agenda["Motivo inferido"] = agenda.apply(inferir_motivo_agendamiento, axis=1)
-    agenda["Cliente agenda"] = agenda.apply(cliente_agendamiento, axis=1)
-    agenda["_cliente_norm_agenda"] = agenda["cuenta"].apply(normalizar_texto)
 
-    historico["_cliente_norm_agenda"] = historico["cuenta"].apply(normalizar_texto)
-    historico_validos = historico[historico["_cliente_norm_agenda"] != ""].copy()
+def agregar_datos_basicos_agenda(agenda):
+    agenda[COL_CANAL_AGRUPADO] = agenda[TEXT_CANAL].apply(canal_agrupado_agendamiento)
+    agenda[COL_MOTIVO_INFERIDO] = agenda.apply(inferir_motivo_agendamiento, axis=1)
+    agenda[COL_CLIENTE_AGENDA] = agenda.apply(cliente_agendamiento, axis=1)
+    agenda[TEXT_CLIENTE_NORM_AGENDA] = agenda[TEXT_CUENTA].apply(normalizar_texto)
+
+
+def agregar_historial_agendamiento(agenda, historico):
+    historico[TEXT_CLIENTE_NORM_AGENDA] = historico[TEXT_CUENTA].apply(normalizar_texto)
+    historico_validos = historico[historico[TEXT_CLIENTE_NORM_AGENDA] != ""].copy()
     if historico_validos.empty:
-        agenda["Primera atencion cliente"] = pd.NaT
-        agenda["Casos historicos cliente"] = 0
-        agenda["Agendas historicas cliente"] = 0
-    else:
-        historia_cliente = historico_validos.groupby("_cliente_norm_agenda").agg(
-            Primera_atencion_cliente=("_creado_dt_dashboard", "min"),
-            Casos_historicos_cliente=("numero", "nunique"),
-        )
-        historico_agenda = historico_validos[
-            historico_validos["tipificacion"].apply(es_tipificacion_agendamiento)
-        ].copy()
-        agendas_historicas = historico_agenda.groupby("_cliente_norm_agenda")["numero"].nunique()
-        agenda["Primera atencion cliente"] = agenda["_cliente_norm_agenda"].map(
-            historia_cliente["Primera_atencion_cliente"]
-        )
-        agenda["Casos historicos cliente"] = (
-            agenda["_cliente_norm_agenda"]
-            .map(historia_cliente["Casos_historicos_cliente"])
-            .fillna(0)
-            .astype(int)
-        )
-        agenda["Agendas historicas cliente"] = (
-            agenda["_cliente_norm_agenda"].map(agendas_historicas).fillna(0).astype(int)
-        )
+        agenda[COL_PRIMERA_ATENCION_CLIENTE] = pd.NaT
+        agenda[COL_CASOS_HISTORICOS_CLIENTE] = 0
+        agenda[COL_AGENDAS_HISTORICAS_CLIENTE] = 0
+        return
 
+    historia_cliente = historico_validos.groupby(TEXT_CLIENTE_NORM_AGENDA).agg(
+        Primera_atencion_cliente=(TEXT_CREADO_DT_DASHBOARD, "min"),
+        Casos_historicos_cliente=(TEXT_NUMERO, "nunique"),
+    )
+    historico_agenda = historico_validos[
+        historico_validos[TEXT_TIPIFICACION_2].apply(es_tipificacion_agendamiento)
+    ].copy()
+    agendas_historicas = historico_agenda.groupby(TEXT_CLIENTE_NORM_AGENDA)[TEXT_NUMERO].nunique()
+    agenda[COL_PRIMERA_ATENCION_CLIENTE] = agenda[TEXT_CLIENTE_NORM_AGENDA].map(
+        historia_cliente["Primera_atencion_cliente"]
+    )
+    agenda[COL_CASOS_HISTORICOS_CLIENTE] = (
+        agenda[TEXT_CLIENTE_NORM_AGENDA]
+        .map(historia_cliente["Casos_historicos_cliente"])
+        .fillna(0)
+        .astype(int)
+    )
+    agenda[COL_AGENDAS_HISTORICAS_CLIENTE] = (
+        agenda[TEXT_CLIENTE_NORM_AGENDA].map(agendas_historicas).fillna(0).astype(int)
+    )
+
+
+def clasificar_ciclo_agendamiento(row, inicio_periodo):
+    if row[TEXT_CLIENTE_NORM_AGENDA] == "":
+        return SIN_CUENTA
+    primera = row.get(COL_PRIMERA_ATENCION_CLIENTE)
+    if inicio_periodo is not None and pd.notna(primera) and primera < inicio_periodo:
+        return "Cliente con historial previo"
+    if row.get(COL_AGENDAS_HISTORICAS_CLIENTE, 0) > 1:
+        return "Cliente recurrente en el periodo"
+    return "Cliente nuevo en la base"
+
+
+def agregar_ciclo_agendamiento(agenda, mes_dashboard):
     inicio_periodo = inicio_periodo_agendamiento(agenda, mes_dashboard)
-
-    def clasificar_ciclo_cliente(row):
-        if row["_cliente_norm_agenda"] == "":
-            return "Sin cuenta"
-        primera = row.get("Primera atencion cliente")
-        if inicio_periodo is not None and pd.notna(primera) and primera < inicio_periodo:
-            return "Cliente con historial previo"
-        if row.get("Agendas historicas cliente", 0) > 1:
-            return "Cliente recurrente en el periodo"
-        return "Cliente nuevo en la base"
-
-    agenda["Ciclo cliente"] = agenda.apply(clasificar_ciclo_cliente, axis=1)
-    agenda["Cliente recurrente agenda"] = agenda["Agendas historicas cliente"].apply(
+    agenda[COL_CICLO_CLIENTE] = agenda.apply(
+        lambda row: clasificar_ciclo_agendamiento(row, inicio_periodo),
+        axis=1,
+    )
+    agenda[COL_CLIENTE_RECURRENTE_AGENDA] = agenda[COL_AGENDAS_HISTORICAS_CLIENTE].apply(
         lambda valor: "Si" if valor > 1 else "No"
     )
+
+
+def preparar_analisis_agendamiento(df_periodo, df_historico, mes_dashboard):
+    if df_periodo.empty:
+        return agregar_columnas_agendamiento_vacias(df_periodo)
+
+    periodo, historico = preparar_fuentes_agendamiento(df_periodo, df_historico)
+    agenda = periodo[periodo[TEXT_TIPIFICACION_2].apply(es_tipificacion_agendamiento)].copy()
+    if agenda.empty:
+        return agregar_columnas_agendamiento_vacias(agenda)
+
+    asegurar_columnas_agenda(agenda, historico)
+    agregar_datos_basicos_agenda(agenda)
+    agregar_historial_agendamiento(agenda, historico)
+    agregar_ciclo_agendamiento(agenda, mes_dashboard)
     return agenda
 
-
 def lectura_ejecutiva_agendamiento(agenda, total_casos_periodo):
-    columnas = ["Pregunta", "Lectura", "Evidencia", "Accion sugerida"]
+    columnas = [TEXT_PREGUNTA, TEXT_LECTURA, TEXT_EVIDENCIA, COL_ACCION_SUGERIDA]
     if agenda.empty:
         return pd.DataFrame(columns=columnas)
 
     total_agenda = len(agenda)
-    mesa = int((agenda["Canal agrupado"] == "Mesa de ayuda").sum())
-    directa = int((agenda["Canal agrupado"] == "Agenda directa").sum())
-    sin_cuenta = int((agenda["Cliente agenda"] == "Sin cuenta").sum())
-    clientes_identificados = agenda[agenda["_cliente_norm_agenda"] != ""]
-    clientes_total = clientes_identificados["_cliente_norm_agenda"].nunique()
+    mesa = int((agenda[COL_CANAL_AGRUPADO] == "Mesa de ayuda").sum())
+    directa = int((agenda[COL_CANAL_AGRUPADO] == "Agenda directa").sum())
+    sin_cuenta = int((agenda[COL_CLIENTE_AGENDA] == SIN_CUENTA).sum())
+    clientes_identificados = agenda[agenda[TEXT_CLIENTE_NORM_AGENDA] != ""]
+    clientes_total = clientes_identificados[TEXT_CLIENTE_NORM_AGENDA].nunique()
     clientes_previos = clientes_identificados[
-        clientes_identificados["Ciclo cliente"] == "Cliente con historial previo"
-    ]["_cliente_norm_agenda"].nunique()
+        clientes_identificados[COL_CICLO_CLIENTE] == "Cliente con historial previo"
+    ][TEXT_CLIENTE_NORM_AGENDA].nunique()
     recurrentes = clientes_identificados[
-        clientes_identificados["Cliente recurrente agenda"] == "Si"
-    ]["_cliente_norm_agenda"].nunique()
-    motivo_principal = valor_mas_frecuente(agenda["Motivo inferido"])
-    canal_principal = valor_mas_frecuente(agenda["canal"].replace("", "Sin canal"))
-    producto_principal = valor_mas_frecuente(agenda.get("producto", pd.Series(dtype="object")))
+        clientes_identificados[COL_CLIENTE_RECURRENTE_AGENDA] == "Si"
+    ][TEXT_CLIENTE_NORM_AGENDA].nunique()
+    motivo_principal = valor_mas_frecuente(agenda[COL_MOTIVO_INFERIDO])
+    canal_principal = valor_mas_frecuente(agenda[TEXT_CANAL].replace("", "Sin canal"))
+    producto_principal = valor_mas_frecuente(agenda.get(TEXT_PRODUCTO, pd.Series(dtype=TEXT_OBJECT)))
 
     return pd.DataFrame(
         [
             {
-                "Pregunta": "Por que siguen entrando por mesa de ayuda?",
-                "Lectura": (
+                TEXT_PREGUNTA: "Por que siguen entrando por mesa de ayuda?",
+                TEXT_LECTURA: (
                     "La mayoria no esta entrando por el calendario directo, sino por canales operativos "
                     "que terminan en mesa de ayuda."
                 ),
-                "Evidencia": (
+                TEXT_EVIDENCIA: (
                     f"{mesa} de {total_agenda} casos de agendamiento ({porcentaje(mesa, total_agenda)}%) "
                     f"entraron por mesa de ayuda. Canal principal: {canal_principal}. "
                     f"Agenda directa: {directa} casos."
                 ),
-                "Accion sugerida": (
+                COL_ACCION_SUGERIDA: (
                     "Redirigir Web/telefono/correo al enlace de agenda antes de crear caso y marcar excepciones "
                     "cuando mesa de ayuda deba tomarlo."
                 ),
             },
             {
-                "Pregunta": "Cual es la razon de tantos casos?",
-                "Lectura": (
+                TEXT_PREGUNTA: "Cual es la razon de tantos casos?",
+                TEXT_LECTURA: (
                     f"El motivo dominante es {motivo_principal}; esta tipologia concentra "
                     f"{porcentaje(total_agenda, total_casos_periodo)}% de los casos del periodo."
                 ),
-                "Evidencia": f"Producto principal asociado: {producto_principal}.",
-                "Accion sugerida": (
+                TEXT_EVIDENCIA: f"Producto principal asociado: {producto_principal}.",
+                COL_ACCION_SUGERIDA: (
                     "Separar en el cierre si fue instalacion, activacion/descarga, token fisico o firma; "
                     "asi la causa queda accionable y no solo como agendamiento."
                 ),
             },
             {
-                "Pregunta": "Son clientes viejos?",
-                "Lectura": (
+                TEXT_PREGUNTA: "Son clientes viejos?",
+                TEXT_LECTURA: (
                     "La lectura debe hacerse sobre clientes con cuenta identificada; los casos sin cuenta "
                     "no permiten confirmar antiguedad."
                 ),
-                "Evidencia": (
+                TEXT_EVIDENCIA: (
                     f"{clientes_previos} de {clientes_total} clientes identificados tienen historial previo "
                     f"en la base. {recurrentes} clientes ya tienen mas de un caso de agendamiento historico."
                 ),
-                "Accion sugerida": (
+                COL_ACCION_SUGERIDA: (
                     "Revisar los clientes recurrentes y reforzar comunicacion del canal correcto de agenda "
                     "despues de cada cierre."
                 ),
             },
             {
-                "Pregunta": "Que puede distorsionar el analisis?",
-                "Lectura": "La falta de cuenta limita saber si el caso viene de un cliente nuevo o antiguo.",
-                "Evidencia": f"{sin_cuenta} casos ({porcentaje(sin_cuenta, total_agenda)}%) estan sin cuenta.",
-                "Accion sugerida": "Hacer obligatorio el campo Cuenta o normalizarlo en la carga de casos.",
+                TEXT_PREGUNTA: "Que puede distorsionar el analisis?",
+                TEXT_LECTURA: "La falta de cuenta limita saber si el caso viene de un cliente nuevo o antiguo.",
+                TEXT_EVIDENCIA: f"{sin_cuenta} casos ({porcentaje(sin_cuenta, total_agenda)}%) estan sin cuenta.",
+                COL_ACCION_SUGERIDA: "Hacer obligatorio el campo Cuenta o normalizarlo en la carga de casos.",
             },
         ],
         columns=columnas,
@@ -1662,65 +1866,65 @@ def lectura_ejecutiva_agendamiento(agenda, total_casos_periodo):
 
 def resumen_clientes_agendamiento(agenda):
     columnas = [
-        "Cliente",
-        "Casos agenda",
+        TEXT_CLIENTE,
+        COL_CASOS_AGENDA,
         "Canal principal",
         "Motivo principal",
-        "Ciclo cliente",
+        COL_CICLO_CLIENTE,
         "Agendas historicas",
         "Casos historicos",
-        "Primera agenda",
-        "Ultima agenda",
+        COL_PRIMERA_AGENDA,
+        COL_ULTIMA_AGENDA,
     ]
     if agenda.empty:
         return pd.DataFrame(columns=columnas)
 
     resumen = (
-        agenda.groupby("Cliente agenda", dropna=False)
+        agenda.groupby(COL_CLIENTE_AGENDA, dropna=False)
         .agg(
-            Casos_agenda=("numero", "count"),
-            Canal_principal=("Canal agrupado", valor_mas_frecuente),
-            Motivo_principal=("Motivo inferido", valor_mas_frecuente),
-            Ciclo_cliente=("Ciclo cliente", valor_mas_frecuente),
-            Agendas_historicas=("Agendas historicas cliente", "max"),
-            Casos_historicos=("Casos historicos cliente", "max"),
-            Primera_agenda=("_creado_dt_dashboard", "min"),
-            Ultima_agenda=("_creado_dt_dashboard", "max"),
+            Casos_agenda=(TEXT_NUMERO, TEXT_COUNT),
+            Canal_principal=(COL_CANAL_AGRUPADO, valor_mas_frecuente),
+            Motivo_principal=(COL_MOTIVO_INFERIDO, valor_mas_frecuente),
+            Ciclo_cliente=(COL_CICLO_CLIENTE, valor_mas_frecuente),
+            Agendas_historicas=(COL_AGENDAS_HISTORICAS_CLIENTE, "max"),
+            Casos_historicos=(COL_CASOS_HISTORICOS_CLIENTE, "max"),
+            Primera_agenda=(TEXT_CREADO_DT_DASHBOARD, "min"),
+            Ultima_agenda=(TEXT_CREADO_DT_DASHBOARD, "max"),
         )
         .reset_index()
         .rename(
             columns={
-                "Cliente agenda": "Cliente",
-                "Casos_agenda": "Casos agenda",
+                COL_CLIENTE_AGENDA: TEXT_CLIENTE,
+                "Casos_agenda": COL_CASOS_AGENDA,
                 "Canal_principal": "Canal principal",
                 "Motivo_principal": "Motivo principal",
-                "Ciclo_cliente": "Ciclo cliente",
+                "Ciclo_cliente": COL_CICLO_CLIENTE,
                 "Agendas_historicas": "Agendas historicas",
                 "Casos_historicos": "Casos historicos",
-                "Primera_agenda": "Primera agenda",
-                "Ultima_agenda": "Ultima agenda",
+                "Primera_agenda": COL_PRIMERA_AGENDA,
+                "Ultima_agenda": COL_ULTIMA_AGENDA,
             }
         )
     )
-    resumen["Primera agenda"] = resumen["Primera agenda"].apply(fecha_corta)
-    resumen["Ultima agenda"] = resumen["Ultima agenda"].apply(fecha_corta)
-    return resumen.sort_values(by=["Casos agenda", "Cliente"], ascending=[False, True])[columnas]
+    resumen[COL_PRIMERA_AGENDA] = resumen[COL_PRIMERA_AGENDA].apply(fecha_corta)
+    resumen[COL_ULTIMA_AGENDA] = resumen[COL_ULTIMA_AGENDA].apply(fecha_corta)
+    return resumen.sort_values(by=[COL_CASOS_AGENDA, TEXT_CLIENTE], ascending=[False, True])[columnas]
 
 
 def resumen_canales_agendamiento(agenda):
-    columnas = ["Canal agrupado", "Canal", "Casos", "% agendamiento"]
+    columnas = [COL_CANAL_AGRUPADO, TEXT_CANAL_2, TEXT_CASOS, "% agendamiento"]
     if agenda.empty:
         return pd.DataFrame(columns=columnas)
 
     resumen = (
-        agenda.assign(Canal=agenda["canal"].replace("", "Sin canal"))
-        .groupby(["Canal agrupado", "Canal"], dropna=False)
+        agenda.assign(Canal=agenda[TEXT_CANAL].replace("", "Sin canal"))
+        .groupby([COL_CANAL_AGRUPADO, TEXT_CANAL_2], dropna=False)
         .size()
-        .reset_index(name="Casos")
-        .sort_values(by=["Casos", "Canal"], ascending=[False, True])
+        .reset_index(name=TEXT_CASOS)
+        .sort_values(by=[TEXT_CASOS, TEXT_CANAL_2], ascending=[False, True])
     )
     total = len(agenda)
-    resumen["% agendamiento"] = resumen["Casos"].apply(lambda valor: porcentaje(valor, total))
+    resumen["% agendamiento"] = resumen[TEXT_CASOS].apply(lambda valor: porcentaje(valor, total))
     return resumen[columnas]
 
 
@@ -1738,7 +1942,7 @@ def render_analisis_agendamiento_mesa(df_periodo, df_historico, mes_dashboard):
         return
 
     total_agenda = len(agenda)
-    clientes_identificados = agenda[agenda["_cliente_norm_agenda"] != ""]
+    clientes_identificados = agenda[agenda[TEXT_CLIENTE_NORM_AGENDA] != ""]
     casos_con_cuenta = len(clientes_identificados)
     casos_sin_cuenta = total_agenda - casos_con_cuenta
 
@@ -1751,7 +1955,7 @@ def render_analisis_agendamiento_mesa(df_periodo, df_historico, mes_dashboard):
     )
 
     tab_lectura, tab_motivos, tab_clientes, tab_detalle = st.tabs(
-        ["Lectura", "Motivos", "Clientes", "Detalle"]
+        [TEXT_LECTURA, "Motivos", "Clientes", "Detalle"]
     )
 
     with tab_lectura:
@@ -1763,22 +1967,22 @@ def render_analisis_agendamiento_mesa(df_periodo, df_historico, mes_dashboard):
 
     with tab_motivos:
         motivos = (
-            agenda["Motivo inferido"]
+            agenda[COL_MOTIVO_INFERIDO]
             .value_counts()
             .rename_axis("Motivo")
-            .reset_index(name="Casos")
-            .sort_values(by="Casos", ascending=True)
+            .reset_index(name=TEXT_CASOS)
+            .sort_values(by=TEXT_CASOS, ascending=True)
         )
         fig = px.bar(
             motivos,
-            x="Casos",
+            x=TEXT_CASOS,
             y="Motivo",
             orientation="h",
-            text="Casos",
-            color_discrete_sequence=[UI_PALETTE["yellow"]],
+            text=TEXT_CASOS,
+            color_discrete_sequence=[UI_PALETTE[TEXT_YELLOW]],
         )
-        fig.update_traces(marker_color=UI_PALETTE["yellow"], textposition="outside")
-        st.plotly_chart(aplicar_estilo_figura(fig, "Motivo inferido"), use_container_width=True)
+        fig.update_traces(marker_color=UI_PALETTE[TEXT_YELLOW], textposition=TEXT_OUTSIDE)
+        st.plotly_chart(aplicar_estilo_figura(fig, COL_MOTIVO_INFERIDO), use_container_width=True)
 
     with tab_clientes:
         resumen_clientes = resumen_clientes_agendamiento(agenda)
@@ -1786,15 +1990,15 @@ def render_analisis_agendamiento_mesa(df_periodo, df_historico, mes_dashboard):
         top_clientes = resumen_clientes.head(15).copy()
         if not top_clientes.empty:
             fig = px.bar(
-                top_clientes.sort_values(by="Casos agenda", ascending=True),
-                x="Casos agenda",
-                y="Cliente",
+                top_clientes.sort_values(by=COL_CASOS_AGENDA, ascending=True),
+                x=COL_CASOS_AGENDA,
+                y=TEXT_CLIENTE,
                 orientation="h",
-                text="Casos agenda",
-                color="Ciclo cliente",
+                text=COL_CASOS_AGENDA,
+                color=COL_CICLO_CLIENTE,
                 color_discrete_sequence=CHART_COLORS,
             )
-            fig.update_traces(textposition="outside")
+            fig.update_traces(textposition=TEXT_OUTSIDE)
             st.plotly_chart(aplicar_estilo_figura(fig, "Clientes con mas agendamiento"), use_container_width=True)
         st.caption("Entrada por canal de los casos mostrados en este analisis.")
         st.dataframe(canales, use_container_width=True, hide_index=True)
@@ -1802,112 +2006,141 @@ def render_analisis_agendamiento_mesa(df_periodo, df_historico, mes_dashboard):
 
     with tab_detalle:
         columnas = [
-            "numero",
-            "cuenta",
-            "canal",
-            "Canal agrupado",
-            "Motivo inferido",
-            "Ciclo cliente",
-            "Cliente recurrente agenda",
-            "Agendas historicas cliente",
-            "Casos historicos cliente",
-            "producto",
-            "asignado",
-            "creado",
-            "estado",
-            "descripcion",
-            "causa",
+            TEXT_NUMERO,
+            TEXT_CUENTA,
+            TEXT_CANAL,
+            COL_CANAL_AGRUPADO,
+            COL_MOTIVO_INFERIDO,
+            COL_CICLO_CLIENTE,
+            COL_CLIENTE_RECURRENTE_AGENDA,
+            COL_AGENDAS_HISTORICAS_CLIENTE,
+            COL_CASOS_HISTORICOS_CLIENTE,
+            TEXT_PRODUCTO,
+            TEXT_ASIGNADO,
+            TEXT_CREADO,
+            TEXT_ESTADO,
+            TEXT_DESCRIPCION_2,
+            TEXT_CAUSA,
         ]
         visibles = [col for col in columnas if col in agenda.columns]
         st.dataframe(
-            agenda.sort_values(by="_creado_dt_dashboard", ascending=False)[visibles],
+            agenda.sort_values(by=TEXT_CREADO_DT_DASHBOARD, ascending=False)[visibles],
             use_container_width=True,
             hide_index=True,
         )
 
 
-def tabla_resumen_tipologias_incidentes(df):
-    if df.empty:
-        return pd.DataFrame(
-            columns=[
-                "Tipologia",
-                "Lectura ejecutiva",
-                "Total",
-                "Cerrados",
-                "Abiertos",
-                "SLA aplica",
-                "Cumple SLA",
-                "No cumple SLA",
-                "SLA %",
-                "Prom. horas",
-                "Prom. dias",
-            ]
-        )
+COLUMNAS_RESUMEN_TIPOLOGIAS = [
+    TEXT_TIPOLOGIA,
+    COL_LECTURA_EJECUTIVA,
+    TEXT_TOTAL,
+    TEXT_CERRADOS,
+    TEXT_ABIERTOS,
+    "SLA aplica",
+    "Objetivo atencion",
+    COL_CUMPLE_SLA,
+    COL_NO_CUMPLE_SLA,
+    "SLA %",
+    COL_PROM_HORAS,
+    COL_PROM_DIAS,
+]
 
+
+def preparar_base_tipologias_incidentes(df):
     trabajo = df.copy()
-    trabajo["tipificacion_auto"] = trabajo["tipificacion_auto"].fillna("Incidente Interno")
-    trabajo["_cerrado"] = mascara_cerrados(trabajo)
-    trabajo["_duracion_horas_num"] = pd.to_numeric(trabajo["duracion_horas"], errors="coerce")
-    tipologias = [
-        tipologia
-        for tipologia in INCIDENT_TIPIFICATION_ORDER
-        if tipologia in set(trabajo["tipificacion_auto"].dropna())
-    ]
+    trabajo[TEXT_TIPIFICACION_AUTO] = trabajo[TEXT_TIPIFICACION_AUTO].fillna(TIPIFICACION_INCIDENTE_INTERNO)
+    trabajo[TEXT_CERRADO_2] = mascara_cerrados(trabajo)
+    duracion_base = TEXT_DURACION_SLA_HORAS if TEXT_DURACION_SLA_HORAS in trabajo.columns else TEXT_DURACION_HORAS
+    trabajo["_duracion_horas_num"] = pd.to_numeric(trabajo[duracion_base], errors=TEXT_COERCE)
+    return trabajo
+
+
+def ordenar_tipologias_incidentes(trabajo):
+    tipologias_disponibles = set(trabajo[TEXT_TIPIFICACION_AUTO].dropna())
+    tipologias = [tipologia for tipologia in INCIDENT_TIPIFICATION_ORDER if tipologia in tipologias_disponibles]
     tipologias.extend(
         sorted(
             tipologia
-            for tipologia in trabajo["tipificacion_auto"].dropna().unique().tolist()
+            for tipologia in trabajo[TEXT_TIPIFICACION_AUTO].dropna().unique().tolist()
             if tipologia not in tipologias
         )
     )
+    return tipologias
 
-    filas = []
-    for tipologia in tipologias:
-        grupo = trabajo[trabajo["tipificacion_auto"] == tipologia].copy()
-        cerrados = grupo[grupo["_cerrado"]].copy()
-        sla_aplica = bool(grupo.get("aplica_sla_incidente", pd.Series(dtype="bool")).fillna(False).any())
-        if sla_aplica:
-            con_sla = cerrados[
-                cerrados.get("aplica_sla_incidente", pd.Series(False, index=cerrados.index)).fillna(False)
-                & cerrados["estado_sla"].isin(["Cumple", "No cumple"])
-            ].copy()
-        else:
-            con_sla = cerrados.iloc[0:0].copy()
-        cumple = int((con_sla["estado_sla"] == "Cumple").sum())
-        no_cumple = int((con_sla["estado_sla"] == "No cumple").sum())
-        total_sla = cumple + no_cumple
-        promedio_horas = cerrados["_duracion_horas_num"].dropna().mean()
-        sla_porcentaje = f"{porcentaje(cumple, total_sla)}%" if total_sla else (
-            "Sin cierre" if sla_aplica else "No aplica"
-        )
-        filas.append(
-            {
-                "Tipologia": tipologia,
-                "Lectura ejecutiva": INCIDENT_TIPIFICATION_GUIDE.get(
-                    tipologia,
-                    "Tipologia detectada en el archivo cargado.",
-                ),
-                "Total": len(grupo),
-                "Cerrados": len(cerrados),
-                "Abiertos": len(grupo) - len(cerrados),
-                "SLA aplica": "Si" if sla_aplica else "No aplica",
-                "Cumple SLA": cumple if sla_aplica else pd.NA,
-                "No cumple SLA": no_cumple if sla_aplica else pd.NA,
-                "SLA %": sla_porcentaje,
-                "Prom. horas": round(promedio_horas, 2) if pd.notna(promedio_horas) else pd.NA,
-                "Prom. dias": round(promedio_horas / 24, 2) if pd.notna(promedio_horas) else pd.NA,
-            }
-        )
 
-    resumen = pd.DataFrame(filas)
-    for columna in ["Total", "Cerrados", "Abiertos", "Cumple SLA", "No cumple SLA"]:
+def objetivo_atencion_tipologia(objetivos):
+    if len(objetivos) == 1:
+        return formato_horas_dias(objetivos[0])
+    if len(objetivos) > 1:
+        return "Segun prioridad"
+    return "Sin objetivo"
+
+
+def calcular_sla_tipologia(cerrados, objetivos):
+    sla_aplica = len(objetivos) > 0
+    con_sla = (
+        cerrados[cerrados[TEXT_ESTADO_SLA].isin([ESTADO_SLA_CUMPLE, ESTADO_SLA_NO_CUMPLE])].copy()
+        if sla_aplica
+        else cerrados.iloc[0:0].copy()
+    )
+    cumple = int((con_sla[TEXT_ESTADO_SLA] == ESTADO_SLA_CUMPLE).sum())
+    no_cumple = int((con_sla[TEXT_ESTADO_SLA] == ESTADO_SLA_NO_CUMPLE).sum())
+    total_sla = cumple + no_cumple
+    if total_sla:
+        sla_porcentaje = f"{porcentaje(cumple, total_sla)}%"
+    elif sla_aplica:
+        sla_porcentaje = "Sin cierre"
+    else:
+        sla_porcentaje = "No aplica"
+    return sla_aplica, cumple, no_cumple, sla_porcentaje
+
+
+def fila_resumen_tipologia(trabajo, tipologia):
+    grupo = trabajo[trabajo[TEXT_TIPIFICACION_AUTO] == tipologia].copy()
+    cerrados = grupo[grupo[TEXT_CERRADO_2]].copy()
+    objetivos = pd.to_numeric(
+        grupo.get(TEXT_SLA_OBJETIVO_HORAS, pd.Series(dtype=TEXT_FLOAT)),
+        errors=TEXT_COERCE,
+    ).dropna().unique()
+    sla_aplica, cumple, no_cumple, sla_porcentaje = calcular_sla_tipologia(cerrados, objetivos)
+    promedio_horas = cerrados["_duracion_horas_num"].dropna().mean()
+
+    return {
+        TEXT_TIPOLOGIA: tipologia,
+        COL_LECTURA_EJECUTIVA: INCIDENT_TIPIFICATION_GUIDE.get(
+            tipologia,
+            "Tipologia detectada en el archivo cargado.",
+        ),
+        TEXT_TOTAL: len(grupo),
+        TEXT_CERRADOS: len(cerrados),
+        TEXT_ABIERTOS: len(grupo) - len(cerrados),
+        "SLA aplica": "Si" if sla_aplica else "No aplica",
+        "Objetivo atencion": objetivo_atencion_tipologia(objetivos),
+        COL_CUMPLE_SLA: cumple if sla_aplica else pd.NA,
+        COL_NO_CUMPLE_SLA: no_cumple if sla_aplica else pd.NA,
+        "SLA %": sla_porcentaje,
+        COL_PROM_HORAS: round(promedio_horas, 2) if pd.notna(promedio_horas) else pd.NA,
+        COL_PROM_DIAS: round(promedio_horas / 24, 2) if pd.notna(promedio_horas) else pd.NA,
+    }
+
+
+def convertir_tipos_resumen_tipologias(resumen):
+    for columna in [TEXT_TOTAL, TEXT_CERRADOS, TEXT_ABIERTOS, COL_CUMPLE_SLA, COL_NO_CUMPLE_SLA]:
         resumen[columna] = resumen[columna].astype("Int64")
-    for columna in ["Prom. horas", "Prom. dias"]:
+    for columna in [COL_PROM_HORAS, COL_PROM_DIAS]:
         resumen[columna] = resumen[columna].astype("Float64")
     return resumen
 
 
-def clasificar_causa_cliente_externo(causa):
+def tabla_resumen_tipologias_incidentes(df):
+    if df.empty:
+        return pd.DataFrame(columns=COLUMNAS_RESUMEN_TIPOLOGIAS)
+
+    trabajo = preparar_base_tipologias_incidentes(df)
+    filas = [fila_resumen_tipologia(trabajo, tipologia) for tipologia in ordenar_tipologias_incidentes(trabajo)]
+    return convertir_tipos_resumen_tipologias(pd.DataFrame(filas))
+
+def clasificar_causa_incidente(causa):
     texto = normalizar_texto(causa)
     if not texto or "sin inferencia" in texto or "sin patron" in texto:
         return (
@@ -1972,22 +2205,26 @@ def clasificar_causa_cliente_externo(causa):
     )
 
 
-def resumen_causas_cliente_externo(df):
+def clasificar_causa_cliente_externo(causa):
+    return clasificar_causa_incidente(causa)
+
+
+def resumen_causas_incidentes(df, porcentaje_columna="% incidentes"):
     columnas = [
-        "Causa raiz",
-        "Cantidad",
-        "% cliente externo",
-        "Lectura ejecutiva",
-        "Accion sugerida",
+        COL_CAUSA_RAIZ,
+        TEXT_CANTIDAD,
+        porcentaje_columna,
+        COL_LECTURA_EJECUTIVA,
+        COL_ACCION_SUGERIDA,
         "Detalle tecnico observado",
     ]
     if df.empty:
         return pd.DataFrame(columns=columnas)
 
     trabajo = df.copy()
-    trabajo["causa_tecnica"] = trabajo["causa_raiz_auto"].replace("", pd.NA).fillna("Sin inferencia")
-    clasificacion = trabajo["causa_tecnica"].apply(clasificar_causa_cliente_externo)
-    trabajo[["Causa raiz", "Lectura ejecutiva", "Accion sugerida"]] = pd.DataFrame(
+    trabajo[TEXT_CAUSA_TECNICA] = trabajo[TEXT_CAUSA_RAIZ_AUTO].replace("", pd.NA).fillna("Sin inferencia")
+    clasificacion = trabajo[TEXT_CAUSA_TECNICA].apply(clasificar_causa_incidente)
+    trabajo[[COL_CAUSA_RAIZ, COL_LECTURA_EJECUTIVA, COL_ACCION_SUGERIDA]] = pd.DataFrame(
         clasificacion.tolist(),
         index=trabajo.index,
     )
@@ -1999,20 +2236,24 @@ def resumen_causas_cliente_externo(df):
         return "; ".join(valores)
 
     resumen = (
-        trabajo.groupby(["Causa raiz", "Lectura ejecutiva", "Accion sugerida"], dropna=False)
+        trabajo.groupby([COL_CAUSA_RAIZ, COL_LECTURA_EJECUTIVA, COL_ACCION_SUGERIDA], dropna=False)
         .agg(
-            Cantidad=("numero", "count"),
-            Detalle_tecnico_observado=("causa_tecnica", detalles_tecnicos),
+            Cantidad=(TEXT_NUMERO, TEXT_COUNT),
+            Detalle_tecnico_observado=(TEXT_CAUSA_TECNICA, detalles_tecnicos),
         )
         .reset_index()
-        .sort_values(by=["Cantidad", "Causa raiz"], ascending=[False, True])
+        .sort_values(by=[TEXT_CANTIDAD, COL_CAUSA_RAIZ], ascending=[False, True])
     )
-    resumen["% cliente externo"] = resumen["Cantidad"].apply(lambda valor: porcentaje(valor, total))
+    resumen[porcentaje_columna] = resumen[TEXT_CANTIDAD].apply(lambda valor: porcentaje(valor, total))
     resumen = resumen.rename(columns={"Detalle_tecnico_observado": "Detalle tecnico observado"})
     return resumen[columnas]
 
 
-def causas_relevantes_cliente_externo(causas):
+def resumen_causas_cliente_externo(df):
+    return resumen_causas_incidentes(df, "% cliente externo")
+
+
+def causas_relevantes_incidentes(causas):
     if causas.empty:
         return causas
     excluidas = [
@@ -2020,8 +2261,60 @@ def causas_relevantes_cliente_externo(causas):
         "Hallazgos tecnicos con bajo volumen o descripcion no estandarizada.",
         "No hay informacion suficiente para explicar la causa.",
     ]
-    relevantes = causas[~causas["Lectura ejecutiva"].isin(excluidas)].copy()
-    return relevantes[relevantes["Cantidad"] >= 2].copy()
+    relevantes = causas[~causas[COL_LECTURA_EJECUTIVA].isin(excluidas)].copy()
+    return relevantes[relevantes[TEXT_CANTIDAD] >= 2].copy()
+
+
+def causas_relevantes_cliente_externo(causas):
+    return causas_relevantes_incidentes(causas)
+
+
+def resumen_motivos_caso_cliente_externo(df):
+    columnas = [COL_MOTIVO_CASO, TEXT_CANTIDAD, "% casos"]
+    if df.empty:
+        return pd.DataFrame(columns=columnas)
+    trabajo = df.copy()
+    trabajo[COL_MOTIVO_CASO] = (
+        trabajo[TEXT_CAUSA_RAIZ_AUTO]
+        .replace("", pd.NA)
+        .fillna("Otro caso cliente externo")
+    )
+    total = len(trabajo)
+    resumen = (
+        trabajo.groupby(COL_MOTIVO_CASO, dropna=False)
+        .size()
+        .reset_index(name=TEXT_CANTIDAD)
+        .sort_values(by=[TEXT_CANTIDAD, COL_MOTIVO_CASO], ascending=[False, True])
+    )
+    resumen["% casos"] = resumen[TEXT_CANTIDAD].apply(lambda valor: porcentaje(valor, total))
+    return resumen[columnas]
+
+
+def render_causas_incidentes(df, titulo, porcentaje_columna):
+    causas = resumen_causas_incidentes(df, porcentaje_columna)
+    relevantes = causas_relevantes_incidentes(causas)
+    if relevantes.empty:
+        st.info(f"No hay causas raiz relevantes para {titulo.lower()} en el periodo.")
+        return
+
+    grafico = (
+        relevantes.groupby(COL_LECTURA_EJECUTIVA, as_index=False)
+        .agg(Cantidad=(TEXT_CANTIDAD, "sum"))
+        .sort_values(by=TEXT_CANTIDAD, ascending=True)
+    )
+    fig = px.bar(
+        grafico,
+        x=TEXT_CANTIDAD,
+        y=COL_LECTURA_EJECUTIVA,
+        orientation="h",
+        text=TEXT_CANTIDAD,
+        color_discrete_sequence=[UI_PALETTE[TEXT_PURPLE]],
+    )
+    fig.update_traces(textposition=TEXT_OUTSIDE)
+    fig = aplicar_estilo_figura(fig, titulo)
+    fig.update_layout(height=max(320, 56 * len(grafico)),yaxis={"automargin": True})
+    st.plotly_chart(fig, use_container_width=True)
+    st.dataframe(relevantes, use_container_width=True, hide_index=True)
 
 
 def dashboard_casos():
@@ -2043,7 +2336,7 @@ def dashboard_casos():
     abiertos = total - cerrados
 
     df_cerrados = df[cerrados_mask]
-    tiempos_cerrados = pd.to_numeric(df_cerrados["tiempo_respuesta"], errors="coerce").dropna()
+    tiempos_cerrados = pd.to_numeric(df_cerrados[TEXT_TIEMPO_RESPUESTA], errors=TEXT_COERCE).dropna()
     promedio = round(tiempos_cerrados.mean(), 2) if len(tiempos_cerrados) > 0 else 0
 
     total_cerrados = len(tiempos_cerrados)
@@ -2054,39 +2347,39 @@ def dashboard_casos():
     render_tarjetas(
         [
             ("Total Casos", total),
-            ("Cerrados", cerrados),
-            ("Abiertos", abiertos),
+            (TEXT_CERRADOS, cerrados),
+            (TEXT_ABIERTOS, abiertos),
             ("Promedio (h)", promedio),
             (f"SLA <{SLA_CASOS_HORAS}h (%)", f"{porcentaje_sla}%"),
         ]
     )
-    st.caption(f"Periodo: {mes_dashboard} | Cumplen: {cumplen} | No cumplen: {incumplen}")
+    st.caption(f"{TEXT_PERIODO}{mes_dashboard} | Cumplen: {cumplen}{TEXT_NO_CUMPLEN}{incumplen}")
 
     st.divider()
     col1, col2 = st.columns(2)
 
     with col1:
-        tip = tabla_resumen_tipificaciones_casos(df)[["Tipificacion", "Cantidad"]]
-        tip = tip.sort_values(by="Cantidad", ascending=True)
+        tip = tabla_resumen_tipificaciones_casos(df)[[TEXT_TIPIFICACION, TEXT_CANTIDAD]]
+        tip = tip.sort_values(by=TEXT_CANTIDAD, ascending=True)
         fig = px.bar(
             tip,
-            x="Cantidad",
-            y="Tipificacion",
+            x=TEXT_CANTIDAD,
+            y=TEXT_TIPIFICACION,
             orientation="h",
-            text="Cantidad",
-            color="Tipificacion",
+            text=TEXT_CANTIDAD,
+            color=TEXT_TIPIFICACION,
             color_discrete_sequence=CHART_COLORS,
         )
-        fig.update_traces(textposition="outside")
+        fig.update_traces(textposition=TEXT_OUTSIDE)
         fig.update_layout(showlegend=False)
         st.plotly_chart(aplicar_estilo_figura(fig, "Casos por tipificacion"), use_container_width=True)
 
     with col2:
         serie = df.copy()
-        casos_dia = serie.groupby(serie["_creado_dt_dashboard"].dt.date).size().reset_index(name="casos")
-        casos_dia.columns = ["Fecha", "casos"]
-        fig = px.bar(casos_dia, x="Fecha", y="casos", color_discrete_sequence=[UI_PALETTE["yellow"]])
-        fig.update_traces(marker_color=UI_PALETTE["yellow"])
+        casos_dia = serie.groupby(serie[TEXT_CREADO_DT_DASHBOARD].dt.date).size().reset_index(name=TEXT_CASOS_2)
+        casos_dia.columns = [TEXT_FECHA, TEXT_CASOS_2]
+        fig = px.bar(casos_dia, x=TEXT_FECHA, y=TEXT_CASOS_2, color_discrete_sequence=[UI_PALETTE[TEXT_YELLOW]])
+        fig.update_traces(marker_color=UI_PALETTE[TEXT_YELLOW])
         st.plotly_chart(aplicar_estilo_figura(fig, "Casos por dia"), use_container_width=True)
 
     st.divider()
@@ -2119,57 +2412,55 @@ def dashboard_incidentes():
     cerrados = len(df[cerrados_mask])
     abiertos = total - cerrados
 
-    incidentes_reales = df[df["aplica_sla_incidente"]].copy()
-    alertas_noc = df[df["tipificacion_auto"].fillna("") == "Alerta NOC"].copy()
-    consultas_noc = df[df["tipificacion_auto"].fillna("") == "Consulta NOC"].copy()
-    incidentes_externos = df[df["tipificacion_auto"].fillna("") == "Incidente Cliente Externo"].copy()
-    incidentes_internos = df[df["tipificacion_auto"].fillna("") == "Incidente Interno"].copy()
-    incidentes_seguridad = df[df["tipificacion_auto"].fillna("") == "Incidente Seguridad"].copy()
+    incidentes_reales = df[df[TEXT_APLICA_SLA_INCIDENTE]].copy()
+    atenciones_noc = df[df[TEXT_TIPIFICACION_AUTO].fillna("") == NOC_TIPIFICATION].copy()
+    incidentes_externos = df[df[TEXT_TIPIFICACION_AUTO].fillna("") == TIPIFICACION_INCIDENTE_CLIENTE_EXTERNO].copy()
+    incidentes_internos = df[df[TEXT_TIPIFICACION_AUTO].fillna("") == TIPIFICACION_INCIDENTE_INTERNO].copy()
+    casos_cliente_externo = df[df[TEXT_TIPIFICACION_AUTO].fillna("") == TIPIFICACION_CASO_CLIENTE_EXTERNO].copy()
 
-    duraciones = pd.to_numeric(incidentes_reales["duracion_horas"], errors="coerce").dropna()
+    duraciones = pd.to_numeric(incidentes_reales[TEXT_DURACION_SLA_HORAS], errors=TEXT_COERCE).dropna()
     promedio = round(duraciones.mean(), 2) if len(duraciones) > 0 else 0
 
     df_cerrados = incidentes_reales[mascara_cerrados(incidentes_reales)].copy()
-    df_cerrados = df_cerrados[df_cerrados["estado_sla"].isin(["Cumple", "No cumple"])]
+    df_cerrados = df_cerrados[df_cerrados[TEXT_ESTADO_SLA].isin([ESTADO_SLA_CUMPLE, ESTADO_SLA_NO_CUMPLE])]
     total_cerrados = len(df_cerrados)
-    cumplen = len(df_cerrados[df_cerrados["estado_sla"] == "Cumple"])
+    cumplen = len(df_cerrados[df_cerrados[TEXT_ESTADO_SLA] == ESTADO_SLA_CUMPLE])
     porcentaje_sla = round((cumplen / total_cerrados) * 100, 2) if total_cerrados > 0 else 0
     incumplen = total_cerrados - cumplen
     sla_base = df_cerrados.copy()
     if not sla_base.empty:
-        sla_base["duracion_horas_num"] = pd.to_numeric(sla_base["duracion_horas"], errors="coerce")
-        sla_base["duracion_dias_num"] = (sla_base["duracion_horas_num"] / 24).round(2)
-        sla_base["sla_objetivo_dias"] = (pd.to_numeric(sla_base["sla_objetivo_horas"], errors="coerce") / 24).round(2)
-        sla_base["SLA objetivo"] = sla_base["sla_objetivo_horas"].apply(formato_horas_dias)
-        sla_base["Rango resolucion"] = sla_base["duracion_horas_num"].apply(clasificar_rango_resolucion)
-    alertas_tipificadas = len(
-        df[
-            (df["es_alerta_auto"].fillna("No") == "Si")
-            | (df["tipificacion_auto"].fillna("") == "Alerta NOC")
-        ]
-    )
+        sla_base[TEXT_DURACION_HORAS_NUM] = pd.to_numeric(sla_base[TEXT_DURACION_SLA_HORAS], errors=TEXT_COERCE)
+        sla_base[TEXT_DURACION_DIAS_NUM] = (sla_base[TEXT_DURACION_HORAS_NUM] / 24).round(2)
+        sla_base["sla_objetivo_dias"] = (pd.to_numeric(sla_base[TEXT_SLA_OBJETIVO_HORAS], errors=TEXT_COERCE) / 24).round(2)
+        sla_base[COL_SLA_OBJETIVO] = sla_base[TEXT_SLA_OBJETIVO_HORAS].apply(formato_horas_dias)
+        sla_base["Rango resolucion"] = sla_base[TEXT_DURACION_HORAS_NUM].apply(clasificar_rango_resolucion)
+
+    casos_cerrados = casos_cliente_externo[mascara_cerrados(casos_cliente_externo)].copy()
+    casos_cerrados = casos_cerrados[casos_cerrados[TEXT_ESTADO_SLA].isin([ESTADO_SLA_CUMPLE, ESTADO_SLA_NO_CUMPLE])]
+    casos_cumplen = int((casos_cerrados[TEXT_ESTADO_SLA] == ESTADO_SLA_CUMPLE).sum())
+    casos_total_sla = len(casos_cerrados)
+    casos_sla = round((casos_cumplen / casos_total_sla) * 100, 2) if casos_total_sla else 0
 
     render_tarjetas(
         [
-            ("Atenciones", total),
-            ("Incidentes", len(incidentes_reales)),
-            ("Alertas NOC", len(alertas_noc)),
-            ("Consultas NOC", len(consultas_noc)),
-            ("SLA (%)", f"{porcentaje_sla}%"),
+            (TEXT_ATENCIONES, total),
+            ("Incidentes reales", len(incidentes_reales)),
+            ("Atencion NOC", len(atenciones_noc)),
+            (LABEL_CASOS_CLIENTE_EXTERNO, len(casos_cliente_externo)),
+            ("SLA incidentes", f"{porcentaje_sla}%"),
         ]
     )
     st.caption(
-        f"Periodo: {mes_dashboard} | Cerrados: {cerrados} | Abiertos: {abiertos} | "
-        f"Promedio incidentes: {promedio}h | Cumplen: {cumplen} | No cumplen: {incumplen} | "
-        f"Alertas tipificadas: {alertas_tipificadas} | Externos: {len(incidentes_externos)} | "
-        f"Internos: {len(incidentes_internos)} | Seguridad: {len(incidentes_seguridad)}"
+        f"{TEXT_PERIODO}{mes_dashboard} | Cerrados: {cerrados} | Abiertos: {abiertos} | "
+        f"Promedio incidentes: {promedio}h | Cumplen: {cumplen}{TEXT_NO_CUMPLEN}{incumplen} | "
+        f"Externos: {len(incidentes_externos)} | Internos: {len(incidentes_internos)} | "
+        f"SLA casos cliente externo: {casos_sla}%"
     )
 
     st.divider()
-    st.subheader("tipologia Incidentes")
+    st.subheader("Clasificacion de atenciones")
     st.caption(
-        "Vista consolidada para entender que tipo de atenciones entraron al periodo, cuantas siguen abiertas "
-        "y como va el cumplimiento de SLA donde aplica."
+        "Vista consolidada de lo recibido: NOC, casos cliente externo e incidentes reales internos o externos."
     )
     st.dataframe(
         tabla_resumen_tipologias_incidentes(df),
@@ -2181,187 +2472,118 @@ def dashboard_incidentes():
     fila1_col1, fila1_col2 = st.columns(2)
 
     with fila1_col1:
-        tip = df["tipificacion_auto"].fillna("Incidente Interno").value_counts().reset_index()
-        tip.columns = ["Tipologia", "Cantidad"]
-        tip = tip.sort_values(by="Cantidad", ascending=True)
+        tip = df[TEXT_TIPIFICACION_AUTO].fillna("Sin clasificacion").value_counts().reset_index()
+        tip.columns = [TEXT_TIPOLOGIA, TEXT_CANTIDAD]
+        tip = tip.sort_values(by=TEXT_CANTIDAD, ascending=True)
         fig = px.bar(
             tip,
-            x="Cantidad",
-            y="Tipologia",
+            x=TEXT_CANTIDAD,
+            y=TEXT_TIPOLOGIA,
             orientation="h",
-            text="Cantidad",
-            color="Tipologia",
+            text=TEXT_CANTIDAD,
+            color=TEXT_TIPOLOGIA,
             color_discrete_sequence=CHART_COLORS,
         )
-        fig.update_traces(textposition="outside")
-        fig.update_layout(showlegend=False, title="Atenciones por tipologia")
-        st.plotly_chart(aplicar_estilo_figura(fig, "Atenciones por tipologia"), use_container_width=True)
+        fig.update_traces(textposition=TEXT_OUTSIDE)
+        fig.update_layout(showlegend=False)
+        st.plotly_chart(aplicar_estilo_figura(fig, "Clasificacion general"), use_container_width=True)
 
     with fila1_col2:
-        if sla_base.empty:
-            st.info("No hay incidentes cerrados con objetivo SLA para graficar.")
-        else:
-            cumplimiento_prioridad = (
-                sla_base.groupby(["prioridad_normalizada", "estado_sla"])
-                .size()
-                .reset_index(name="Cantidad")
-            )
-            fig = px.bar(
-                cumplimiento_prioridad,
-                x="Cantidad",
-                y="prioridad_normalizada",
-                orientation="h",
-                text="Cantidad",
-                color="estado_sla",
-                barmode="stack",
-                category_orders={"prioridad_normalizada": ["Bajo", "Moderado", "Alto", "Critico"]},
-                color_discrete_map={
-                    "Cumple": UI_PALETTE["lavender"],
-                    "No cumple": UI_PALETTE["primary"],
-                },
-                labels={
-                    "prioridad_normalizada": "Prioridad",
-                    "estado_sla": "Estado SLA",
-                },
-            )
-            fig.update_traces(textposition="inside")
-            st.plotly_chart(aplicar_estilo_figura(fig, "Cumplimiento SLA por prioridad"), use_container_width=True)
-
-    fila2_col1, fila2_col2 = st.columns(2)
-
-    with fila2_col1:
-        servicios = df["servicio_negocio"].fillna("Sin servicio").value_counts().reset_index()
-        servicios.columns = ["Servicio", "Cantidad"]
-        servicios = servicios.sort_values(by="Cantidad", ascending=True)
-        fig = px.bar(
-            servicios,
-            x="Cantidad",
-            y="Servicio",
-            orientation="h",
-            text="Cantidad",
-            color_discrete_sequence=[UI_PALETTE["yellow"]],
-        )
-        fig.update_traces(textposition="outside")
-        fig.update_layout(title="Servicios afectados")
-        st.plotly_chart(aplicar_estilo_figura(fig, "Servicios afectados"), use_container_width=True)
-
-    with fila2_col2:
         serie = df.copy()
-        incidentes_dia = serie.groupby(serie["_creado_dt_dashboard"].dt.date).size().reset_index(name="incidentes")
-        incidentes_dia.columns = ["Fecha", "incidentes"]
+        atenciones_dia = serie.groupby(serie[TEXT_CREADO_DT_DASHBOARD].dt.date).size().reset_index(name=TEXT_ATENCIONES)
+        atenciones_dia.columns = [TEXT_FECHA, TEXT_ATENCIONES]
         fig = px.bar(
-            incidentes_dia,
-            x="Fecha",
-            y="incidentes",
-            title="Atenciones por dia",
-            color_discrete_sequence=[UI_PALETTE["purple"]],
+            atenciones_dia,
+            x=TEXT_FECHA,
+            y=TEXT_ATENCIONES,
+            color_discrete_sequence=[UI_PALETTE[TEXT_PURPLE]],
         )
-        fig.update_traces(marker_color=UI_PALETTE["purple"])
+        fig.update_traces(marker_color=UI_PALETTE[TEXT_PURPLE])
         st.plotly_chart(aplicar_estilo_figura(fig, "Atenciones por dia"), use_container_width=True)
 
     st.divider()
-    st.subheader("SLA por matriz")
+    st.subheader("SLA de incidentes reales")
     if sla_base.empty:
         st.info("No hay incidentes cerrados con objetivo SLA para el periodo seleccionado.")
     else:
         st.caption(
-            "El objetivo se muestra en horas y dias. El cumplimiento compara la duracion cargada del incidente "
-            "contra el SLA de su tipificacion y prioridad."
+            "Solo incluye incidentes reales. Seguridad se muestra como tipo de incidente dentro de cliente externo o interno."
         )
-
-        rango_resolucion = (
-            sla_base["Rango resolucion"]
-            .value_counts()
-            .reindex(RANGO_RESOLUCION_ORDEN, fill_value=0)
-            .reset_index()
+        sla_base[TEXT_SEGMENTO] = sla_base[TEXT_TIPIFICACION_AUTO] + " - " + sla_base[TEXT_TIPO_INCIDENTE_AUTO]
+        cumplimiento_segmento = (
+            sla_base.groupby([TEXT_SEGMENTO, TEXT_ESTADO_SLA])
+            .size()
+            .reset_index(name=TEXT_CANTIDAD)
+            .sort_values(by=TEXT_CANTIDAD, ascending=True)
         )
-        rango_resolucion.columns = ["Rango resolucion", "Cantidad"]
-        rango_resolucion = rango_resolucion[rango_resolucion["Cantidad"] > 0]
-
-        rango_col1, rango_col2 = st.columns(2)
-        with rango_col1:
-            fig = px.bar(
-                rango_resolucion,
-                x="Rango resolucion",
-                y="Cantidad",
-                text="Cantidad",
-                color_discrete_sequence=[UI_PALETTE["yellow"]],
-            )
-            fig.update_traces(marker_color=UI_PALETTE["yellow"], textposition="outside")
-            st.plotly_chart(aplicar_estilo_figura(fig, "Rangos de resolucion"), use_container_width=True)
-
-        with rango_col2:
-            objetivo_resumen = (
-                sla_base.groupby(["SLA objetivo", "estado_sla"])
-                .size()
-                .reset_index(name="Cantidad")
-            )
-            fig = px.bar(
-                objetivo_resumen,
-                x="Cantidad",
-                y="SLA objetivo",
-                orientation="h",
-                text="Cantidad",
-                color="estado_sla",
-                barmode="stack",
-                color_discrete_map={
-                    "Cumple": UI_PALETTE["lavender"],
-                    "No cumple": UI_PALETTE["primary"],
-                },
-                labels={"estado_sla": "Estado SLA"},
-            )
-            fig.update_traces(textposition="inside")
-            st.plotly_chart(aplicar_estilo_figura(fig, "Cumplimiento por objetivo SLA"), use_container_width=True)
+        fig = px.bar(
+            cumplimiento_segmento,
+            x=TEXT_CANTIDAD,
+            y=TEXT_SEGMENTO,
+            orientation="h",
+            text=TEXT_CANTIDAD,
+            color=TEXT_ESTADO_SLA,
+            barmode="stack",
+            color_discrete_map={
+                ESTADO_SLA_CUMPLE: UI_PALETTE[TEXT_LAVENDER],
+                ESTADO_SLA_NO_CUMPLE: UI_PALETTE[TEXT_PRIMARY],
+            },
+            labels={TEXT_ESTADO_SLA: "Estado SLA"},
+        )
+        fig.update_traces(textposition="inside")
+        st.plotly_chart(aplicar_estilo_figura(fig, "SLA por tipo de incidente"), use_container_width=True)
 
         sla_resumen = (
             sla_base.groupby(
-                ["tipificacion_auto", "prioridad_normalizada", "sla_objetivo_horas", "SLA objetivo"],
+                [TEXT_TIPIFICACION_AUTO, TEXT_TIPO_INCIDENTE_AUTO, TEXT_PRIORIDAD_NORMALIZADA, TEXT_SLA_OBJETIVO_HORAS, COL_SLA_OBJETIVO],
                 dropna=False,
             )
             .agg(
-                Total=("numero", "count"),
-                Cumple=("estado_sla", lambda serie: int((serie == "Cumple").sum())),
-                No_cumple=("estado_sla", lambda serie: int((serie == "No cumple").sum())),
-                Prom_horas=("duracion_horas_num", "mean"),
-                Prom_dias=("duracion_dias_num", "mean"),
-                Max_horas=("duracion_horas_num", "max"),
-                Max_dias=("duracion_dias_num", "max"),
+                Total=(TEXT_NUMERO, TEXT_COUNT),
+                Cumple=(TEXT_ESTADO_SLA, lambda serie: int((serie == ESTADO_SLA_CUMPLE).sum())),
+                No_cumple=(TEXT_ESTADO_SLA, lambda serie: int((serie == ESTADO_SLA_NO_CUMPLE).sum())),
+                Prom_horas=(TEXT_DURACION_HORAS_NUM, "mean"),
+                Prom_dias=(TEXT_DURACION_DIAS_NUM, "mean"),
+                Max_horas=(TEXT_DURACION_HORAS_NUM, "max"),
+                Max_dias=(TEXT_DURACION_DIAS_NUM, "max"),
             )
             .reset_index()
         )
         sla_resumen["Cumplimiento %"] = sla_resumen.apply(
-            lambda row: porcentaje(row["Cumple"], row["Total"]),
+            lambda row: porcentaje(row[ESTADO_SLA_CUMPLE], row[TEXT_TOTAL]),
             axis=1,
         )
         sla_resumen = sla_resumen.rename(
             columns={
-                "tipificacion_auto": "Tipificacion",
-                "prioridad_normalizada": "Prioridad",
-                "sla_objetivo_horas": "SLA objetivo h",
-                "No_cumple": "No cumple",
-                "Prom_horas": "Prom. horas",
-                "Prom_dias": "Prom. dias",
-                "Max_horas": "Max. horas",
-                "Max_dias": "Max. dias",
+                TEXT_TIPIFICACION_AUTO: TEXT_TIPIFICACION,
+                TEXT_TIPO_INCIDENTE_AUTO: "Tipo incidente",
+                TEXT_PRIORIDAD_NORMALIZADA: TEXT_PRIORIDAD_2,
+                TEXT_SLA_OBJETIVO_HORAS: COL_SLA_OBJETIVO_H,
+                "No_cumple": ESTADO_SLA_NO_CUMPLE,
+                "Prom_horas": COL_PROM_HORAS,
+                "Prom_dias": COL_PROM_DIAS,
+                "Max_horas": COL_MAX_HORAS,
+                "Max_dias": COL_MAX_DIAS,
             }
         )
-        columnas_numericas = ["Prom. horas", "Prom. dias", "Max. horas", "Max. dias", "SLA objetivo h"]
+        columnas_numericas = [COL_PROM_HORAS, COL_PROM_DIAS, COL_MAX_HORAS, COL_MAX_DIAS, COL_SLA_OBJETIVO_H]
         for columna in columnas_numericas:
-            sla_resumen[columna] = pd.to_numeric(sla_resumen[columna], errors="coerce").round(2)
+            sla_resumen[columna] = pd.to_numeric(sla_resumen[columna], errors=TEXT_COERCE).round(2)
         st.dataframe(
             sla_resumen[
                 [
-                    "Tipificacion",
-                    "Prioridad",
-                    "SLA objetivo",
-                    "SLA objetivo h",
-                    "Prom. horas",
-                    "Prom. dias",
-                    "Max. horas",
-                    "Max. dias",
-                    "Cumple",
-                    "No cumple",
-                    "Total",
+                    TEXT_TIPIFICACION,
+                    "Tipo incidente",
+                    TEXT_PRIORIDAD_2,
+                    COL_SLA_OBJETIVO,
+                    COL_SLA_OBJETIVO_H,
+                    COL_PROM_HORAS,
+                    COL_PROM_DIAS,
+                    COL_MAX_HORAS,
+                    COL_MAX_DIAS,
+                    ESTADO_SLA_CUMPLE,
+                    ESTADO_SLA_NO_CUMPLE,
+                    TEXT_TOTAL,
                     "Cumplimiento %",
                 ]
             ],
@@ -2370,74 +2592,55 @@ def dashboard_incidentes():
         )
 
     st.divider()
-    st.subheader("Cliente externo")
+    st.subheader("Causas raiz de incidentes")
+    causa_col1, causa_col2 = st.columns(2)
+    with causa_col1:
+        render_causas_incidentes(incidentes_externos, "Causas cliente externo", "% cliente externo")
+    with causa_col2:
+        render_causas_incidentes(incidentes_internos, "Causas cliente interno", "% cliente interno")
 
-    df_cliente_externo = df[df["tipificacion_auto"].fillna("Incidente Interno") == "Incidente Cliente Externo"].copy()
-    causas_cliente = resumen_causas_cliente_externo(df_cliente_externo)
-    causas_relevantes = causas_relevantes_cliente_externo(causas_cliente)
+    st.divider()
+    st.subheader(LABEL_CASOS_CLIENTE_EXTERNO)
+    if casos_cliente_externo.empty:
+        st.info("No hay casos cliente externo para el periodo seleccionado.")
+        return
 
-    resumen_col1, resumen_col2 = st.columns(2)
-    porcentaje_externo = round((len(df_cliente_externo) / total) * 100, 2) if total > 0 else 0
+    caso_col1, caso_col2 = st.columns(2)
+    with caso_col1:
+        st.markdown(tarjeta(LABEL_CASOS_CLIENTE_EXTERNO, len(casos_cliente_externo)), unsafe_allow_html=True)
+        st.caption("SLA propio de mesa de ayuda: 36 horas habiles.")
+    with caso_col2:
+        st.markdown(tarjeta("SLA casos", f"{casos_sla}%"), unsafe_allow_html=True)
+        st.caption(f"Cumplen: {casos_cumplen}{TEXT_NO_CUMPLEN}{casos_total_sla - casos_cumplen}")
 
-    with resumen_col1:
-        st.markdown(tarjeta("Incidentes cliente externo", len(df_cliente_externo)), unsafe_allow_html=True)
-        st.caption(f"Del total de atenciones del periodo: {porcentaje_externo}%")
-
-    with resumen_col2:
-        st.markdown(tarjeta("Causas raiz", len(causas_relevantes)), unsafe_allow_html=True)
-        if not causas_relevantes.empty:
-            causa_principal = causas_relevantes.iloc[0]
-            st.caption(f"Mas frecuente: {causa_principal['Lectura ejecutiva']} ({causa_principal['Cantidad']})")
-        else:
-            st.caption("Sin causas raiz relevantes en el periodo.")
-
-    if not causas_relevantes.empty:
-        st.caption(
-            "Base de la grafica: solo incidentes tipificados como cliente externo. Se excluyen duplicados, "
-            "hallazgos sin causa clara, alertas, consultas y atenciones a reclasificar."
-        )
-        grafico_causas = (
-            causas_relevantes.groupby("Lectura ejecutiva", as_index=False)
-            .agg(Cantidad=("Cantidad", "sum"))
-            .sort_values(by="Cantidad", ascending=True)
-        )
-
-        fig = px.bar(
-            grafico_causas,
-            x="Cantidad",
-            y="Lectura ejecutiva",
-            orientation="h",
-            text="Cantidad",
-            color_discrete_sequence=[UI_PALETTE["purple"]],
-            title="Causas raiz en cliente externo",
-        )
-        fig.update_traces(textposition="outside")
-        fig = aplicar_estilo_figura(fig, "Causas raiz en cliente externo")
-        fig.update_layout(
-            height=max(360, 58 * len(grafico_causas)),
-            yaxis=dict(automargin=True),
-        )
-        st.plotly_chart(fig, use_container_width=True)
-        st.dataframe(causas_relevantes, use_container_width=True, hide_index=True)
-    elif not df_cliente_externo.empty:
-        st.info("Hay incidentes de cliente externo, pero no hay causas raiz relevantes para graficar en el periodo.")
+    motivos = resumen_motivos_caso_cliente_externo(casos_cliente_externo)
+    if motivos.empty:
+        st.info("No hay motivos suficientes para graficar casos cliente externo.")
     else:
-        st.info("No hay incidentes tipificados como cliente externo en los datos cargados.")
+        grafico_motivos = motivos.sort_values(by=TEXT_CANTIDAD, ascending=True)
+        fig = px.bar(
+            grafico_motivos,
+            x=TEXT_CANTIDAD,
+            y=COL_MOTIVO_CASO,
+            orientation="h",
+            text=TEXT_CANTIDAD,
+            color_discrete_sequence=[UI_PALETTE[TEXT_YELLOW]],
+        )
+        fig.update_traces(textposition=TEXT_OUTSIDE)
+        st.plotly_chart(aplicar_estilo_figura(fig, "Motivos de casos cliente externo"), use_container_width=True)
+        st.dataframe(motivos, use_container_width=True, hide_index=True)
 
 
-def dashboard_clientes_clave():
-    casos = preparar_casos_clientes_clave(load_casos())
-    incidentes = preparar_incidentes_clientes_clave(load_incidentes())
-
-    st.subheader("Clientes clave")
-
+def fechas_clientes_clave(casos, incidentes):
     fechas = []
     if not casos.empty:
-        fechas.append(casos["creado_dt"])
+        fechas.append(casos[TEXT_CREADO_DT])
     if not incidentes.empty:
-        fechas.append(incidentes["creado_dt"])
-    fechas = pd.concat(fechas).dropna() if fechas else pd.Series(dtype="datetime64[ns]")
+        fechas.append(incidentes[TEXT_CREADO_DT])
+    return pd.concat(fechas).dropna() if fechas else pd.Series(dtype=PANDAS_DATETIME_DTYPE)
 
+
+def seleccionar_filtros_clientes_clave(fechas):
     filtro_col1, filtro_col2, filtro_col3 = st.columns([2, 1, 1])
     with filtro_col1:
         clientes_seleccionados = st.multiselect(
@@ -2447,409 +2650,523 @@ def dashboard_clientes_clave():
             key="clientes_clave_filtro",
         )
     with filtro_col2:
-        base_meses = pd.DataFrame({"creado_dt": fechas})
-        mes_dashboard = selector_mes_dashboard(base_meses, "clientes_clave_mes", "creado_dt")
+        base_meses = pd.DataFrame({TEXT_CREADO_DT: fechas})
+        mes_dashboard = selector_mes_dashboard(base_meses, "clientes_clave_mes", TEXT_CREADO_DT)
     with filtro_col3:
-        rango_fechas = None
-        if not fechas.empty:
-            fecha_min = fechas.min().date()
-            fecha_max = fechas.max().date()
-            rango_fechas = st.date_input(
-                "Rango de fechas",
-                value=(fecha_min, fecha_max),
-                min_value=fecha_min,
-                max_value=fecha_max,
-                key="clientes_clave_rango",
-            )
+        rango_fechas = selector_rango_fechas_clientes(fechas)
+    return clientes_seleccionados, mes_dashboard, rango_fechas
 
+
+def selector_rango_fechas_clientes(fechas):
+    if fechas.empty:
+        return None
+    fecha_min = fechas.min().date()
+    fecha_max = fechas.max().date()
+    return st.date_input(
+        "Rango de fechas",
+        value=(fecha_min, fecha_max),
+        min_value=fecha_min,
+        max_value=fecha_max,
+        key="clientes_clave_rango",
+    )
+
+
+def filtrar_clientes_seleccionados(casos, incidentes, clientes_seleccionados):
+    casos = casos[casos[TEXT_CLIENTE_CLAVE].isin(clientes_seleccionados)].copy()
+    incidentes = incidentes[incidentes[TEXT_CLIENTE_CLAVE].isin(clientes_seleccionados)].copy()
+    return casos, incidentes
+
+
+def aplicar_filtro_mes_clientes(casos, incidentes, mes_dashboard):
+    if mes_dashboard == TEXT_TODOS:
+        return casos, incidentes
+    if not casos.empty:
+        casos = filtrar_mes_dashboard(casos, mes_dashboard, TEXT_CREADO_DT)
+    if not incidentes.empty:
+        incidentes = filtrar_mes_dashboard(incidentes, mes_dashboard, TEXT_CREADO_DT)
+    return casos, incidentes
+
+
+def aplicar_filtro_rango_clientes(casos, incidentes, rango_fechas):
+    if not (rango_fechas and isinstance(rango_fechas, tuple) and len(rango_fechas) == 2):
+        return casos, incidentes
+    fecha_inicio = pd.Timestamp(rango_fechas[0])
+    fecha_fin = pd.Timestamp(rango_fechas[1]) + pd.Timedelta(days=1) - pd.Timedelta(seconds=1)
+    if not casos.empty:
+        casos = casos[casos[TEXT_CREADO_DT].between(fecha_inicio, fecha_fin, inclusive="both")].copy()
+    if not incidentes.empty:
+        incidentes = incidentes[incidentes[TEXT_CREADO_DT].between(fecha_inicio, fecha_fin, inclusive="both")].copy()
+    return casos, incidentes
+
+
+def aplicar_filtros_clientes_clave(casos, incidentes, clientes_seleccionados, mes_dashboard, rango_fechas):
+    casos, incidentes = filtrar_clientes_seleccionados(casos, incidentes, clientes_seleccionados)
+    casos, incidentes = aplicar_filtro_mes_clientes(casos, incidentes, mes_dashboard)
+    return aplicar_filtro_rango_clientes(casos, incidentes, rango_fechas)
+
+
+def calcular_sla_casos_clientes(casos):
+    casos_cerrados = casos[mascara_cerrados(casos)] if not casos.empty else pd.DataFrame()
+    tiempos_casos = casos_cerrados.get(TEXT_TIEMPO_RESPUESTA_H, pd.Series(dtype=TEXT_FLOAT)).dropna()
+    if not len(tiempos_casos):
+        return 0
+    return porcentaje(len(tiempos_casos[tiempos_casos < SLA_CASOS_HORAS]), len(tiempos_casos))
+
+
+def calcular_sla_incidentes_clientes(incidentes):
+    incidentes_cerrados = incidentes[mascara_cerrados(incidentes)] if not incidentes.empty else pd.DataFrame()
+    if not incidentes_cerrados.empty and TEXT_APLICA_SLA_INCIDENTE in incidentes_cerrados.columns:
+        incidentes_cerrados = incidentes_cerrados[incidentes_cerrados[TEXT_APLICA_SLA_INCIDENTE].fillna(False)]
+    if incidentes_cerrados.empty or TEXT_ESTADO_SLA not in incidentes_cerrados.columns:
+        return 0
+    sla_base = incidentes_cerrados[
+        incidentes_cerrados[TEXT_ESTADO_SLA].isin([ESTADO_SLA_CUMPLE, ESTADO_SLA_NO_CUMPLE])
+    ]
+    if not len(sla_base):
+        return 0
+    return porcentaje(len(sla_base[sla_base[TEXT_ESTADO_SLA] == ESTADO_SLA_CUMPLE]), len(sla_base))
+
+
+def metricas_dashboard_clientes(casos, incidentes, resumen_actividad):
+    abiertos_casos = len(casos[~mascara_cerrados(casos)]) if not casos.empty else 0
+    abiertos_incidentes = len(incidentes[~mascara_cerrados(incidentes)]) if not incidentes.empty else 0
+    clientes_seguimiento = len(
+        resumen_actividad[
+            resumen_actividad[TEXT_NIVEL].isin([TEXT_AMARILLO, "Rojo"])
+            & (resumen_actividad[TEXT_ABIERTOS] > 0)
+        ]
+    )
+    return {
+        TEXT_TOTAL_CASOS: len(casos),
+        TEXT_TOTAL_INCIDENTES: len(incidentes),
+        "abiertos": abiertos_casos + abiertos_incidentes,
+        "clientes_activos": len(resumen_actividad),
+        "clientes_seguimiento": clientes_seguimiento,
+        "sla_casos": calcular_sla_casos_clientes(casos),
+        "sla_incidentes": calcular_sla_incidentes_clientes(incidentes),
+    }
+
+
+def render_kpis_clientes_clave(metricas, mes_dashboard):
+    render_tarjetas(
+        [
+            ("Clientes activos", metricas["clientes_activos"]),
+            (TEXT_ATENCIONES, metricas[TEXT_TOTAL_CASOS] + metricas[TEXT_TOTAL_INCIDENTES]),
+            (TEXT_ABIERTOS, metricas["abiertos"]),
+            (f"SLA casos <{SLA_CASOS_HORAS}h", f"{metricas['sla_casos']}%"),
+            ("SLA incidentes", f"{metricas['sla_incidentes']}%"),
+        ]
+    )
+    st.caption(
+        f"{TEXT_PERIODO}{mes_dashboard} | Casos: {metricas[TEXT_TOTAL_CASOS]} | "
+        f"Incidentes: {metricas[TEXT_TOTAL_INCIDENTES]} | "
+        f"Clientes en seguimiento: {metricas['clientes_seguimiento']}"
+    )
+
+
+def render_clientes_sin_actividad(resumen):
+    clientes_sin_actividad = resumen[resumen[COL_TOTAL_ATENCIONES] == 0][TEXT_CLIENTE].tolist()
+    if clientes_sin_actividad:
+        st.caption("Sin actividad en el periodo: " + ", ".join(clientes_sin_actividad))
+
+
+def render_grafico_atenciones_cliente(resumen_actividad):
+    grafico = resumen_actividad.sort_values(by=COL_TOTAL_ATENCIONES, ascending=True)
+    fig = px.bar(
+        grafico,
+        x=COL_TOTAL_ATENCIONES,
+        y=TEXT_CLIENTE,
+        orientation="h",
+        text=COL_TOTAL_ATENCIONES,
+        color=TEXT_NIVEL,
+        color_discrete_map={
+            "Verde": UI_PALETTE[TEXT_LAVENDER],
+            TEXT_AMARILLO: UI_PALETTE[TEXT_YELLOW],
+            "Rojo": UI_PALETTE[TEXT_PRIMARY],
+        },
+    )
+    fig.update_traces(textposition=TEXT_OUTSIDE)
+    st.plotly_chart(aplicar_estilo_figura(fig, "Atenciones por cliente clave"), use_container_width=True)
+
+
+def actividad_diaria_clientes(casos, incidentes):
+    actividad = []
+    if not casos.empty:
+        casos_dia = casos[[TEXT_CREADO_DT]].dropna().copy()
+        casos_dia[TEXT_FECHA] = casos_dia[TEXT_CREADO_DT].dt.date
+        casos_dia["Tipo"] = TEXT_CASOS
+        actividad.append(casos_dia.groupby([TEXT_FECHA, "Tipo"]).size().reset_index(name=TEXT_CANTIDAD))
+    if not incidentes.empty:
+        incidentes_dia = incidentes[[TEXT_CREADO_DT]].dropna().copy()
+        incidentes_dia[TEXT_FECHA] = incidentes_dia[TEXT_CREADO_DT].dt.date
+        incidentes_dia["Tipo"] = TEXT_INCIDENTES
+        actividad.append(incidentes_dia.groupby([TEXT_FECHA, "Tipo"]).size().reset_index(name=TEXT_CANTIDAD))
+    return pd.concat(actividad, ignore_index=True) if actividad else pd.DataFrame()
+
+
+def render_grafico_actividad_clientes(casos, incidentes):
+    actividad_dia = actividad_diaria_clientes(casos, incidentes)
+    if actividad_dia.empty:
+        st.info("No hay fechas validas para graficar actividad.")
+        return
+    fig = px.bar(
+        actividad_dia,
+        x=TEXT_FECHA,
+        y=TEXT_CANTIDAD,
+        color="Tipo",
+        barmode="group",
+        color_discrete_sequence=[UI_PALETTE[TEXT_PRIMARY], UI_PALETTE[TEXT_PURPLE]],
+    )
+    st.plotly_chart(aplicar_estilo_figura(fig, "Actividad por dia"), use_container_width=True)
+
+
+def render_grafico_productos_clientes(casos):
+    if casos.empty:
+        st.info("No hay casos asociados a clientes clave.")
+        return
+    productos = casos[TEXT_PRODUCTO].replace("", pd.NA).fillna("Sin producto").value_counts().reset_index()
+    productos.columns = ["Producto", TEXT_CANTIDAD]
+    productos = productos.head(10).sort_values(by=TEXT_CANTIDAD, ascending=True)
+    fig = px.bar(
+        productos,
+        x=TEXT_CANTIDAD,
+        y="Producto",
+        orientation="h",
+        text=TEXT_CANTIDAD,
+        color_discrete_sequence=[UI_PALETTE[TEXT_YELLOW]],
+    )
+    fig.update_traces(textposition=TEXT_OUTSIDE)
+    st.plotly_chart(aplicar_estilo_figura(fig, "Productos con mas casos"), use_container_width=True)
+
+
+def render_grafico_causas_clientes(incidentes):
+    if incidentes.empty:
+        st.info("No hay incidentes asociados a clientes clave.")
+        return
+    causas = (
+        incidentes[TEXT_CAUSA_RAIZ_AUTO]
+        .replace("", pd.NA)
+        .fillna("Sin inferencia")
+        .value_counts()
+        .reset_index()
+    )
+    causas.columns = ["Causa incidente", TEXT_CANTIDAD]
+    causas = causas.head(10).sort_values(by=TEXT_CANTIDAD, ascending=True)
+    fig = px.bar(
+        causas,
+        x=TEXT_CANTIDAD,
+        y="Causa incidente",
+        orientation="h",
+        text=TEXT_CANTIDAD,
+        color_discrete_sequence=[UI_PALETTE[TEXT_PURPLE]],
+    )
+    fig.update_traces(textposition=TEXT_OUTSIDE)
+    st.plotly_chart(aplicar_estilo_figura(fig, "Causas en incidentes"), use_container_width=True)
+
+
+def render_graficas_clientes_clave(casos, incidentes, resumen_actividad):
+    st.divider()
+    graf_col1, graf_col2 = st.columns(2)
+    with graf_col1:
+        render_grafico_atenciones_cliente(resumen_actividad)
+    with graf_col2:
+        render_grafico_actividad_clientes(casos, incidentes)
+
+    graf_col3, graf_col4 = st.columns(2)
+    with graf_col3:
+        render_grafico_productos_clientes(casos)
+    with graf_col4:
+        render_grafico_causas_clientes(incidentes)
+
+
+def columnas_resumen_clientes():
+    return [
+        TEXT_CLIENTE,
+        TEXT_NIVEL,
+        COL_ESTADO_ATENCION,
+        TEXT_SCORE,
+        TEXT_CASOS,
+        TEXT_INCIDENTES,
+        COL_TOTAL_ATENCIONES,
+        TEXT_ABIERTOS,
+        COL_SLA_CASOS_PCT,
+        COL_SLA_INCIDENTES_PCT,
+        COL_ALERTAS_INCIDENTES,
+        COL_CASOS_SIN_CAUSA,
+        COL_PRODUCTO_PRINCIPAL,
+        COL_CAUSA_INCIDENTE_PRINCIPAL,
+        COL_ULTIMA_ATENCION,
+    ]
+
+
+def render_tab_resumen_clientes(resumen):
+    st.dataframe(
+        resumen[columnas_resumen_clientes()].sort_values(by=[COL_TOTAL_ATENCIONES, TEXT_SCORE], ascending=[False, True]),
+        use_container_width=True,
+        hide_index=True,
+    )
+
+
+def render_tab_abiertos_clientes(casos, incidentes):
+    abiertos_detalle = tabla_atenciones_abiertas_clientes(casos, incidentes)
+    if abiertos_detalle.empty:
+        st.success("No hay casos ni incidentes abiertos para los clientes seleccionados.")
+    else:
+        st.caption("Detalle de atenciones abiertas. El campo Tipo indica si corresponde a caso o incidente.")
+        st.dataframe(abiertos_detalle, use_container_width=True, hide_index=True)
+
+
+def render_tab_casos_clientes(casos):
+    if casos.empty:
+        st.info("No hay casos asociados a los clientes seleccionados.")
+        return
+    columnas_casos = [
+        TEXT_CLIENTE_CLAVE,
+        TEXT_NUMERO,
+        TEXT_CUENTA,
+        TEXT_ESTADO,
+        TEXT_PRIORIDAD,
+        TEXT_PRODUCTO,
+        TEXT_TIPIFICACION_2,
+        TEXT_TIEMPO_RESPUESTA,
+        TEXT_CREADO,
+        TEXT_CERRADO,
+        TEXT_CAUSA,
+        TEXT_CODIGO_RESOLUCION,
+        TEXT_FUENTE_CLIENTE,
+    ]
+    columnas_casos = [col for col in columnas_casos if col in casos.columns]
+    st.dataframe(
+        casos.sort_values(by=TEXT_CREADO_DT, ascending=False)[columnas_casos],
+        use_container_width=True,
+        hide_index=True,
+    )
+
+
+def render_tab_incidentes_clientes(incidentes):
+    if incidentes.empty:
+        st.info("No hay incidentes asociados a los clientes seleccionados.")
+        return
+    columnas_incidentes = [
+        TEXT_CLIENTE_CLAVE,
+        TEXT_NUMERO,
+        TEXT_EMPRESA,
+        TEXT_SOLICITANTE,
+        TEXT_ESTADO,
+        TEXT_PRIORIDAD,
+        TEXT_SERVICIO_NEGOCIO,
+        TEXT_TIPIFICACION_AUTO,
+        TEXT_ES_ALERTA_AUTO,
+        TEXT_CAUSA_RAIZ_AUTO,
+        TEXT_DURACION_HORAS,
+        TEXT_CREADO,
+        TEXT_CERRADO,
+        TEXT_BREVE_DESCRIPCION,
+        TEXT_FUENTE_CLIENTE,
+    ]
+    columnas_incidentes = [col for col in columnas_incidentes if col in incidentes.columns]
+    st.dataframe(
+        incidentes.sort_values(by=TEXT_CREADO_DT, ascending=False)[columnas_incidentes],
+        use_container_width=True,
+        hide_index=True,
+    )
+
+
+def clientes_en_seguimiento(resumen_actividad):
+    return resumen_actividad[
+        resumen_actividad[TEXT_NIVEL].isin([TEXT_AMARILLO, "Rojo"])
+        & (resumen_actividad[TEXT_ABIERTOS] > 0)
+    ].copy()
+
+
+def render_tab_seguimiento_clientes(resumen_actividad):
+    seguimiento = clientes_en_seguimiento(resumen_actividad)
+    if seguimiento.empty:
+        st.success("Los clientes clave con actividad estan en nivel estable para el periodo seleccionado.")
+        return
+    seguimiento = seguimiento.sort_values(by=[TEXT_NIVEL, TEXT_SCORE, TEXT_ABIERTOS], ascending=[False, True, False])
+    st.dataframe(
+        seguimiento[
+            [
+                TEXT_CLIENTE,
+                TEXT_NIVEL,
+                COL_ESTADO_ATENCION,
+                TEXT_SCORE,
+                TEXT_ABIERTOS,
+                COL_ALERTAS_INCIDENTES,
+                PRIORIDAD_ALTA,
+                COL_CASOS_SIN_CAUSA,
+                COL_PRODUCTO_PRINCIPAL,
+                COL_CAUSA_INCIDENTE_PRINCIPAL,
+            ]
+        ],
+        use_container_width=True,
+        hide_index=True,
+    )
+    for _, row in seguimiento.iterrows():
+        st.warning(
+            f"**{row[TEXT_CLIENTE]}** | {row[COL_ESTADO_ATENCION]} | "
+            f"Abiertos: {row[TEXT_ABIERTOS]} | Alertas: {row[COL_ALERTAS_INCIDENTES]} | "
+            f"Casos sin causa: {row[COL_CASOS_SIN_CAUSA]}"
+        )
+
+
+def render_tabs_clientes_clave(resumen, casos, incidentes, resumen_actividad):
+    st.divider()
+    tab_resumen, tab_abiertos, tab_casos, tab_incidentes, tab_seguimiento = st.tabs(
+        [TEXT_RESUMEN, TEXT_ABIERTOS, TEXT_CASOS, TEXT_INCIDENTES, "Seguimiento"]
+    )
+    with tab_resumen:
+        render_tab_resumen_clientes(resumen)
+    with tab_abiertos:
+        render_tab_abiertos_clientes(casos, incidentes)
+    with tab_casos:
+        render_tab_casos_clientes(casos)
+    with tab_incidentes:
+        render_tab_incidentes_clientes(incidentes)
+    with tab_seguimiento:
+        render_tab_seguimiento_clientes(resumen_actividad)
+
+
+def dashboard_clientes_clave():
+    casos = preparar_casos_clientes_clave(load_casos())
+    incidentes = preparar_incidentes_clientes_clave(load_incidentes())
+    st.subheader(MENU_CLIENTES_CLAVE)
+
+    fechas = fechas_clientes_clave(casos, incidentes)
+    clientes_seleccionados, mes_dashboard, rango_fechas = seleccionar_filtros_clientes_clave(fechas)
     if not clientes_seleccionados:
         st.warning("Selecciona al menos un cliente clave.")
         return
 
-    casos = casos[casos["cliente_clave"].isin(clientes_seleccionados)].copy()
-    incidentes = incidentes[incidentes["cliente_clave"].isin(clientes_seleccionados)].copy()
-
-    if mes_dashboard != "Todos":
-        if not casos.empty:
-            casos = filtrar_mes_dashboard(casos, mes_dashboard, "creado_dt")
-        if not incidentes.empty:
-            incidentes = filtrar_mes_dashboard(incidentes, mes_dashboard, "creado_dt")
-
-    if rango_fechas and isinstance(rango_fechas, tuple) and len(rango_fechas) == 2:
-        fecha_inicio = pd.Timestamp(rango_fechas[0])
-        fecha_fin = pd.Timestamp(rango_fechas[1]) + pd.Timedelta(days=1) - pd.Timedelta(seconds=1)
-        if not casos.empty:
-            casos = casos[casos["creado_dt"].between(fecha_inicio, fecha_fin, inclusive="both")].copy()
-        if not incidentes.empty:
-            incidentes = incidentes[incidentes["creado_dt"].between(fecha_inicio, fecha_fin, inclusive="both")].copy()
-
+    casos, incidentes = aplicar_filtros_clientes_clave(
+        casos,
+        incidentes,
+        clientes_seleccionados,
+        mes_dashboard,
+        rango_fechas,
+    )
     resumen = resumen_clientes_clave(casos, incidentes)
-    resumen = resumen[resumen["Cliente"].isin(clientes_seleccionados)].copy()
-    resumen_actividad = resumen[resumen["Total atenciones"] > 0].copy()
+    resumen = resumen[resumen[TEXT_CLIENTE].isin(clientes_seleccionados)].copy()
+    resumen_actividad = resumen[resumen[COL_TOTAL_ATENCIONES] > 0].copy()
 
-    total_casos = len(casos)
-    total_incidentes = len(incidentes)
-    abiertos_casos = len(casos[~mascara_cerrados(casos)]) if not casos.empty else 0
-    abiertos_incidentes = len(incidentes[~mascara_cerrados(incidentes)]) if not incidentes.empty else 0
-    clientes_activos = len(resumen_actividad)
-    clientes_seguimiento = len(
-        resumen_actividad[
-            resumen_actividad["Nivel"].isin(["Amarillo", "Rojo"])
-            & (resumen_actividad["Abiertos"] > 0)
-        ]
-    )
-
-    casos_cerrados = casos[mascara_cerrados(casos)] if not casos.empty else pd.DataFrame()
-    tiempos_casos = casos_cerrados.get("tiempo_respuesta_h", pd.Series(dtype="float")).dropna()
-    sla_casos = (
-        porcentaje(len(tiempos_casos[tiempos_casos < SLA_CASOS_HORAS]), len(tiempos_casos))
-        if len(tiempos_casos)
-        else 0
-    )
-
-    incidentes_cerrados = incidentes[mascara_cerrados(incidentes)] if not incidentes.empty else pd.DataFrame()
-    if not incidentes_cerrados.empty and "aplica_sla_incidente" in incidentes_cerrados.columns:
-        incidentes_cerrados = incidentes_cerrados[incidentes_cerrados["aplica_sla_incidente"].fillna(False)]
-    sla_incidentes_base = (
-        incidentes_cerrados[incidentes_cerrados["estado_sla"].isin(["Cumple", "No cumple"])]
-        if not incidentes_cerrados.empty and "estado_sla" in incidentes_cerrados.columns
-        else pd.DataFrame()
-    )
-    sla_incidentes = (
-        porcentaje(
-            len(sla_incidentes_base[sla_incidentes_base["estado_sla"] == "Cumple"]),
-            len(sla_incidentes_base),
-        )
-        if len(sla_incidentes_base)
-        else 0
-    )
-
-    render_tarjetas(
-        [
-            ("Clientes activos", clientes_activos),
-            ("Atenciones", total_casos + total_incidentes),
-            ("Abiertos", abiertos_casos + abiertos_incidentes),
-            (f"SLA casos <{SLA_CASOS_HORAS}h", f"{sla_casos}%"),
-            ("SLA incidentes", f"{sla_incidentes}%"),
-        ]
-    )
-    st.caption(
-        f"Periodo: {mes_dashboard} | Casos: {total_casos} | Incidentes: {total_incidentes} | "
-        f"Clientes en seguimiento: {clientes_seguimiento}"
-    )
-
-    clientes_sin_actividad = resumen[resumen["Total atenciones"] == 0]["Cliente"].tolist()
-    if clientes_sin_actividad:
-        st.caption("Sin actividad en el periodo: " + ", ".join(clientes_sin_actividad))
+    metricas = metricas_dashboard_clientes(casos, incidentes, resumen_actividad)
+    render_kpis_clientes_clave(metricas, mes_dashboard)
+    render_clientes_sin_actividad(resumen)
 
     if resumen_actividad.empty:
         st.info("No hay casos o incidentes asociados a los clientes seleccionados en el periodo.")
         return
 
-    st.divider()
-    graf_col1, graf_col2 = st.columns(2)
+    render_graficas_clientes_clave(casos, incidentes, resumen_actividad)
+    render_tabs_clientes_clave(resumen, casos, incidentes, resumen_actividad)
 
-    with graf_col1:
-        grafico = resumen_actividad.sort_values(by="Total atenciones", ascending=True)
-        fig = px.bar(
-            grafico,
-            x="Total atenciones",
-            y="Cliente",
-            orientation="h",
-            text="Total atenciones",
-            color="Nivel",
-            color_discrete_map={
-                "Verde": UI_PALETTE["lavender"],
-                "Amarillo": UI_PALETTE["yellow"],
-                "Rojo": UI_PALETTE["primary"],
-            },
-        )
-        fig.update_traces(textposition="outside")
-        st.plotly_chart(aplicar_estilo_figura(fig, "Atenciones por cliente clave"), use_container_width=True)
-
-    with graf_col2:
-        actividad = []
-        if not casos.empty:
-            casos_dia = casos[["creado_dt"]].dropna().copy()
-            casos_dia["Fecha"] = casos_dia["creado_dt"].dt.date
-            casos_dia["Tipo"] = "Casos"
-            actividad.append(casos_dia.groupby(["Fecha", "Tipo"]).size().reset_index(name="Cantidad"))
-        if not incidentes.empty:
-            incidentes_dia = incidentes[["creado_dt"]].dropna().copy()
-            incidentes_dia["Fecha"] = incidentes_dia["creado_dt"].dt.date
-            incidentes_dia["Tipo"] = "Incidentes"
-            actividad.append(incidentes_dia.groupby(["Fecha", "Tipo"]).size().reset_index(name="Cantidad"))
-        if actividad:
-            actividad_dia = pd.concat(actividad, ignore_index=True)
-            fig = px.bar(
-                actividad_dia,
-                x="Fecha",
-                y="Cantidad",
-                color="Tipo",
-                barmode="group",
-                color_discrete_sequence=[UI_PALETTE["primary"], UI_PALETTE["purple"]],
-            )
-            st.plotly_chart(aplicar_estilo_figura(fig, "Actividad por dia"), use_container_width=True)
-        else:
-            st.info("No hay fechas validas para graficar actividad.")
-
-    graf_col3, graf_col4 = st.columns(2)
-    with graf_col3:
-        if not casos.empty:
-            productos = casos["producto"].replace("", pd.NA).fillna("Sin producto").value_counts().reset_index()
-            productos.columns = ["Producto", "Cantidad"]
-            productos = productos.head(10).sort_values(by="Cantidad", ascending=True)
-            fig = px.bar(
-                productos,
-                x="Cantidad",
-                y="Producto",
-                orientation="h",
-                text="Cantidad",
-                color_discrete_sequence=[UI_PALETTE["yellow"]],
-            )
-            fig.update_traces(textposition="outside")
-            st.plotly_chart(aplicar_estilo_figura(fig, "Productos con mas casos"), use_container_width=True)
-        else:
-            st.info("No hay casos asociados a clientes clave.")
-
-    with graf_col4:
-        if not incidentes.empty:
-            causas = (
-                incidentes["causa_raiz_auto"]
-                .replace("", pd.NA)
-                .fillna("Sin inferencia")
-                .value_counts()
-                .reset_index()
-            )
-            causas.columns = ["Causa incidente", "Cantidad"]
-            causas = causas.head(10).sort_values(by="Cantidad", ascending=True)
-            fig = px.bar(
-                causas,
-                x="Cantidad",
-                y="Causa incidente",
-                orientation="h",
-                text="Cantidad",
-                color_discrete_sequence=[UI_PALETTE["purple"]],
-            )
-            fig.update_traces(textposition="outside")
-            st.plotly_chart(aplicar_estilo_figura(fig, "Causas en incidentes"), use_container_width=True)
-        else:
-            st.info("No hay incidentes asociados a clientes clave.")
-
-    st.divider()
-    tab_resumen, tab_abiertos, tab_casos, tab_incidentes, tab_seguimiento = st.tabs(
-        ["Resumen", "Abiertos", "Casos", "Incidentes", "Seguimiento"]
+def mensaje_carga_casos(cargados, reemplazados, duplicados_archivo, reemplazar_meses, meses_reemplazados, eliminados):
+    detalle_reemplazo = ""
+    if reemplazar_meses:
+        meses = ", ".join(meses_reemplazados) if meses_reemplazados else "sin fechas validas"
+        detalle_reemplazo = f" | Meses reemplazados: {meses} | Registros eliminados antes de cargar: {eliminados}"
+    return (
+        f"Cargados: {cargados} | Registros existentes actualizados: {reemplazados} | "
+        f"Duplicados/filas sin numero omitidos del archivo: {duplicados_archivo} | "
+        "Los meses no incluidos en el archivo se conservan."
+        f"{detalle_reemplazo}"
     )
 
-    with tab_resumen:
-        columnas_resumen = [
-            "Cliente",
-            "Nivel",
-            "Estado atencion",
-            "Score",
-            "Casos",
-            "Incidentes",
-            "Total atenciones",
-            "Abiertos",
-            "SLA casos %",
-            "SLA incidentes %",
-            "Alertas incidentes",
-            "Casos sin causa",
-            "Producto principal",
-            "Causa incidente principal",
-            "Ultima atencion",
-        ]
-        st.dataframe(
-            resumen[columnas_resumen].sort_values(by=["Total atenciones", "Score"], ascending=[False, True]),
-            use_container_width=True,
-            hide_index=True,
+
+def procesar_archivo_casos(df, reemplazar_meses):
+    cargados, reemplazados, eliminados, meses_reemplazados, duplicados_archivo = guardar_casos(
+        df,
+        reemplazar_meses=reemplazar_meses,
+    )
+    if cargados == 0:
+        st.error("No se guardaron casos. Revisa que el archivo tenga una columna de numero de caso.")
+        return
+    st.success(
+        mensaje_carga_casos(
+            cargados,
+            reemplazados,
+            duplicados_archivo,
+            reemplazar_meses,
+            meses_reemplazados,
+            eliminados,
         )
-
-    with tab_abiertos:
-        abiertos_detalle = tabla_atenciones_abiertas_clientes(casos, incidentes)
-        if abiertos_detalle.empty:
-            st.success("No hay casos ni incidentes abiertos para los clientes seleccionados.")
-        else:
-            st.caption("Detalle de atenciones abiertas. El campo Tipo indica si corresponde a caso o incidente.")
-            st.dataframe(abiertos_detalle, use_container_width=True, hide_index=True)
-
-    with tab_casos:
-        if casos.empty:
-            st.info("No hay casos asociados a los clientes seleccionados.")
-        else:
-            columnas_casos = [
-                "cliente_clave",
-                "numero",
-                "cuenta",
-                "estado",
-                "prioridad",
-                "producto",
-                "tipificacion",
-                "tiempo_respuesta",
-                "creado",
-                "cerrado",
-                "causa",
-                "codigo_resolucion",
-                "fuente_cliente",
-            ]
-            columnas_casos = [col for col in columnas_casos if col in casos.columns]
-            st.dataframe(
-                casos.sort_values(by="creado_dt", ascending=False)[columnas_casos],
-                use_container_width=True,
-                hide_index=True,
-            )
-
-    with tab_incidentes:
-        if incidentes.empty:
-            st.info("No hay incidentes asociados a los clientes seleccionados.")
-        else:
-            columnas_incidentes = [
-                "cliente_clave",
-                "numero",
-                "empresa",
-                "solicitante",
-                "estado",
-                "prioridad",
-                "servicio_negocio",
-                "tipificacion_auto",
-                "es_alerta_auto",
-                "causa_raiz_auto",
-                "duracion_horas",
-                "creado",
-                "cerrado",
-                "breve_descripcion",
-                "fuente_cliente",
-            ]
-            columnas_incidentes = [col for col in columnas_incidentes if col in incidentes.columns]
-            st.dataframe(
-                incidentes.sort_values(by="creado_dt", ascending=False)[columnas_incidentes],
-                use_container_width=True,
-                hide_index=True,
-            )
-
-    with tab_seguimiento:
-        seguimiento = resumen_actividad[
-            resumen_actividad["Nivel"].isin(["Amarillo", "Rojo"])
-            & (resumen_actividad["Abiertos"] > 0)
-        ].copy()
-        if seguimiento.empty:
-            st.success("Los clientes clave con actividad estan en nivel estable para el periodo seleccionado.")
-        else:
-            seguimiento = seguimiento.sort_values(by=["Nivel", "Score", "Abiertos"], ascending=[False, True, False])
-            st.dataframe(
-                seguimiento[
-                    [
-                        "Cliente",
-                        "Nivel",
-                        "Estado atencion",
-                        "Score",
-                        "Abiertos",
-                        "Alertas incidentes",
-                        "Prioridad alta",
-                        "Casos sin causa",
-                        "Producto principal",
-                        "Causa incidente principal",
-                    ]
-                ],
-                use_container_width=True,
-                hide_index=True,
-            )
-            for _, row in seguimiento.iterrows():
-                st.warning(
-                    f"**{row['Cliente']}** | {row['Estado atencion']} | "
-                    f"Abiertos: {row['Abiertos']} | Alertas: {row['Alertas incidentes']} | "
-                    f"Casos sin causa: {row['Casos sin causa']}"
-                )
+    )
 
 
 def vista_cargar_casos():
     archivo = st.file_uploader("Sube Excel de casos", type=["xlsx"], key="casos_upload")
-    if archivo:
-        df = pd.read_excel(archivo)
-        st.write(f"Filas detectadas: {len(df)}")
-        st.dataframe(df.head(), use_container_width=True, hide_index=True)
-        reemplazar_meses = st.checkbox(
-            "Reemplazar los meses incluidos en este archivo",
-            value=True,
-            help=(
-                "Si esta activo, antes de cargar se eliminan de la base los casos de los meses "
-                "presentes en el Excel y luego se carga el archivo. Asi el mes queda igual al corte subido."
-            ),
-        )
-        if st.button("Procesar casos"):
-            cargados, reemplazados, eliminados, meses_reemplazados, duplicados_archivo = guardar_casos(
-                df,
-                reemplazar_meses=reemplazar_meses,
-            )
-            if cargados == 0:
-                st.error("No se guardaron casos. Revisa que el archivo tenga una columna de numero de caso.")
-            else:
-                detalle_reemplazo = ""
-                if reemplazar_meses:
-                    meses = ", ".join(meses_reemplazados) if meses_reemplazados else "sin fechas validas"
-                    detalle_reemplazo = f" | Meses reemplazados: {meses} | Registros eliminados antes de cargar: {eliminados}"
-                st.success(
-                    f"Cargados: {cargados} | Registros existentes actualizados: {reemplazados} | "
-                    f"Duplicados/filas sin numero omitidos del archivo: {duplicados_archivo} | "
-                    "Los meses no incluidos en el archivo se conservan."
-                    f"{detalle_reemplazo}"
-                )
+    if not archivo:
+        return
 
+    df = pd.read_excel(archivo)
+    st.write(f"Filas detectadas: {len(df)}")
+    st.dataframe(df.head(), use_container_width=True, hide_index=True)
+    reemplazar_meses = st.checkbox(
+        "Reemplazar los meses incluidos en este archivo",
+        value=True,
+        help=(
+            "Si esta activo, antes de cargar se eliminan de la base los casos de los meses "
+            "presentes en el Excel y luego se carga el archivo. Asi el mes queda igual al corte subido."
+        ),
+    )
+    if st.button("Procesar casos"):
+        procesar_archivo_casos(df, reemplazar_meses)
 
 def vista_casos():
     df = normalizar_tipificaciones_casos_df(load_casos())
     if not df.empty:
         df = preparar_fechas_dashboard(df)
-        df["mes"] = df["_creado_dt_dashboard"].dt.to_period("M").astype(str).replace("NaT", "Sin fecha")
+        df["mes"] = df[TEXT_CREADO_DT_DASHBOARD].dt.to_period("M").astype(str).replace("NaT", "Sin fecha")
 
         filtro_col1, filtro_col2, filtro_col3, filtro_col4 = st.columns([1, 1, 1.5, 2])
         with filtro_col1:
             filtro_mes = selector_mes_dashboard(df, "vista_casos_mes")
-        if filtro_mes != "Todos":
+        if filtro_mes != TEXT_TODOS:
             df = filtrar_mes_dashboard(df, filtro_mes)
 
         with filtro_col2:
-            estados = sorted(df["estado"].dropna().unique().tolist())
-            filtro_estado = st.selectbox("Estado", ["Todos"] + estados, key="estado_casos")
+            estados = sorted(df[TEXT_ESTADO].dropna().unique().tolist())
+            filtro_estado = st.selectbox(TEXT_ESTADO_2, [TEXT_TODOS] + estados, key="estado_casos")
         with filtro_col3:
-            clasificaciones = sorted(df["tipificacion"].dropna().unique().tolist())
+            clasificaciones = sorted(df[TEXT_TIPIFICACION_2].dropna().unique().tolist())
             filtro_clasificacion = st.selectbox(
-                "Clasificacion",
-                ["Todos"] + clasificaciones,
+                TEXT_CLASIFICACION,
+                [TEXT_TODOS] + clasificaciones,
                 key="clasificacion_casos",
             )
         with filtro_col4:
             filtro_cuenta = st.text_input("Cuenta", key="cuenta_casos")
 
-        if filtro_estado != "Todos":
-            df = df[df["estado"] == filtro_estado]
-        if filtro_clasificacion != "Todos":
-            df = df[df["tipificacion"] == filtro_clasificacion]
+        if filtro_estado != TEXT_TODOS:
+            df = df[df[TEXT_ESTADO] == filtro_estado]
+        if filtro_clasificacion != TEXT_TODOS:
+            df = df[df[TEXT_TIPIFICACION_2] == filtro_clasificacion]
         if filtro_cuenta:
-            df = df[df["cuenta"].fillna("").str.contains(filtro_cuenta, case=False, na=False)]
-        df = df.drop(columns=["_creado_dt_dashboard"], errors="ignore")
+            df = df[df[TEXT_CUENTA].fillna("").str.contains(filtro_cuenta, case=False, na=False)]
+        df = df.drop(columns=[TEXT_CREADO_DT_DASHBOARD], errors="ignore")
         columnas = [
-            "numero",
-            "estado",
+            TEXT_NUMERO,
+            TEXT_ESTADO,
             "mes",
-            "cuenta",
+            TEXT_CUENTA,
             "contacto",
-            "descripcion",
-            "prioridad",
-            "asignado",
-            "creado",
-            "cerrado",
-            "producto",
-            "causa",
-            "tipificacion",
-            "tiempo_respuesta",
-            "canal",
+            TEXT_DESCRIPCION_2,
+            TEXT_PRIORIDAD,
+            TEXT_ASIGNADO,
+            TEXT_CREADO,
+            TEXT_CERRADO,
+            TEXT_PRODUCTO,
+            TEXT_CAUSA,
+            TEXT_TIPIFICACION_2,
+            TEXT_TIEMPO_RESPUESTA,
+            TEXT_CANAL,
             "creado_por",
             "actualizado",
-            "codigo_resolucion",
+            TEXT_CODIGO_RESOLUCION,
             "notas_resolucion",
-            "observaciones_adicionales",
-            "observaciones_trabajo",
+            TEXT_OBSERVACIONES_ADICIONALES,
+            TEXT_OBSERVACIONES_TRABAJO,
         ]
         df = df[[col for col in columnas if col in df.columns]]
         st.caption(f"Registros encontrados: {len(df)}")
@@ -2877,72 +3194,75 @@ def vista_incidentes():
     df = agregar_campos_sla_incidentes(load_incidentes())
     if not df.empty:
         df = preparar_fechas_dashboard(df)
-        df["mes"] = df["_creado_dt_dashboard"].dt.to_period("M").astype(str).replace("NaT", "Sin fecha")
+        df["mes"] = df[TEXT_CREADO_DT_DASHBOARD].dt.to_period("M").astype(str).replace("NaT", "Sin fecha")
 
         filtro_col1, filtro_col2, filtro_col3, filtro_col4 = st.columns(4)
         with filtro_col1:
             filtro_mes = selector_mes_dashboard(df, "vista_incidentes_mes")
-        if filtro_mes != "Todos":
+        if filtro_mes != TEXT_TODOS:
             df = filtrar_mes_dashboard(df, filtro_mes)
 
         with filtro_col2:
-            estados = sorted(df["estado"].dropna().unique().tolist())
-            filtro_estado = st.selectbox("Estado", ["Todos"] + estados, key="estado_inc")
+            estados = sorted(df[TEXT_ESTADO].dropna().unique().tolist())
+            filtro_estado = st.selectbox(TEXT_ESTADO_2, [TEXT_TODOS] + estados, key="estado_inc")
         with filtro_col3:
             filtro_tipificacion = st.selectbox(
-                "Tipificacion",
-                ["Todos"] + sorted(df["tipificacion_auto"].dropna().unique().tolist()),
+                TEXT_TIPIFICACION,
+                [TEXT_TODOS] + sorted(df[TEXT_TIPIFICACION_AUTO].dropna().unique().tolist()),
                 key="tip_inc",
             )
         with filtro_col4:
             filtro_alerta = st.selectbox(
                 "Es alerta",
-                ["Todos"] + sorted(df["es_alerta_auto"].dropna().unique().tolist()),
+                [TEXT_TODOS] + sorted(df[TEXT_ES_ALERTA_AUTO].dropna().unique().tolist()),
                 key="alerta_inc",
             )
 
-        if filtro_estado != "Todos":
-            df = df[df["estado"] == filtro_estado]
-        if filtro_tipificacion != "Todos":
-            df = df[df["tipificacion_auto"] == filtro_tipificacion]
-        if filtro_alerta != "Todos":
-            df = df[df["es_alerta_auto"] == filtro_alerta]
+        if filtro_estado != TEXT_TODOS:
+            df = df[df[TEXT_ESTADO] == filtro_estado]
+        if filtro_tipificacion != TEXT_TODOS:
+            df = df[df[TEXT_TIPIFICACION_AUTO] == filtro_tipificacion]
+        if filtro_alerta != TEXT_TODOS:
+            df = df[df[TEXT_ES_ALERTA_AUTO] == filtro_alerta]
         columnas = [
-            "numero",
-            "solicitante",
+            TEXT_NUMERO,
+            TEXT_SOLICITANTE,
             "categoria",
-            "prioridad",
-            "estado",
+            TEXT_PRIORIDAD,
+            TEXT_ESTADO,
             "mes",
             "grupo_asignacion",
-            "asignado_a",
-            "descripcion",
+            TEXT_ASIGNADO_A,
+            TEXT_DESCRIPCION_2,
             "despues_aprobacion",
             "despues_rechazo",
             "duracion_segundos",
-            "fecha_vencimiento_sla",
+            TEXT_FECHA_VENCIMIENTO_SLA,
             "tipo_falla",
-            "empresa",
+            TEXT_EMPRESA,
             "creado_por",
-            "cerrado",
+            TEXT_CERRADO,
             "escalado_proveedor",
-            "servicio_negocio",
-            "creado",
-            "observaciones_trabajo",
-            "observaciones_adicionales",
+            TEXT_SERVICIO_NEGOCIO,
+            TEXT_CREADO,
+            TEXT_OBSERVACIONES_TRABAJO,
+            TEXT_OBSERVACIONES_ADICIONALES,
             "actualizaciones",
             "impacto",
             "lista_notas_trabajo",
-            "tipificacion_auto",
-            "es_alerta_auto",
-            "causa_raiz_auto",
-            "prioridad_normalizada",
+            "origen_auto",
+            TEXT_TIPIFICACION_AUTO,
+            TEXT_TIPO_INCIDENTE_AUTO,
+            TEXT_ES_ALERTA_AUTO,
+            TEXT_CAUSA_RAIZ_AUTO,
+            TEXT_PRIORIDAD_NORMALIZADA,
             "familia_sla",
-            "sla_objetivo_horas",
-            "estado_sla",
-            "duracion_horas",
+            TEXT_SLA_OBJETIVO_HORAS,
+            TEXT_DURACION_SLA_HORAS,
+            TEXT_ESTADO_SLA,
+            TEXT_DURACION_HORAS,
         ]
-        df = df.drop(columns=["_creado_dt_dashboard"], errors="ignore")
+        df = df.drop(columns=[TEXT_CREADO_DT_DASHBOARD], errors="ignore")
         df = df[[col for col in columnas if col in df.columns]]
         st.caption(f"Registros encontrados: {len(df)}")
     st.dataframe(df, use_container_width=True, hide_index=True)
@@ -2961,52 +3281,54 @@ def vista_seguimiento_incidentes():
         st.info(f"No hay incidentes cargados para {mes_dashboard}.")
         return
 
-    st.caption(f"Periodo: {mes_dashboard}")
+    st.caption(f"{TEXT_PERIODO}{mes_dashboard}")
     render_seguimiento_operativo_incidentes(df)
 
 
-def vista_administrar_usuarios():
-    st.subheader("Administrar usuarios")
-    st.caption("Crea usuarios para dar acceso a los dashboards o cambia su rol y estado.")
-
-    usuarios = listar_usuarios()
+def render_tabla_usuarios(usuarios):
     if usuarios.empty:
         st.info("Aun no hay usuarios configurados.")
-    else:
-        tabla = usuarios.copy()
-        tabla["active"] = tabla["active"].map({1: "Activo", 0: "Inactivo", True: "Activo", False: "Inactivo"})
-        tabla["role"] = tabla["role"].map({"admin": "Admin", "viewer": "Viewer"}).fillna(tabla["role"])
-        st.dataframe(tabla, use_container_width=True, hide_index=True)
+        return
+    tabla = usuarios.copy()
+    tabla["active"] = tabla["active"].apply(lambda value: "Activo" if bool(value) else "Inactivo")
+    tabla["role"] = tabla["role"].map({TEXT_ADMIN: "Admin", TEXT_VIEWER: "Viewer"}).fillna(tabla["role"])
+    st.dataframe(tabla, use_container_width=True, hide_index=True)
 
-    st.divider()
+
+def formulario_usuario():
     st.markdown("#### Crear o actualizar usuario")
     with st.form("form_usuario"):
         email = st.text_input("Correo", key="usuario_email")
         password = st.text_input(
             "Contrasena nueva",
-            type="password",
+            type=TEXT_PASSWORD,
             help="Minimo 8 caracteres. Para actualizar rol/estado sin cambiar contrasena, dejala vacia.",
             key="usuario_password",
         )
         col_rol, col_estado = st.columns(2)
         with col_rol:
-            role = st.selectbox("Rol", ["viewer", "admin"], format_func=lambda x: "Viewer" if x == "viewer" else "Admin")
+            role = st.selectbox("Rol", [TEXT_VIEWER, TEXT_ADMIN], format_func=lambda x: "Viewer" if x == TEXT_VIEWER else "Admin")
         with col_estado:
             active = st.checkbox("Activo", value=True)
         guardar = st.form_submit_button("Guardar usuario")
+    return guardar, email, password, role, active
 
-    if guardar:
-        if not validar_email(email):
-            st.error("Escribe un correo valido.")
-        else:
-            try:
-                guardar_usuario(email, password or None, role=role, active=active)
-                st.success("Usuario guardado.")
-                st.rerun()
-            except ValueError as exc:
-                st.error(str(exc))
 
-    st.divider()
+def procesar_formulario_usuario(guardar, email, password, role, active):
+    if not guardar:
+        return
+    if not validar_email(email):
+        st.error("Escribe un correo valido.")
+        return
+    try:
+        guardar_usuario(email, password or None, role=role, active=active)
+        st.success("Usuario guardado.")
+        st.rerun()
+    except ValueError as exc:
+        st.error(str(exc))
+
+
+def render_mantenimiento_incidentes():
     st.markdown("#### Mantenimiento de datos")
     total_incidentes = contar_incidentes()
     st.caption(
@@ -3019,7 +3341,7 @@ def vista_administrar_usuarios():
     )
     clave_limpieza = st.text_input(
         "Clave para limpiar incidentes",
-        type="password",
+        type=TEXT_PASSWORD,
         key="clave_limpiar_incidentes",
     )
     puede_limpiar = confirmar_limpieza and clave_limpieza == "lina202" and total_incidentes > 0
@@ -3030,19 +3352,24 @@ def vista_administrar_usuarios():
         st.success(f"Incidentes eliminados: {borrados}. Los casos no fueron modificados.")
         st.rerun()
 
-    st.divider()
+
+def candidatos_eliminacion_usuarios(usuarios_actuales):
+    email_actual = normalizar_email(st.session_state.get("user"))
+    return [
+        email
+        for email in usuarios_actuales["email"].tolist()
+        if normalizar_email(email) != email_actual
+    ]
+
+
+def render_eliminar_usuario():
     st.markdown("#### Quitar acceso")
     usuarios_actuales = listar_usuarios()
     if usuarios_actuales.empty:
         st.info("No hay usuarios para eliminar.")
         return
 
-    email_actual = normalizar_email(st.session_state.get("user"))
-    candidatos = [
-        email
-        for email in usuarios_actuales["email"].tolist()
-        if normalizar_email(email) != email_actual
-    ]
+    candidatos = candidatos_eliminacion_usuarios(usuarios_actuales)
     if not candidatos:
         st.info("No puedes eliminar tu propio usuario desde aqui.")
         return
@@ -3055,6 +3382,80 @@ def vista_administrar_usuarios():
         st.rerun()
 
 
+def vista_administrar_usuarios():
+    st.subheader("Administrar usuarios")
+    st.caption("Crea usuarios para dar acceso a los dashboards o cambia su rol y estado.")
+    render_tabla_usuarios(listar_usuarios())
+
+    st.divider()
+    procesar_formulario_usuario(*formulario_usuario())
+
+    st.divider()
+    render_mantenimiento_incidentes()
+
+    st.divider()
+    render_eliminar_usuario()
+
+ADMIN_MENU_OPTIONS = [
+    "Cargar Excel Casos",
+    TEXT_CASOS,
+    "Dashboard Casos",
+    "Cargar Excel Incidentes",
+    TEXT_INCIDENTES,
+    "Dashboard Incidentes",
+    MENU_SEGUIMIENTO_INCIDENTES_ADMIN,
+    "Clientes Clave",
+    "Administrar Usuarios",
+]
+
+VIEWER_MENU_OPTIONS = [TEXT_CASOS, TEXT_INCIDENTES, MENU_SEGUIMIENTO_INCIDENTES_VIEWER, MENU_CLIENTES_CLAVE]
+
+ADMIN_VIEWS = {
+    "Cargar Excel Casos": vista_cargar_casos,
+    TEXT_CASOS: vista_casos,
+    "Dashboard Casos": dashboard_casos,
+    "Cargar Excel Incidentes": vista_cargar_incidentes,
+    TEXT_INCIDENTES: vista_incidentes,
+    "Dashboard Incidentes": dashboard_incidentes,
+    MENU_SEGUIMIENTO_INCIDENTES_ADMIN: vista_seguimiento_incidentes,
+    "Clientes Clave": dashboard_clientes_clave,
+    "Administrar Usuarios": vista_administrar_usuarios,
+}
+
+VIEWER_VIEWS = {
+    TEXT_CASOS: dashboard_casos,
+    TEXT_INCIDENTES: dashboard_incidentes,
+    MENU_SEGUIMIENTO_INCIDENTES_VIEWER: vista_seguimiento_incidentes,
+    MENU_CLIENTES_CLAVE: dashboard_clientes_clave,
+}
+
+
+def cerrar_sesion_boton(en_sidebar=False):
+    contenedor = st.sidebar if en_sidebar else st
+    if contenedor.button("Cerrar sesion"):
+        st.session_state.clear()
+        st.rerun()
+
+
+def render_vista_admin():
+    menu = st.sidebar.selectbox("Menu", ADMIN_MENU_OPTIONS)
+    st.sidebar.caption(f"Sesion: {st.session_state.user}")
+    cerrar_sesion_boton(en_sidebar=True)
+    ADMIN_VIEWS[menu]()
+
+
+def render_vista_viewer():
+    cerrar_sesion_boton()
+    vista = st.radio(
+        "Vista",
+        VIEWER_MENU_OPTIONS,
+        horizontal=True,
+        label_visibility="collapsed",
+        key="viewer_vista",
+    )
+    ejecutar_con_carga(vista, VIEWER_VIEWS[vista])
+
+
 def run_app():
     aplicar_tema_visual()
     init_db()
@@ -3064,61 +3465,7 @@ def run_app():
     if not login():
         return
 
-    if st.session_state.role == "admin":
-        menu = st.sidebar.selectbox(
-            "Menu",
-            [
-                "Cargar Excel Casos",
-                "Casos",
-                "Dashboard Casos",
-                "Cargar Excel Incidentes",
-                "Incidentes",
-                "Dashboard Incidentes",
-                "Seguimiento Incidentes",
-                "Clientes Clave",
-                "Administrar Usuarios",
-            ],
-        )
-        st.sidebar.caption(f"Sesion: {st.session_state.user}")
-        if st.sidebar.button("Cerrar sesion"):
-            st.session_state.clear()
-            st.rerun()
+    if st.session_state.role == TEXT_ADMIN:
+        render_vista_admin()
     else:
-        if st.button("Cerrar sesion"):
-            st.session_state.clear()
-            st.rerun()
-        vista = st.radio(
-            "Vista",
-            ["Casos", "Incidentes", "Seguimiento incidentes", "Clientes clave"],
-            horizontal=True,
-            label_visibility="collapsed",
-            key="viewer_vista",
-        )
-        if vista == "Casos":
-            ejecutar_con_carga("Casos", dashboard_casos)
-        elif vista == "Incidentes":
-            ejecutar_con_carga("Incidentes", dashboard_incidentes)
-        elif vista == "Seguimiento incidentes":
-            ejecutar_con_carga("Seguimiento incidentes", vista_seguimiento_incidentes)
-        else:
-            ejecutar_con_carga("Clientes clave", dashboard_clientes_clave)
-        return
-
-    if menu == "Cargar Excel Casos":
-        vista_cargar_casos()
-    elif menu == "Casos":
-        vista_casos()
-    elif menu == "Dashboard Casos":
-        dashboard_casos()
-    elif menu == "Cargar Excel Incidentes":
-        vista_cargar_incidentes()
-    elif menu == "Incidentes":
-        vista_incidentes()
-    elif menu == "Dashboard Incidentes":
-        dashboard_incidentes()
-    elif menu == "Seguimiento Incidentes":
-        vista_seguimiento_incidentes()
-    elif menu == "Clientes Clave":
-        dashboard_clientes_clave()
-    elif menu == "Administrar Usuarios":
-        vista_administrar_usuarios()
+        render_vista_viewer()
