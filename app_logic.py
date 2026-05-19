@@ -2,6 +2,7 @@ import re
 import hashlib
 import hmac
 import os
+import time
 import tomllib
 import unicodedata
 from datetime import timedelta
@@ -55,6 +56,11 @@ SUPABASE_PUBLISHABLE_KEY = config_value("SUPABASE_PUBLISHABLE_KEY")
 SUPABASE_DATABASE_URL = config_value("SUPABASE_DATABASE_URL")
 ADMIN_EMAIL = config_value("APP_ADMIN_EMAIL")
 INITIAL_ADMIN_PASSWORD = config_value("APP_ADMIN_PASSWORD")
+
+DB_TRANSIENT_SQLSTATES = {"40P01", "40001"}
+DB_MAX_REINTENTOS = 3
+DB_REINTENTO_ESPERA_SEGUNDOS = 0.35
+DB_BLOQUEO_CARGA_CASOS = "gestion_problemas_yerika:carga_casos"
 
 # Literales reutilizados para evitar duplicidad y facilitar mantenimiento.
 NUMERO_DE_CASO_TEXT = "numero de caso"
@@ -363,7 +369,7 @@ INCIDENT_SYMPTOM_RULES = [
     ("alerta de monitoreo", ["alerta", "alarma", "monitoreo", "zabbix", "grafana", "prometheus", "solarwinds"]),
 ]
 
-TIPIFICACION_ATENCION_NOC = "Atencion NOC"
+TIPIFICACION_ATENCION_NOC = "Alertas y Consultas NOC"
 TIPIFICACION_CASO_CLIENTE_EXTERNO = "Caso Cliente Externo"
 TIPIFICACION_INCIDENTE_CLIENTE_EXTERNO = "Incidente Cliente Externo"
 TIPIFICACION_INCIDENTE_INTERNO = "Incidente Interno"
@@ -995,6 +1001,26 @@ def db_execute(conn, sql, params=()):
     return conn.execute(db_sql(sql), params)
 
 
+def es_error_db_transitorio(error):
+    sqlstate = getattr(error, "sqlstate", None) or getattr(error, "pgcode", None)
+    return sqlstate in DB_TRANSIENT_SQLSTATES
+
+
+def ejecutar_con_reintentos_db(operacion, intentos=DB_MAX_REINTENTOS):
+    for intento in range(intentos):
+        try:
+            return operacion()
+        except Exception as error:
+            if not es_error_db_transitorio(error) or intento >= intentos - 1:
+                raise
+            time.sleep(DB_REINTENTO_ESPERA_SEGUNDOS * (2**intento))
+
+
+def bloquear_escritura_casos(conn):
+    db_execute(conn, "SELECT pg_advisory_xact_lock(hashtext(?))", (DB_BLOQUEO_CARGA_CASOS,))
+    db_execute(conn, "LOCK TABLE cases IN SHARE ROW EXCLUSIVE MODE")
+
+
 def read_table(table_name):
     conn = get_conn()
     cursor = db_execute(conn, f"SELECT * FROM {table_name}")
@@ -1506,69 +1532,86 @@ CASE_DB_COLUMNS = [
 ]
 
 
-def guardar_casos(df, reemplazar_meses=False):
+def _guardar_casos_preparados(df, reemplazar_meses, duplicados_archivo):
     conn = get_conn()
     cargados = 0
+    try:
+        bloquear_escritura_casos(conn)
+        meses_reemplazados = meses_casos(df) if reemplazar_meses else []
+        eliminados = 0
+        if meses_reemplazados:
+            placeholders_meses = db_placeholders(len(meses_reemplazados))
+            eliminados = db_execute(
+                conn,
+                f"DELETE FROM cases WHERE substr(creado, 1, 7) IN ({placeholders_meses})",
+                meses_reemplazados,
+            ).rowcount
+
+        numeros = [safe_text(valor_fila(row, "numero")) for _, row in df.iterrows()]
+        existentes = set()
+        if numeros:
+            placeholders = db_placeholders(len(numeros))
+            existentes = {
+                fila[0]
+                for fila in db_execute(
+                    conn,
+                    f"SELECT numero FROM cases WHERE numero IN ({placeholders})",
+                    numeros,
+                ).fetchall()
+            }
+        reemplazados = len(existentes)
+
+        for _, row in df.iterrows():
+            numero = safe_text(valor_fila(row, "numero"))
+            creado = normalizar_fecha(valor_fila(row, "creado"))
+            cerrado = normalizar_fecha(valor_fila(row, "cerrado"))
+            data = (
+                numero,
+                safe_text(valor_fila(row, "descripcion")),
+                safe_text(valor_fila(row, "contacto")),
+                safe_text(valor_fila(row, "cuenta")),
+                safe_text(valor_fila(row, "codigo_resolucion")),
+                safe_text(valor_fila(row, "canal")),
+                safe_text(valor_fila(row, "estado")),
+                safe_text(valor_fila(row, "prioridad")),
+                safe_text(valor_fila(row, "asignado")),
+                normalizar_fecha(valor_fila(row, "actualizado")),
+                safe_text(valor_fila(row, "creado_por")),
+                creado,
+                safe_text(valor_fila(row, "producto")),
+                cerrado,
+                safe_text(valor_fila(row, "causa")),
+                safe_text(valor_fila(row, "notas_resolucion")),
+                safe_text(valor_fila(row, "observaciones_adicionales")),
+                safe_text(valor_fila(row, "observaciones_trabajo")),
+                tipificar_caso(row),
+                tiempo(creado, cerrado),
+            )
+            db_execute(conn, upsert_sql("cases", CASE_DB_COLUMNS, "numero"), data)
+            cargados += 1
+        conn.commit()
+        return cargados, reemplazados, eliminados, meses_reemplazados, duplicados_archivo
+    except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        raise
+    finally:
+        conn.close()
+
+
+def guardar_casos(df, reemplazar_meses=False):
     filas_recibidas = len(df)
     df = preparar_casos(df)
     duplicados_archivo = max(filas_recibidas - len(df), 0)
     if df.empty:
-        conn.close()
         return 0, 0, 0, [], duplicados_archivo
 
-    meses_reemplazados = meses_casos(df) if reemplazar_meses else []
-    eliminados = 0
-    if meses_reemplazados:
-        placeholders_meses = db_placeholders(len(meses_reemplazados))
-        eliminados = db_execute(
-            conn,
-            f"DELETE FROM cases WHERE substr(creado, 1, 7) IN ({placeholders_meses})",
-            meses_reemplazados,
-        ).rowcount
-
-    numeros = [safe_text(valor_fila(row, "numero")) for _, row in df.iterrows()]
-    existentes = set()
-    if numeros:
-        placeholders = db_placeholders(len(numeros))
-        existentes = {
-            fila[0]
-            for fila in db_execute(
-                conn,
-                f"SELECT numero FROM cases WHERE numero IN ({placeholders})",
-                numeros,
-            ).fetchall()
-        }
-    reemplazados = len(existentes)
-
-    for _, row in df.iterrows():
-        numero = safe_text(valor_fila(row, "numero"))
-        data = (
-            numero,
-            safe_text(valor_fila(row, "descripcion")),
-            safe_text(valor_fila(row, "contacto")),
-            safe_text(valor_fila(row, "cuenta")),
-            safe_text(valor_fila(row, "codigo_resolucion")),
-            safe_text(valor_fila(row, "canal")),
-            safe_text(valor_fila(row, "estado")),
-            safe_text(valor_fila(row, "prioridad")),
-            safe_text(valor_fila(row, "asignado")),
-            normalizar_fecha(valor_fila(row, "actualizado")),
-            safe_text(valor_fila(row, "creado_por")),
-            normalizar_fecha(valor_fila(row, "creado")),
-            safe_text(valor_fila(row, "producto")),
-            normalizar_fecha(valor_fila(row, "cerrado")),
-            safe_text(valor_fila(row, "causa")),
-            safe_text(valor_fila(row, "notas_resolucion")),
-            safe_text(valor_fila(row, "observaciones_adicionales")),
-            safe_text(valor_fila(row, "observaciones_trabajo")),
-            tipificar_caso(row),
-            tiempo(normalizar_fecha(valor_fila(row, "creado")), normalizar_fecha(valor_fila(row, "cerrado"))),
-        )
-        db_execute(conn, upsert_sql("cases", CASE_DB_COLUMNS, "numero"), data)
-        cargados += 1
-    conn.commit()
-    conn.close()
-    return cargados, reemplazados, eliminados, meses_reemplazados, duplicados_archivo
+    df = df.sort_values("numero", kind="mergesort").reset_index(drop=True)
+    return ejecutar_con_reintentos_db(
+        lambda: _guardar_casos_preparados(df, reemplazar_meses, duplicados_archivo)
+    )
 
 
 def load_casos():

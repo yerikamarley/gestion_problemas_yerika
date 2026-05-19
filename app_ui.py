@@ -10,6 +10,7 @@ from app_logic import (
     autenticar_usuario,
     contar_incidentes,
     eliminar_usuario,
+    es_error_db_transitorio,
     guardar_casos,
     guardar_incidentes,
     guardar_usuario,
@@ -387,7 +388,7 @@ AGENDA_REASON_RULES = [
     ),
 ]
 
-NOC_TIPIFICATION = "Atencion NOC"
+NOC_TIPIFICATION = "Alertas y Consultas NOC"
 
 INCIDENT_TIPIFICATION_GUIDE = {
     NOC_TIPIFICATION: "Alertas y consultas gestionadas por NOC. Tienen el mismo objetivo operativo de atencion.",
@@ -2445,7 +2446,7 @@ def dashboard_incidentes():
         [
             (TEXT_ATENCIONES, total),
             ("Incidentes reales", len(incidentes_reales)),
-            ("Atencion NOC", len(atenciones_noc)),
+            ("Alertas y Consultas NOC", len(atenciones_noc)),
             (LABEL_CASOS_CLIENTE_EXTERNO, len(casos_cliente_externo)),
             ("SLA incidentes", f"{porcentaje_sla}%"),
         ]
@@ -3075,10 +3076,18 @@ def mensaje_carga_casos(cargados, reemplazados, duplicados_archivo, reemplazar_m
 
 
 def procesar_archivo_casos(df, reemplazar_meses):
-    cargados, reemplazados, eliminados, meses_reemplazados, duplicados_archivo = guardar_casos(
-        df,
-        reemplazar_meses=reemplazar_meses,
-    )
+    try:
+        cargados, reemplazados, eliminados, meses_reemplazados, duplicados_archivo = guardar_casos(
+            df,
+            reemplazar_meses=reemplazar_meses,
+        )
+    except Exception as error:
+        if es_error_db_transitorio(error):
+            st.error(
+                "La base de datos estaba ocupada por otra carga. Espera unos segundos y vuelve a procesar el archivo."
+            )
+            return
+        raise
     if cargados == 0:
         st.error("No se guardaron casos. Revisa que el archivo tenga una columna de numero de caso.")
         return
