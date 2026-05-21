@@ -239,6 +239,7 @@ COL_MAX_HORAS = "Max. horas"
 COL_MAX_DIAS = "Max. dias"
 MENU_CLIENTES_CLAVE = "Clientes clave"
 MENU_KPI_CASOS_CLIENTE_EXTERNO = "KPI Casos Cliente Externo"
+MENU_KPI_INCIDENTES = "KPI Incidentes"
 MENU_SEGUIMIENTO_INCIDENTES_VIEWER = "Seguimiento incidentes"
 MENU_SEGUIMIENTO_INCIDENTES_ADMIN = "Seguimiento Incidentes"
 LABEL_CASOS_CLIENTE_EXTERNO = "Casos cliente externo"
@@ -1952,6 +1953,207 @@ def render_kpi_casos_cliente_externo(df):
         st.dataframe(visible, use_container_width=True, hide_index=True)
 
 
+def segmento_incidente(valor):
+    if valor == TIPIFICACION_INCIDENTE_CLIENTE_EXTERNO:
+        return "Cliente externo"
+    if valor == TIPIFICACION_INCIDENTE_INTERNO:
+        return "Cliente interno"
+    return "Otro"
+
+
+def preparar_kpi_incidentes(df):
+    trabajo = agregar_campos_sla_incidentes(df)
+    if trabajo.empty:
+        return trabajo, {}
+
+    trabajo = trabajo[
+        trabajo[TEXT_TIPIFICACION_AUTO].fillna("").isin(
+            [TIPIFICACION_INCIDENTE_CLIENTE_EXTERNO, TIPIFICACION_INCIDENTE_INTERNO]
+        )
+    ].copy()
+    if trabajo.empty:
+        return trabajo, {}
+
+    trabajo[TEXT_CERRADO_2] = mascara_cerrados(trabajo)
+    trabajo[TEXT_ABIERTO] = ~trabajo[TEXT_CERRADO_2]
+    trabajo[TEXT_SEGMENTO] = trabajo[TEXT_TIPIFICACION_AUTO].apply(segmento_incidente)
+    trabajo[TEXT_DURACION_HORAS_NUM] = pd.to_numeric(trabajo[TEXT_DURACION_SLA_HORAS], errors=TEXT_COERCE)
+
+    cerrados_sla = trabajo[
+        trabajo[TEXT_CERRADO_2]
+        & trabajo[TEXT_ESTADO_SLA].isin([ESTADO_SLA_CUMPLE, ESTADO_SLA_NO_CUMPLE])
+    ].copy()
+    cumplen = int((cerrados_sla[TEXT_ESTADO_SLA] == ESTADO_SLA_CUMPLE).sum())
+    no_cumplen = int((cerrados_sla[TEXT_ESTADO_SLA] == ESTADO_SLA_NO_CUMPLE).sum())
+
+    metricas = {
+        "total": len(trabajo),
+        "externos": int((trabajo[TEXT_SEGMENTO] == "Cliente externo").sum()),
+        "internos": int((trabajo[TEXT_SEGMENTO] == "Cliente interno").sum()),
+        "abiertos": int(trabajo[TEXT_ABIERTO].sum()),
+        "cerrados": int(trabajo[TEXT_CERRADO_2].sum()),
+        "cumplimiento_sla": porcentaje(cumplen, cumplen + no_cumplen),
+        "cumple_sla": cumplen,
+        "no_cumple_sla": no_cumplen,
+        "promedio": round(trabajo[TEXT_DURACION_HORAS_NUM].dropna().mean(), 2)
+        if trabajo[TEXT_DURACION_HORAS_NUM].notna().any()
+        else 0,
+    }
+    return trabajo, metricas
+
+
+def resumen_causas_kpi_incidentes(base):
+    if base.empty:
+        return pd.DataFrame(
+            columns=[
+                TEXT_SEGMENTO,
+                COL_CAUSA_RAIZ,
+                TEXT_CANTIDAD,
+                "% segmento",
+                COL_LECTURA_EJECUTIVA,
+                COL_ACCION_SUGERIDA,
+                "Detalle tecnico observado",
+            ]
+        )
+
+    resumenes = []
+    for segmento, grupo in base.groupby(TEXT_SEGMENTO):
+        causas = resumen_causas_incidentes(grupo, "% segmento")
+        causas.insert(0, TEXT_SEGMENTO, segmento)
+        resumenes.append(causas)
+    return pd.concat(resumenes, ignore_index=True) if resumenes else pd.DataFrame()
+
+
+def causa_principal_segmento(causas, segmento):
+    filas = causas[causas[TEXT_SEGMENTO] == segmento].sort_values(by=TEXT_CANTIDAD, ascending=False)
+    if filas.empty:
+        return None
+    return filas.iloc[0]
+
+
+def texto_lectura_causa_segmento(causas, segmento):
+    fila = causa_principal_segmento(causas, segmento)
+    if fila is None:
+        return f"No hay causas raiz para {segmento.lower()} en el periodo."
+    return (
+        f"{segmento}: la causa principal es {fila[COL_CAUSA_RAIZ]} "
+        f"({int(fila[TEXT_CANTIDAD])} casos, {fila['% segmento']}%). "
+        f"{fila[COL_LECTURA_EJECUTIVA]} Detalle observado: {fila['Detalle tecnico observado']}."
+    )
+
+
+def render_lectura_kpi_incidentes(causas):
+    lectura_externo = texto_lectura_causa_segmento(causas, "Cliente externo")
+    lectura_interno = texto_lectura_causa_segmento(causas, "Cliente interno")
+    contenido = f"""
+    <div class="executive-note">
+        <div class="executive-note-title">Lectura</div>
+        <div class="executive-note-detail"><strong>Cliente externo:</strong> {html.escape(lectura_externo.replace("Cliente externo: ", ""))}</div>
+        <div class="executive-note-detail"><strong>Cliente interno:</strong> {html.escape(lectura_interno.replace("Cliente interno: ", ""))}</div>
+    </div>
+    """
+    st.markdown(contenido, unsafe_allow_html=True)
+
+
+def render_grafico_causas_kpi_incidentes(causas):
+    if causas.empty:
+        st.info("No hay causas raiz para graficar en el periodo seleccionado.")
+        return
+
+    grafico = (
+        causas.sort_values(by=TEXT_CANTIDAD, ascending=False)
+        .groupby([TEXT_SEGMENTO, COL_CAUSA_RAIZ], as_index=False)
+        .agg(Cantidad=(TEXT_CANTIDAD, "sum"))
+        .sort_values(by=TEXT_CANTIDAD, ascending=True)
+    )
+    fig = px.bar(
+        grafico,
+        x=TEXT_CANTIDAD,
+        y=COL_CAUSA_RAIZ,
+        color=TEXT_SEGMENTO,
+        orientation="h",
+        text=TEXT_CANTIDAD,
+        barmode="group",
+        color_discrete_map={
+            "Cliente externo": UI_PALETTE[TEXT_PRIMARY],
+            "Cliente interno": UI_PALETTE[TEXT_PURPLE],
+        },
+    )
+    fig.update_traces(textposition=TEXT_OUTSIDE, cliponaxis=False)
+    fig.update_layout(height=max(320, 42 * len(grafico[COL_CAUSA_RAIZ].unique()) + 120))
+    st.plotly_chart(aplicar_estilo_figura(fig, "Causas raiz por segmento"), use_container_width=True)
+
+
+def render_kpi_incidentes(df):
+    base, metricas = preparar_kpi_incidentes(df)
+    if base.empty:
+        st.info("No hay incidentes cliente interno o externo para el periodo seleccionado.")
+        return
+
+    causas = resumen_causas_kpi_incidentes(base)
+
+    st.subheader(MENU_KPI_INCIDENTES)
+    render_tarjetas(
+        [
+            ("Incidentes", metricas["total"]),
+            ("Cliente externo", metricas["externos"]),
+            ("Cliente interno", metricas["internos"]),
+            ("Abiertos", metricas["abiertos"]),
+            ("SLA incidentes", f"{metricas['cumplimiento_sla']}%"),
+        ]
+    )
+    st.caption(
+        f"Cerrados: {metricas['cerrados']} | Promedio: {metricas['promedio']} h | "
+        f"Cumplen SLA: {metricas['cumple_sla']} | No cumplen: {metricas['no_cumple_sla']}"
+    )
+
+    col_grafico, col_lectura = st.columns([2.15, 1])
+    with col_grafico:
+        render_grafico_causas_kpi_incidentes(causas)
+    with col_lectura:
+        render_lectura_kpi_incidentes(causas)
+
+    tab_resumen, tab_externo, tab_interno, tab_detalle = st.tabs(
+        [TEXT_RESUMEN, "Cliente externo", "Cliente interno", "Detalle"]
+    )
+    with tab_resumen:
+        st.dataframe(causas, use_container_width=True, hide_index=True)
+    with tab_externo:
+        st.dataframe(
+            causas[causas[TEXT_SEGMENTO] == "Cliente externo"],
+            use_container_width=True,
+            hide_index=True,
+        )
+    with tab_interno:
+        st.dataframe(
+            causas[causas[TEXT_SEGMENTO] == "Cliente interno"],
+            use_container_width=True,
+            hide_index=True,
+        )
+    with tab_detalle:
+        columnas = [
+            TEXT_NUMERO,
+            TEXT_SEGMENTO,
+            TEXT_ESTADO,
+            TEXT_PRIORIDAD,
+            TEXT_SERVICIO_NEGOCIO,
+            TEXT_CAUSA_RAIZ_AUTO,
+            TEXT_TIPO_INCIDENTE_AUTO,
+            TEXT_DURACION_SLA_HORAS,
+            TEXT_ESTADO_SLA,
+            TEXT_EMPRESA,
+            TEXT_SOLICITANTE,
+            TEXT_CREADO,
+            TEXT_CERRADO,
+            TEXT_BREVE_DESCRIPCION,
+        ]
+        st.dataframe(
+            base[[col for col in columnas if col in base.columns]],
+            use_container_width=True,
+            hide_index=True,
+        )
+
+
 def es_tipificacion_agendamiento(valor):
     return valor_limpio(valor) == AGENDA_CASE_TIPIFICATION
 
@@ -2707,6 +2909,23 @@ def dashboard_kpi_casos_cliente_externo():
 
     st.caption(f"{TEXT_PERIODO}{mes_dashboard}")
     render_kpi_casos_cliente_externo(df)
+
+
+def dashboard_kpi_incidentes():
+    df = load_incidentes()
+    if df.empty:
+        st.info("No hay datos de incidentes cargados.")
+        return
+
+    df = preparar_fechas_dashboard(df)
+    mes_dashboard = selector_mes_dashboard(df, "kpi_incidentes_mes")
+    df = filtrar_mes_dashboard(df, mes_dashboard)
+    if df.empty:
+        st.info(f"No hay incidentes cargados para {mes_dashboard}.")
+        return
+
+    st.caption(f"{TEXT_PERIODO}{mes_dashboard}")
+    render_kpi_incidentes(df)
 
 
 def dashboard_incidentes():
@@ -3728,6 +3947,7 @@ ADMIN_MENU_OPTIONS = [
     "Cargar Excel Incidentes",
     TEXT_INCIDENTES,
     "Dashboard Incidentes",
+    MENU_KPI_INCIDENTES,
     MENU_SEGUIMIENTO_INCIDENTES_ADMIN,
     "Clientes Clave",
     "Administrar Usuarios",
@@ -3737,6 +3957,7 @@ VIEWER_MENU_OPTIONS = [
     TEXT_CASOS,
     MENU_KPI_CASOS_CLIENTE_EXTERNO,
     TEXT_INCIDENTES,
+    MENU_KPI_INCIDENTES,
     MENU_SEGUIMIENTO_INCIDENTES_VIEWER,
     MENU_CLIENTES_CLAVE,
 ]
@@ -3749,6 +3970,7 @@ ADMIN_VIEWS = {
     "Cargar Excel Incidentes": vista_cargar_incidentes,
     TEXT_INCIDENTES: vista_incidentes,
     "Dashboard Incidentes": dashboard_incidentes,
+    MENU_KPI_INCIDENTES: dashboard_kpi_incidentes,
     MENU_SEGUIMIENTO_INCIDENTES_ADMIN: vista_seguimiento_incidentes,
     "Clientes Clave": dashboard_clientes_clave,
     "Administrar Usuarios": vista_administrar_usuarios,
@@ -3758,6 +3980,7 @@ VIEWER_VIEWS = {
     TEXT_CASOS: dashboard_casos,
     MENU_KPI_CASOS_CLIENTE_EXTERNO: dashboard_kpi_casos_cliente_externo,
     TEXT_INCIDENTES: dashboard_incidentes,
+    MENU_KPI_INCIDENTES: dashboard_kpi_incidentes,
     MENU_SEGUIMIENTO_INCIDENTES_VIEWER: vista_seguimiento_incidentes,
     MENU_CLIENTES_CLAVE: dashboard_clientes_clave,
 }
