@@ -2060,28 +2060,35 @@ def render_grafico_causas_kpi_incidentes(causas):
         st.info("No hay causas raiz para graficar en el periodo seleccionado.")
         return
 
-    grafico = (
-        causas.sort_values(by=TEXT_CANTIDAD, ascending=False)
-        .groupby([TEXT_SEGMENTO, COL_CAUSA_RAIZ], as_index=False)
-        .agg(Cantidad=(TEXT_CANTIDAD, "sum"))
-        .sort_values(by=TEXT_CANTIDAD, ascending=True)
-    )
-    fig = px.bar(
-        grafico,
-        x=TEXT_CANTIDAD,
-        y=COL_CAUSA_RAIZ,
-        color=TEXT_SEGMENTO,
-        orientation="h",
-        text=TEXT_CANTIDAD,
-        barmode="group",
-        color_discrete_map={
-            "Cliente externo": UI_PALETTE[TEXT_PRIMARY],
-            "Cliente interno": UI_PALETTE[TEXT_PURPLE],
-        },
-    )
-    fig.update_traces(textposition=TEXT_OUTSIDE, cliponaxis=False)
-    fig.update_layout(height=max(320, 42 * len(grafico[COL_CAUSA_RAIZ].unique()) + 120))
-    st.plotly_chart(aplicar_estilo_figura(fig, "Causas raiz por segmento"), use_container_width=True)
+    col_externo, col_interno = st.columns(2)
+    segmentos = [
+        (col_externo, "Cliente externo", "Causas cliente externo"),
+        (col_interno, "Cliente interno", "Causas cliente interno"),
+    ]
+
+    for columna, segmento, titulo in segmentos:
+        with columna:
+            grafico = (
+                causas[causas[TEXT_SEGMENTO] == segmento]
+                .groupby(COL_LECTURA_EJECUTIVA, as_index=False)
+                .agg(Cantidad=(TEXT_CANTIDAD, "sum"))
+                .sort_values(by=TEXT_CANTIDAD, ascending=True)
+            )
+            if grafico.empty:
+                st.info(f"No hay causas para {segmento.lower()} en el periodo.")
+                continue
+
+            fig = px.bar(
+                grafico,
+                x=TEXT_CANTIDAD,
+                y=COL_LECTURA_EJECUTIVA,
+                orientation="h",
+                text=TEXT_CANTIDAD,
+                color_discrete_sequence=[UI_PALETTE[TEXT_PURPLE]],
+            )
+            fig.update_traces(marker_color=UI_PALETTE[TEXT_PURPLE], textposition=TEXT_OUTSIDE, cliponaxis=False)
+            fig.update_layout(height=max(320, 48 * len(grafico) + 110), yaxis={"automargin": True})
+            st.plotly_chart(aplicar_estilo_figura(fig, titulo), use_container_width=True)
 
 
 def render_kpi_incidentes(df):
