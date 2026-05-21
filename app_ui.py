@@ -239,6 +239,7 @@ COL_SLA_OBJETIVO_H = "SLA objetivo h"
 COL_MAX_HORAS = "Max. horas"
 COL_MAX_DIAS = "Max. dias"
 MENU_CLIENTES_CLAVE = "Clientes clave"
+MENU_KPI_CASOS_CLIENTE_EXTERNO = "KPI Casos Cliente Externo"
 MENU_SEGUIMIENTO_INCIDENTES_VIEWER = "Seguimiento incidentes"
 MENU_SEGUIMIENTO_INCIDENTES_ADMIN = "Seguimiento Incidentes"
 LABEL_CASOS_CLIENTE_EXTERNO = "Casos cliente externo"
@@ -1737,6 +1738,9 @@ def preparar_kpi_casos_cliente_externo(df):
         trabajo[TEXT_CERRADO_2],
         trabajo[TEXT_HORAS_ABIERTO],
     )
+    trabajo["Cumple SLA <=36h"] = trabajo["_tiempo_eval_sla_h"].apply(
+        lambda valor: "Si" if pd.notna(valor) and valor <= SLA_CASOS_HORAS else "No"
+    )
 
     total = len(trabajo)
     cerrados = int(trabajo[TEXT_CERRADO_2].sum())
@@ -1776,6 +1780,7 @@ def grafico_barras_kpi(df, x, y, titulo, color):
         color_discrete_sequence=[color],
     )
     fig.update_traces(marker_color=color, textposition=TEXT_OUTSIDE)
+    fig.update_layout(height=max(260, 44 * len(grafico) + 120))
     st.plotly_chart(aplicar_estilo_figura(fig, titulo), use_container_width=True)
 
 
@@ -1837,6 +1842,31 @@ def render_kpi_casos_cliente_externo(df):
         grafico_barras_kpi(servicios, TEXT_CANTIDAD, "Servicio", "Top 5 servicios consultados", UI_PALETTE[TEXT_PURPLE])
 
     st.info(lectura_ejecutiva_kpi_casos(metricas))
+
+    with st.expander("Detalle completo de casos usados en el calculo"):
+        columnas = [
+            TEXT_NUMERO,
+            TEXT_ESTADO,
+            TEXT_CUENTA,
+            TEXT_DESCRIPCION_2,
+            TEXT_TIPIFICACION_2,
+            TEXT_CAUSA_COMUN,
+            TEXT_PRODUCTO,
+            TEXT_TIEMPO_RESPUESTA,
+            "_tiempo_eval_sla_h",
+            "Cumple SLA <=36h",
+            TEXT_CANAL,
+            TEXT_ASIGNADO,
+            TEXT_CREADO,
+            TEXT_CERRADO,
+        ]
+        visible = base[[col for col in columnas if col in base.columns]].rename(
+            columns={
+                "_tiempo_eval_sla_h": "Tiempo evaluado SLA h",
+                TEXT_PRODUCTO: "Servicio",
+            }
+        )
+        st.dataframe(visible, use_container_width=True, hide_index=True)
 
 
 def es_tipificacion_agendamiento(valor):
@@ -2542,9 +2572,6 @@ def dashboard_casos():
     st.caption(f"{TEXT_PERIODO}{mes_dashboard} | Cumplen: {cumplen}{TEXT_NO_CUMPLEN}{incumplen}")
 
     st.divider()
-    render_kpi_casos_cliente_externo(df)
-
-    st.divider()
     col1, col2 = st.columns(2)
 
     with col1:
@@ -2580,6 +2607,23 @@ def dashboard_casos():
     st.dataframe(tabla_resumen_tipificaciones_casos(df), use_container_width=True, hide_index=True)
 
     render_seguimiento_casos(df)
+
+
+def dashboard_kpi_casos_cliente_externo():
+    df = normalizar_tipificaciones_casos_df(load_casos())
+    if df.empty:
+        st.info("No hay datos de casos cargados.")
+        return
+
+    df = preparar_fechas_dashboard(df)
+    mes_dashboard = selector_mes_dashboard(df, "kpi_casos_cliente_externo_mes")
+    df = filtrar_mes_dashboard(df, mes_dashboard)
+    if df.empty:
+        st.info(f"No hay casos cargados para {mes_dashboard}.")
+        return
+
+    st.caption(f"{TEXT_PERIODO}{mes_dashboard}")
+    render_kpi_casos_cliente_externo(df)
 
 
 def dashboard_incidentes():
@@ -3597,6 +3641,7 @@ ADMIN_MENU_OPTIONS = [
     "Cargar Excel Casos",
     TEXT_CASOS,
     "Dashboard Casos",
+    MENU_KPI_CASOS_CLIENTE_EXTERNO,
     "Cargar Excel Incidentes",
     TEXT_INCIDENTES,
     "Dashboard Incidentes",
@@ -3605,12 +3650,19 @@ ADMIN_MENU_OPTIONS = [
     "Administrar Usuarios",
 ]
 
-VIEWER_MENU_OPTIONS = [TEXT_CASOS, TEXT_INCIDENTES, MENU_SEGUIMIENTO_INCIDENTES_VIEWER, MENU_CLIENTES_CLAVE]
+VIEWER_MENU_OPTIONS = [
+    TEXT_CASOS,
+    MENU_KPI_CASOS_CLIENTE_EXTERNO,
+    TEXT_INCIDENTES,
+    MENU_SEGUIMIENTO_INCIDENTES_VIEWER,
+    MENU_CLIENTES_CLAVE,
+]
 
 ADMIN_VIEWS = {
     "Cargar Excel Casos": vista_cargar_casos,
     TEXT_CASOS: vista_casos,
     "Dashboard Casos": dashboard_casos,
+    MENU_KPI_CASOS_CLIENTE_EXTERNO: dashboard_kpi_casos_cliente_externo,
     "Cargar Excel Incidentes": vista_cargar_incidentes,
     TEXT_INCIDENTES: vista_incidentes,
     "Dashboard Incidentes": dashboard_incidentes,
@@ -3621,6 +3673,7 @@ ADMIN_VIEWS = {
 
 VIEWER_VIEWS = {
     TEXT_CASOS: dashboard_casos,
+    MENU_KPI_CASOS_CLIENTE_EXTERNO: dashboard_kpi_casos_cliente_externo,
     TEXT_INCIDENTES: dashboard_incidentes,
     MENU_SEGUIMIENTO_INCIDENTES_VIEWER: vista_seguimiento_incidentes,
     MENU_CLIENTES_CLAVE: dashboard_clientes_clave,
