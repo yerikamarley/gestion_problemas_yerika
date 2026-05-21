@@ -2019,9 +2019,25 @@ def resumen_causas_kpi_incidentes(base):
     resumenes = []
     for segmento, grupo in base.groupby(TEXT_SEGMENTO):
         causas = resumen_causas_incidentes(grupo, "% segmento")
+        if not causas.empty:
+            causas[COL_LECTURA_EJECUTIVA] = causas.apply(lectura_causa_kpi_incidente, axis=1)
         causas.insert(0, TEXT_SEGMENTO, segmento)
         resumenes.append(causas)
     return pd.concat(resumenes, ignore_index=True) if resumenes else pd.DataFrame()
+
+
+def lectura_causa_kpi_incidente(row):
+    lectura = valor_limpio(row.get(COL_LECTURA_EJECUTIVA))
+    detalle = valor_limpio(row.get("Detalle tecnico observado"))
+    lecturas_genericas = {
+        "Hallazgos tecnicos con bajo volumen o descripcion no estandarizada.",
+        "No hay informacion suficiente para explicar la causa.",
+    }
+    if lectura not in lecturas_genericas:
+        return lectura
+    if detalle and detalle != "Sin inferencia":
+        return f"Casos asociados a {detalle.lower()}."
+    return "Causa raiz pendiente de clasificacion en el cierre."
 
 
 def causa_principal_segmento(causas, segmento):
