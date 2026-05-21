@@ -278,6 +278,12 @@ CASE_SUPPORT_BEFORE_AGENDA_HINTS = [
     "se instala",
     "se instalo",
     "instalacion realizada",
+    "se reinstala",
+    "se reinstalo",
+    "reinstalacion realizada",
+    "proceso de reinstalacion",
+    "reinstalacion del token",
+    "reinstalacion de token",
     "se activa",
     "se activo",
     "activacion realizada",
@@ -287,14 +293,29 @@ CASE_SUPPORT_BEFORE_AGENDA_HINTS = [
     "se realiza prueba",
     "se realizo prueba",
     "se realizan pruebas",
+    "se llevaron a cabo las pruebas",
+    "llevaron a cabo las pruebas",
+    "pruebas de funcionamiento",
+    "pruebas correspondientes",
     "prueba funcional",
     "prueba exitosa",
     "se valida funcionamiento",
     "se valido funcionamiento",
+    "validando funcionamiento",
+    "validando el funcionamiento",
     "se valida acceso",
     "se valido acceso",
+    "validando acceso",
+    "validando el acceso",
+    "correcto acceso",
     "se valida firma",
     "se valido firma",
+    "operatividad del dispositivo",
+    "operatividad",
+    "funcionamiento adecuado",
+    "funcionamiento correcto",
+    "usuario confirma funcionamiento",
+    "confirma funcionamiento",
     "se da solucion",
     "se dio solucion",
     "se soluciona",
@@ -322,6 +343,36 @@ CASE_SUPPORT_BEFORE_AGENDA_HINTS = [
     "revision con el usuario",
 ]
 
+CASE_SUPPORT_SESSION_DATE_HINTS = [
+    "dos opciones de fecha",
+    "dos opciones de fecha y hora",
+    "tres fechas",
+    "tres fechas disponibles",
+    "opciones de fecha",
+    "opciones de fecha y hora",
+    "fechas disponibles",
+    "fecha disponible",
+    "horarios disponibles",
+    "horario disponible",
+    "disponibilidad para agendar",
+    "disponibilidad de agenda",
+    "disponibilidad para una sesion",
+    "compartiendo tres fechas",
+    "compartir tres fechas",
+    "compartir fechas",
+    "proporciones dos opciones",
+    "proporcionar dos opciones",
+    "agradeceria su apoyo compartiendo",
+    "sesion a la brevedad",
+    "agendar una sesion",
+    "agendar sesion",
+    "programar una sesion",
+    "programar sesion",
+    "reunion queda programada",
+    "la reunion queda programada",
+    "sesion queda programada",
+]
+
 
 def texto_resolucion_caso_analisis(row):
     campos = [
@@ -333,11 +384,31 @@ def texto_resolucion_caso_analisis(row):
     return " ".join(normalizar_texto(row.get(campo)) for campo in campos).strip()
 
 
+def texto_indica_soporte_uso_antes_agenda(texto):
+    if any(pista in texto for pista in CASE_SUPPORT_BEFORE_AGENDA_HINTS):
+        return True
+    if any(pista in texto for pista in CASE_SUPPORT_SESSION_DATE_HINTS):
+        return True
+    if "reinstalacion" in texto and any(
+        pista in texto for pista in ["se realizo", "se realiza", "proceso de", "realizada", "ejecutada"]
+    ):
+        return True
+    if "prueba" in texto and any(
+        pista in texto for pista in ["funcionamiento", "correspondiente", "correcto", "exitosa", "operatividad"]
+    ):
+        return True
+    if any(pista in texto for pista in ["validando", "se valida", "se valido"]) and any(
+        pista in texto for pista in ["acceso", "firma", "funcionamiento", "operatividad", "dispositivo"]
+    ):
+        return True
+    return "usuario confirma" in texto and "funcionamiento" in texto
+
+
 def es_agenda_con_soporte_uso(row):
     if normalizar_texto(row.get(TEXT_TIPIFICACION_2)) != normalizar_texto(TIPIFICACION_REDIRECCIONAMIENTO_AGENDA):
         return False
     texto_resolucion = texto_resolucion_caso_analisis(row)
-    return any(pista in texto_resolucion for pista in CASE_SUPPORT_BEFORE_AGENDA_HINTS)
+    return texto_indica_soporte_uso_antes_agenda(texto_resolucion)
 
 
 def normalizar_tipificaciones_casos_df(df):
