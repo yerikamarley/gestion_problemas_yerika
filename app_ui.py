@@ -646,7 +646,7 @@ def aplicar_tema_visual():
 
         .kpi-grid {{
             display: grid;
-            grid-template-columns: repeat(5, minmax(0, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
             gap: 1rem;
             margin: 0.35rem 0 0.25rem;
         }}
@@ -691,6 +691,16 @@ def aplicar_tema_visual():
             font-weight: 800;
             color: var(--primary);
             line-height: 1.1;
+        }}
+
+        .executive-note {{
+            background: rgba(150, 131, 236, 0.10);
+            border: 1px solid rgba(150, 131, 236, 0.24);
+            border-radius: 8px;
+            color: var(--text);
+            padding: 14px 16px;
+            margin: 0.75rem 0 0.25rem;
+            line-height: 1.55;
         }}
 
         @media (max-width: 900px) {{
@@ -1779,9 +1789,11 @@ def grafico_barras_kpi(df, x, y, titulo, color):
         text=x,
         color_discrete_sequence=[color],
     )
-    fig.update_traces(marker_color=color, textposition=TEXT_OUTSIDE)
+    fig.update_traces(marker_color=color, textposition=TEXT_OUTSIDE, cliponaxis=False)
     fig.update_layout(height=max(260, 44 * len(grafico) + 120))
-    st.plotly_chart(aplicar_estilo_figura(fig, titulo), use_container_width=True)
+    fig = aplicar_estilo_figura(fig, titulo)
+    fig.update_layout(margin={"l": 150, "r": 70, "t": 56, "b": 42}, showlegend=False)
+    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
 
 def lectura_ejecutiva_kpi_casos(metricas):
@@ -1830,18 +1842,19 @@ def render_kpi_casos_cliente_externo(df):
         ]
     )
 
-    col_tip, col_causa, col_servicio = st.columns(3)
-    with col_tip:
-        tipificaciones = conteo_top_con_otras(base["_tipificacion_kpi"], top_n=3)
-        grafico_barras_kpi(tipificaciones, TEXT_CANTIDAD, TEXT_TIPOLOGIA, "Top 3 tipificaciones + otras", UI_PALETTE[TEXT_PRIMARY])
-    with col_causa:
-        causas = conteo_top(base[TEXT_CAUSA_COMUN], "Causa comun", top_n=5)
-        grafico_barras_kpi(causas, TEXT_CANTIDAD, "Causa comun", "Top 5 causas comunes", UI_PALETTE[TEXT_YELLOW])
-    with col_servicio:
-        servicios = conteo_top(base["_servicio_consultado"], "Servicio", top_n=5)
-        grafico_barras_kpi(servicios, TEXT_CANTIDAD, "Servicio", "Top 5 servicios consultados", UI_PALETTE[TEXT_PURPLE])
+    tipificaciones = conteo_top_con_otras(base["_tipificacion_kpi"], top_n=3)
+    grafico_barras_kpi(
+        tipificaciones,
+        TEXT_CANTIDAD,
+        TEXT_TIPOLOGIA,
+        "Top 3 tipificaciones + otras",
+        UI_PALETTE[TEXT_PRIMARY],
+    )
 
-    st.info(lectura_ejecutiva_kpi_casos(metricas))
+    st.markdown(
+        f'<div class="executive-note">{html.escape(lectura_ejecutiva_kpi_casos(metricas))}</div>',
+        unsafe_allow_html=True,
+    )
 
     with st.expander("Detalle completo de casos usados en el calculo"):
         columnas = [
