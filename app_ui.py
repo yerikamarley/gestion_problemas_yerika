@@ -694,13 +694,37 @@ def aplicar_tema_visual():
         }}
 
         .executive-note {{
-            background: rgba(150, 131, 236, 0.10);
-            border: 1px solid rgba(150, 131, 236, 0.24);
+            background: rgba(255, 250, 250, 0.96);
+            border: 1px solid var(--border);
             border-radius: 8px;
             color: var(--text);
-            padding: 14px 16px;
-            margin: 0.75rem 0 0.25rem;
-            line-height: 1.55;
+            padding: 14px 16px 12px;
+            margin: 0.1rem 0 0.25rem;
+            line-height: 1.45;
+            box-shadow: 0 6px 16px rgba(20, 20, 20, 0.04);
+        }}
+
+        .executive-note-title {{
+            color: var(--primary);
+            font-weight: 800;
+            margin-bottom: 0.55rem;
+        }}
+
+        .executive-note-line {{
+            color: var(--muted);
+            margin: 0.24rem 0;
+        }}
+
+        .executive-note-line strong {{
+            color: var(--text);
+        }}
+
+        .executive-note-conclusion {{
+            border-top: 1px solid var(--border);
+            color: var(--muted);
+            margin-top: 0.7rem;
+            padding-top: 0.65rem;
+            font-size: 0.94rem;
         }}
 
         @media (max-width: 900px) {{
@@ -1780,7 +1804,10 @@ def grafico_barras_kpi(df, x, y, titulo, color):
     if df.empty:
         st.info(f"No hay datos para {titulo.lower()}.")
         return
-    grafico = df.sort_values(by=x, ascending=True)
+    grafico = df[df[x] > 0].sort_values(by=x, ascending=True)
+    if grafico.empty:
+        st.info(f"No hay datos para {titulo.lower()}.")
+        return
     fig = px.bar(
         grafico,
         x=x,
@@ -1790,9 +1817,9 @@ def grafico_barras_kpi(df, x, y, titulo, color):
         color_discrete_sequence=[color],
     )
     fig.update_traces(marker_color=color, textposition=TEXT_OUTSIDE, cliponaxis=False)
-    fig.update_layout(height=max(260, 44 * len(grafico) + 120))
+    fig.update_layout(height=max(220, 34 * len(grafico) + 110))
     fig = aplicar_estilo_figura(fig, titulo)
-    fig.update_layout(margin={"l": 150, "r": 70, "t": 56, "b": 42}, showlegend=False)
+    fig.update_layout(margin={"l": 145, "r": 58, "t": 46, "b": 34}, showlegend=False)
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
 
@@ -1810,6 +1837,27 @@ def lectura_ejecutiva_kpi_casos(metricas):
     )
 
 
+def conclusion_rapida_kpi_casos(metricas):
+    if not metricas:
+        return "No hay datos suficientes para generar una lectura."
+    if metricas["cumplimiento_sla"] >= 90:
+        return "La operacion mantiene buen cumplimiento; conviene vigilar las categorias con mayor volumen."
+    return "El cumplimiento requiere seguimiento; prioriza los casos fuera de SLA y la tipificacion dominante."
+
+
+def render_lectura_rapida_kpi(metricas):
+    contenido = f"""
+    <div class="executive-note">
+        <div class="executive-note-title">Lectura rapida</div>
+        <div class="executive-note-line">Principal tipificacion: <strong>{html.escape(str(metricas[COL_PRINCIPAL_TIPIFICACION]))}</strong></div>
+        <div class="executive-note-line">Causa comun: <strong>{html.escape(str(metricas[COL_PRINCIPAL_CAUSA_COMUN]))}</strong></div>
+        <div class="executive-note-line">Servicio mas consultado: <strong>{html.escape(str(metricas[COL_SERVICIO_MAS_CONSULTADO]))}</strong></div>
+        <div class="executive-note-conclusion">{html.escape(conclusion_rapida_kpi_casos(metricas))}</div>
+    </div>
+    """
+    st.markdown(contenido, unsafe_allow_html=True)
+
+
 def render_kpi_casos_cliente_externo(df):
     base, metricas = preparar_kpi_casos_cliente_externo(df)
     if base.empty:
@@ -1825,36 +1873,26 @@ def render_kpi_casos_cliente_externo(df):
             ("Total casos", metricas["total"]),
             ("Cerrados", metricas["cerrados"]),
             ("Abiertos", metricas["abiertos"]),
-            ("Tiempo prom. atencion", f"{metricas['promedio']} h"),
             (f"Cumplimiento SLA <={SLA_CASOS_HORAS} h", f"{metricas['cumplimiento_sla']}%"),
         ]
     )
     st.caption(
-        f"Casos que cumplen SLA: {metricas['cumple_sla']} | "
-        f"Casos que no cumplen SLA: {metricas['no_cumple_sla']}"
+        f"Tiempo promedio: {metricas['promedio']} h | "
+        f"Cumplen SLA: {metricas['cumple_sla']} | No cumplen: {metricas['no_cumple_sla']}"
     )
 
-    render_tarjetas(
-        [
-            (COL_PRINCIPAL_TIPIFICACION, metricas[COL_PRINCIPAL_TIPIFICACION]),
-            (COL_PRINCIPAL_CAUSA_COMUN, metricas[COL_PRINCIPAL_CAUSA_COMUN]),
-            (COL_SERVICIO_MAS_CONSULTADO, metricas[COL_SERVICIO_MAS_CONSULTADO]),
-        ]
-    )
-
-    tipificaciones = conteo_top_con_otras(base["_tipificacion_kpi"], top_n=3)
-    grafico_barras_kpi(
-        tipificaciones,
-        TEXT_CANTIDAD,
-        TEXT_TIPOLOGIA,
-        "Top 3 tipificaciones + otras",
-        UI_PALETTE[TEXT_PRIMARY],
-    )
-
-    st.markdown(
-        f'<div class="executive-note">{html.escape(lectura_ejecutiva_kpi_casos(metricas))}</div>',
-        unsafe_allow_html=True,
-    )
+    col_grafico, col_lectura = st.columns([2.15, 1])
+    with col_grafico:
+        tipificaciones = conteo_top_con_otras(base["_tipificacion_kpi"], top_n=3)
+        grafico_barras_kpi(
+            tipificaciones,
+            TEXT_CANTIDAD,
+            TEXT_TIPOLOGIA,
+            "Top 3 tipificaciones + otras",
+            UI_PALETTE[TEXT_PRIMARY],
+        )
+    with col_lectura:
+        render_lectura_rapida_kpi(metricas)
 
     with st.expander("Detalle completo de casos usados en el calculo"):
         columnas = [
