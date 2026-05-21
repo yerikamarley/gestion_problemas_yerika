@@ -167,6 +167,7 @@ CHART_COLORS = [
 SLA_CASOS_HORAS = 36
 
 # Constantes de etiquetas usadas en tablas, filtros y graficas
+TIPIFICACION_SOPORTE_USO = "2 - Soporte Uso"
 TIPIFICACION_REDIRECCIONAMIENTO_AGENDA = "9 - Redireccionamiento Agenda"
 TIPIFICACION_CLIENTE_NO_ASISTIO = "10 - Cliente no asistio"
 TIPIFICACION_INCIDENTE_CLIENTE_EXTERNO = "Incidente Cliente Externo"
@@ -247,12 +248,86 @@ CASE_TIPIFICATION_RENAMES = {
     "10 - Agenda sin evidencia": TIPIFICACION_CLIENTE_NO_ASISTIO,
 }
 
+CASE_SUPPORT_BEFORE_AGENDA_HINTS = [
+    "se brinda soporte",
+    "se brindo soporte",
+    "se da soporte",
+    "se dio soporte",
+    "soporte brindado",
+    "se comunica",
+    "se comunico",
+    "se contacta",
+    "se contacto",
+    "se establece comunicacion",
+    "comunicacion con el cliente",
+    "comunicacion con el usuario",
+    "se asesora",
+    "se asesoro",
+    "se orienta",
+    "se oriento",
+    "se explica",
+    "se explico",
+    "se acompana",
+    "se acompano",
+    "se guia",
+    "se guio",
+    "paso a paso",
+    "se configura",
+    "se configuro",
+    "configuracion realizada",
+    "se instala",
+    "se instalo",
+    "instalacion realizada",
+    "se activa",
+    "se activo",
+    "activacion realizada",
+    "se descarga",
+    "se descargo",
+    "descarga realizada",
+    "se realiza prueba",
+    "se realizo prueba",
+    "se realizan pruebas",
+    "prueba funcional",
+    "prueba exitosa",
+    "se valida funcionamiento",
+    "se valido funcionamiento",
+    "se valida acceso",
+    "se valido acceso",
+    "se valida firma",
+    "se valido firma",
+    "se da solucion",
+    "se dio solucion",
+    "se soluciona",
+    "se soluciono",
+    "queda solucionado",
+    "quedo solucionado",
+]
+
+
+def texto_resolucion_caso_analisis(row):
+    campos = [
+        TEXT_CODIGO_RESOLUCION,
+        "notas_resolucion",
+        TEXT_OBSERVACIONES_ADICIONALES,
+        TEXT_OBSERVACIONES_TRABAJO,
+    ]
+    return " ".join(normalizar_texto(row.get(campo)) for campo in campos).strip()
+
+
+def es_agenda_con_soporte_uso(row):
+    if normalizar_texto(row.get(TEXT_TIPIFICACION_2)) != normalizar_texto(TIPIFICACION_REDIRECCIONAMIENTO_AGENDA):
+        return False
+    texto_resolucion = texto_resolucion_caso_analisis(row)
+    return any(pista in texto_resolucion for pista in CASE_SUPPORT_BEFORE_AGENDA_HINTS)
+
 
 def normalizar_tipificaciones_casos_df(df):
     if df.empty or TEXT_TIPIFICACION_2 not in df.columns:
         return df
     trabajo = df.copy()
     trabajo[TEXT_TIPIFICACION_2] = trabajo[TEXT_TIPIFICACION_2].replace(CASE_TIPIFICATION_RENAMES)
+    mascara_soporte_uso = trabajo.apply(es_agenda_con_soporte_uso, axis=1)
+    trabajo.loc[mascara_soporte_uso, TEXT_TIPIFICACION_2] = TIPIFICACION_SOPORTE_USO
     return trabajo
 
 
@@ -294,7 +369,7 @@ CASE_TIPIFICATION_GUIDE = [
     },
     {
         TEXT_TIPIFICACION: "2 - Soporte Uso",
-        TEXT_DESCRIPCION: "Dudas de uso, acompanamiento funcional, configuracion, orientacion y paso a paso.",
+        TEXT_DESCRIPCION: "Dudas de uso, acompanamiento funcional, configuracion, orientacion y paso a paso; incluye casos remitidos a agenda si hubo soporte real.",
     },
     {
         TEXT_TIPIFICACION: "3 - Soporte Falla",
@@ -318,7 +393,7 @@ CASE_TIPIFICATION_GUIDE = [
     },
     {
         TEXT_TIPIFICACION: TIPIFICACION_REDIRECCIONAMIENTO_AGENDA,
-        TEXT_DESCRIPCION: "Casos detectados como instalacion que deben redirigirse a agenda.",
+        TEXT_DESCRIPCION: "Casos detectados como instalacion o cita enviados a agenda sin evidencia de soporte ejecutado.",
     },
     {
         TEXT_TIPIFICACION: TIPIFICACION_CLIENTE_NO_ASISTIO,
