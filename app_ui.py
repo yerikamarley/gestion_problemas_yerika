@@ -326,11 +326,12 @@ CASE_TIPIFICATION_GUIDE = [
 ]
 
 AGENDA_CASE_TIPIFICATION = TIPIFICACION_REDIRECCIONAMIENTO_AGENDA
+AGENDA_MOTIVO_TOKEN_FISICO = "Token fisico / ePass"
 AGENDA_DIRECT_CHANNEL_HINTS = ["calendario"]
 AGENDA_HELP_DESK_CHANNELS = {"web", "telefono", "correo electronico", "en persona", ""}
 AGENDA_REASON_RULES = [
     (
-        "Token fisico / ePass",
+        AGENDA_MOTIVO_TOKEN_FISICO,
         [
             "token fisico",
             "token",
@@ -1795,15 +1796,7 @@ def lectura_ejecutiva_agendamiento(agenda, total_casos_periodo):
     total_agenda = len(agenda)
     mesa = int((agenda[COL_CANAL_AGRUPADO] == "Mesa de ayuda").sum())
     directa = int((agenda[COL_CANAL_AGRUPADO] == "Agenda directa").sum())
-    sin_cuenta = int((agenda[COL_CLIENTE_AGENDA] == SIN_CUENTA).sum())
-    clientes_identificados = agenda[agenda[TEXT_CLIENTE_NORM_AGENDA] != ""]
-    clientes_total = clientes_identificados[TEXT_CLIENTE_NORM_AGENDA].nunique()
-    clientes_previos = clientes_identificados[
-        clientes_identificados[COL_CICLO_CLIENTE] == "Cliente con historial previo"
-    ][TEXT_CLIENTE_NORM_AGENDA].nunique()
-    recurrentes = clientes_identificados[
-        clientes_identificados[COL_CLIENTE_RECURRENTE_AGENDA] == "Si"
-    ][TEXT_CLIENTE_NORM_AGENDA].nunique()
+    token_fisico = int((agenda[COL_MOTIVO_INFERIDO] == AGENDA_MOTIVO_TOKEN_FISICO).sum())
     motivo_principal = valor_mas_frecuente(agenda[COL_MOTIVO_INFERIDO])
     canal_principal = valor_mas_frecuente(agenda[TEXT_CANAL].replace("", "Sin canal"))
     producto_principal = valor_mas_frecuente(agenda.get(TEXT_PRODUCTO, pd.Series(dtype=TEXT_OBJECT)))
@@ -1839,25 +1832,19 @@ def lectura_ejecutiva_agendamiento(agenda, total_casos_periodo):
                 ),
             },
             {
-                TEXT_PREGUNTA: "Son clientes viejos?",
+                TEXT_PREGUNTA: "Cuanto pesa token fisico/ePass?",
                 TEXT_LECTURA: (
-                    "La lectura debe hacerse sobre clientes con cuenta identificada; los casos sin cuenta "
-                    "no permiten confirmar antiguedad."
+                    "Token fisico/ePass es un motivo operativo relevante porque suele requerir validacion "
+                    "del dispositivo, pruebas o una sesion asistida."
                 ),
                 TEXT_EVIDENCIA: (
-                    f"{clientes_previos} de {clientes_total} clientes identificados tienen historial previo "
-                    f"en la base. {recurrentes} clientes ya tienen mas de un caso de agendamiento historico."
+                    f"{token_fisico} de {total_agenda} casos de agendamiento "
+                    f"({porcentaje(token_fisico, total_agenda)}%) fueron inferidos como {AGENDA_MOTIVO_TOKEN_FISICO}."
                 ),
                 COL_ACCION_SUGERIDA: (
-                    "Revisar los clientes recurrentes y reforzar comunicacion del canal correcto de agenda "
-                    "despues de cada cierre."
+                    "Marcar token fisico/ePass de forma explicita en causa o resolucion para separar este motivo "
+                    "de una agenda generica."
                 ),
-            },
-            {
-                TEXT_PREGUNTA: "Que puede distorsionar el analisis?",
-                TEXT_LECTURA: "La falta de cuenta limita saber si el caso viene de un cliente nuevo o antiguo.",
-                TEXT_EVIDENCIA: f"{sin_cuenta} casos ({porcentaje(sin_cuenta, total_agenda)}%) estan sin cuenta.",
-                COL_ACCION_SUGERIDA: "Hacer obligatorio el campo Cuenta o normalizarlo en la carga de casos.",
             },
         ],
         columns=columnas,
@@ -1934,7 +1921,7 @@ def render_analisis_agendamiento_mesa(df_periodo, df_historico, mes_dashboard):
     st.subheader("Analisis de agendamiento por mesa de ayuda")
     st.caption(
         "Cruce para explicar por que los casos de redireccionamiento a agenda siguen llegando por mesa de ayuda, "
-        "que motivo operativo se repite y si hay clientes con historial previo."
+        "que motivo operativo se repite y cuanto pesa token fisico/ePass."
     )
 
     if agenda.empty:
@@ -1942,20 +1929,19 @@ def render_analisis_agendamiento_mesa(df_periodo, df_historico, mes_dashboard):
         return
 
     total_agenda = len(agenda)
-    clientes_identificados = agenda[agenda[TEXT_CLIENTE_NORM_AGENDA] != ""]
-    casos_con_cuenta = len(clientes_identificados)
-    casos_sin_cuenta = total_agenda - casos_con_cuenta
+    mesa = int((agenda[COL_CANAL_AGRUPADO] == "Mesa de ayuda").sum())
+    token_fisico = int((agenda[COL_MOTIVO_INFERIDO] == AGENDA_MOTIVO_TOKEN_FISICO).sum())
 
     render_tarjetas(
         [
             ("Agendamiento", total_agenda),
-            ("% Ctas registradas", f"{porcentaje(casos_con_cuenta, total_agenda)}%"),
-            ("% Sin cuenta", f"{porcentaje(casos_sin_cuenta, total_agenda)}%"),
+            ("Mesa ayuda", f"{mesa} ({porcentaje(mesa, total_agenda)}%)"),
+            ("Token fisico/ePass", f"{token_fisico} ({porcentaje(token_fisico, total_agenda)}%)"),
         ]
     )
 
-    tab_lectura, tab_motivos, tab_clientes, tab_detalle = st.tabs(
-        [TEXT_LECTURA, "Motivos", "Clientes", "Detalle"]
+    tab_lectura, tab_motivos, tab_canales, tab_detalle = st.tabs(
+        [TEXT_LECTURA, "Motivos", "Canales", "Detalle"]
     )
 
     with tab_lectura:
@@ -1984,25 +1970,10 @@ def render_analisis_agendamiento_mesa(df_periodo, df_historico, mes_dashboard):
         fig.update_traces(marker_color=UI_PALETTE[TEXT_YELLOW], textposition=TEXT_OUTSIDE)
         st.plotly_chart(aplicar_estilo_figura(fig, COL_MOTIVO_INFERIDO), use_container_width=True)
 
-    with tab_clientes:
-        resumen_clientes = resumen_clientes_agendamiento(agenda)
+    with tab_canales:
         canales = resumen_canales_agendamiento(agenda)
-        top_clientes = resumen_clientes.head(15).copy()
-        if not top_clientes.empty:
-            fig = px.bar(
-                top_clientes.sort_values(by=COL_CASOS_AGENDA, ascending=True),
-                x=COL_CASOS_AGENDA,
-                y=TEXT_CLIENTE,
-                orientation="h",
-                text=COL_CASOS_AGENDA,
-                color=COL_CICLO_CLIENTE,
-                color_discrete_sequence=CHART_COLORS,
-            )
-            fig.update_traces(textposition=TEXT_OUTSIDE)
-            st.plotly_chart(aplicar_estilo_figura(fig, "Clientes con mas agendamiento"), use_container_width=True)
         st.caption("Entrada por canal de los casos mostrados en este analisis.")
         st.dataframe(canales, use_container_width=True, hide_index=True)
-        st.dataframe(resumen_clientes, use_container_width=True, hide_index=True)
 
     with tab_detalle:
         columnas = [
@@ -2011,10 +1982,6 @@ def render_analisis_agendamiento_mesa(df_periodo, df_historico, mes_dashboard):
             TEXT_CANAL,
             COL_CANAL_AGRUPADO,
             COL_MOTIVO_INFERIDO,
-            COL_CICLO_CLIENTE,
-            COL_CLIENTE_RECURRENTE_AGENDA,
-            COL_AGENDAS_HISTORICAS_CLIENTE,
-            COL_CASOS_HISTORICOS_CLIENTE,
             TEXT_PRODUCTO,
             TEXT_ASIGNADO,
             TEXT_CREADO,
