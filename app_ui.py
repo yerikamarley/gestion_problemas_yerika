@@ -301,6 +301,25 @@ CASE_SUPPORT_BEFORE_AGENDA_HINTS = [
     "se soluciono",
     "queda solucionado",
     "quedo solucionado",
+    "revision tecnica",
+    "validacion tecnica",
+    "validar la novedad",
+    "validar novedad",
+    "validar el incidente",
+    "validar incidente",
+    "validar el inconveniente",
+    "validar inconveniente",
+    "validar la falla",
+    "validar falla",
+    "validar el caso",
+    "validar caso",
+    "validar la incidencia",
+    "validar incidencia",
+    "sesion tecnica",
+    "sesion de revision",
+    "sesion para revisar",
+    "revision con el cliente",
+    "revision con el usuario",
 ]
 
 
@@ -369,7 +388,7 @@ CASE_TIPIFICATION_GUIDE = [
     },
     {
         TEXT_TIPIFICACION: "2 - Soporte Uso",
-        TEXT_DESCRIPCION: "Dudas de uso, acompanamiento funcional, configuracion, orientacion y paso a paso; incluye casos remitidos a agenda si hubo soporte real.",
+        TEXT_DESCRIPCION: "Dudas de uso, acompanamiento funcional, configuracion, orientacion y paso a paso.",
     },
     {
         TEXT_TIPIFICACION: "3 - Soporte Falla",
@@ -393,7 +412,7 @@ CASE_TIPIFICATION_GUIDE = [
     },
     {
         TEXT_TIPIFICACION: TIPIFICACION_REDIRECCIONAMIENTO_AGENDA,
-        TEXT_DESCRIPCION: "Casos detectados como instalacion o cita enviados a agenda sin evidencia de soporte ejecutado.",
+        TEXT_DESCRIPCION: "Casos detectados como instalacion que deben redirigirse a agenda.",
     },
     {
         TEXT_TIPIFICACION: TIPIFICACION_CLIENTE_NO_ASISTIO,
