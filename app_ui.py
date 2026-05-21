@@ -233,7 +233,6 @@ COL_CAUSA_RAIZ = "Causa raiz"
 COL_MOTIVO_CASO = "Motivo del caso"
 COL_PRINCIPAL_TIPIFICACION = "Principal tipificacion"
 COL_PRINCIPAL_CAUSA_COMUN = "Principal causa comun"
-COL_SERVICIO_MAS_CONSULTADO = "Servicio mas consultado"
 COL_SLA_OBJETIVO = "SLA objetivo"
 COL_SLA_OBJETIVO_H = "SLA objetivo h"
 COL_MAX_HORAS = "Max. horas"
@@ -426,6 +425,18 @@ CASE_COMMON_CAUSE_RULES = [
         "Plataforma externa",
         ["adobe", "acrobat", "autofirma", "docusign"],
     ),
+]
+
+CASE_CAUSE_DETAIL_RULES = [
+    ("Fallas al firmar", ["falla en la firma", "error al firmar", "no firma", "no puede firmar", "firmar"]),
+    ("Validacion de firma", ["validar firma", "validacion de firma", "validar la firma", "firma invalida"]),
+    ("Pruebas de firma", ["prueba de firma", "pruebas de firma", "pruebas de funcionamiento"]),
+    ("Token fisico/ePass", ["token", "epass", "safenet", "usb", "dispositivo"]),
+    ("Instalacion o configuracion", ["instalacion", "reinstalacion", "configuracion", "configurar"]),
+    ("Activacion o descarga", ["activacion", "activar", "descarga", "descargar"]),
+    ("Certificado", ["certificado", ".cer"]),
+    ("Acompanamiento de uso", ["acompanamiento", "asesoria", "orientacion", "paso a paso", "soporte"]),
+    ("Solicitud operativa", ["solicitud", "biometria", "pago", "orden", "actualizacion"]),
 ]
 
 NOC_TIPIFICATION = "Alertas y Consultas NOC"
@@ -716,6 +727,16 @@ def aplicar_tema_visual():
         }}
 
         .executive-note-line strong {{
+            color: var(--text);
+        }}
+
+        .executive-note-detail {{
+            color: var(--muted);
+            margin-top: 0.45rem;
+            font-size: 0.94rem;
+        }}
+
+        .executive-note-detail strong {{
             color: var(--text);
         }}
 
@@ -1723,6 +1744,31 @@ def inferir_causa_comun_caso(row):
     return "Sin causa comun"
 
 
+def inferir_detalle_causa_comun(row):
+    texto = texto_caso_para_causa_comun(row)
+    for detalle, palabras in CASE_CAUSE_DETAIL_RULES:
+        if any(palabra in texto for palabra in palabras):
+            return detalle
+    return "Sin detalle especifico"
+
+
+def resumen_detalle_causa_principal(base, causa_principal, top_n=3):
+    if base.empty or TEXT_CAUSA_COMUN not in base.columns:
+        return "No hay detalle suficiente para explicar mejor esta causa."
+
+    casos_causa = base[base[TEXT_CAUSA_COMUN] == causa_principal].copy()
+    if casos_causa.empty:
+        return "No hay detalle suficiente para explicar mejor esta causa."
+
+    detalles = casos_causa.apply(inferir_detalle_causa_comun, axis=1).value_counts()
+    detalles = detalles[detalles.index != "Sin detalle especifico"]
+    if detalles.empty:
+        return f"Esta causa agrupa {len(casos_causa)} casos, pero el archivo no trae detalle suficiente del motivo."
+
+    principales = ", ".join(f"{detalle} ({cantidad})" for detalle, cantidad in detalles.head(top_n).items())
+    return f"Dentro de esta causa entran principalmente: {principales}."
+
+
 def serie_categorica_limpia(df, columna, etiqueta_vacia):
     if df.empty or columna not in df.columns:
         return pd.Series([etiqueta_vacia] * len(df), index=df.index, dtype=TEXT_OBJECT)
@@ -1760,7 +1806,6 @@ def preparar_kpi_casos_cliente_externo(df):
         return trabajo, {}
 
     trabajo[TEXT_CAUSA_COMUN] = trabajo.apply(inferir_causa_comun_caso, axis=1)
-    trabajo["_servicio_consultado"] = serie_categorica_limpia(trabajo, TEXT_PRODUCTO, "Sin producto/servicio")
     trabajo["_tipificacion_kpi"] = serie_categorica_limpia(trabajo, TEXT_TIPIFICACION_2, "Sin tipificacion")
     trabajo[TEXT_CERRADO_2] = mascara_cerrados(trabajo)
     trabajo[TEXT_ABIERTO] = ~trabajo[TEXT_CERRADO_2]
@@ -1795,7 +1840,6 @@ def preparar_kpi_casos_cliente_externo(df):
         "no_cumple_sla": no_cumple_sla,
         COL_PRINCIPAL_TIPIFICACION: valor_mas_frecuente(trabajo["_tipificacion_kpi"]),
         COL_PRINCIPAL_CAUSA_COMUN: valor_mas_frecuente(trabajo[TEXT_CAUSA_COMUN]),
-        COL_SERVICIO_MAS_CONSULTADO: valor_mas_frecuente(trabajo["_servicio_consultado"]),
     }
     return trabajo, metricas
 
@@ -1823,20 +1867,6 @@ def grafico_barras_kpi(df, x, y, titulo, color):
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
 
-def lectura_ejecutiva_kpi_casos(metricas):
-    if not metricas:
-        return "No hay casos para generar lectura ejecutiva."
-    return (
-        f"En el periodo se registraron {metricas['total']} casos: {metricas['cerrados']} cerrados "
-        f"y {metricas['abiertos']} abiertos. La tipificacion principal es "
-        f"{metricas[COL_PRINCIPAL_TIPIFICACION]}, la causa comun mas frecuente es "
-        f"{metricas[COL_PRINCIPAL_CAUSA_COMUN]} y el servicio mas consultado es "
-        f"{metricas[COL_SERVICIO_MAS_CONSULTADO]}. El cumplimiento SLA <= {SLA_CASOS_HORAS} h es "
-        f"{metricas['cumplimiento_sla']}%, con {metricas['cumple_sla']} casos que cumplen y "
-        f"{metricas['no_cumple_sla']} que no cumplen."
-    )
-
-
 def resumen_otras_tipificaciones(base, top_n=3):
     conteo = base["_tipificacion_kpi"].value_counts(dropna=False)
     otras = conteo.iloc[top_n:]
@@ -1849,11 +1879,14 @@ def resumen_otras_tipificaciones(base, top_n=3):
 
 
 def render_lectura_kpi(metricas, base):
+    causa_principal = metricas[COL_PRINCIPAL_CAUSA_COMUN]
+    detalle_causa = resumen_detalle_causa_principal(base, causa_principal)
     contenido = f"""
     <div class="executive-note">
         <div class="executive-note-title">Lectura</div>
         <div class="executive-note-line">Principal tipificacion: <strong>{html.escape(str(metricas[COL_PRINCIPAL_TIPIFICACION]))}</strong></div>
-        <div class="executive-note-line">Causa comun: <strong>{html.escape(str(metricas[COL_PRINCIPAL_CAUSA_COMUN]))}</strong></div>
+        <div class="executive-note-line">Causa comun: <strong>{html.escape(str(causa_principal))}</strong></div>
+        <div class="executive-note-detail">{html.escape(detalle_causa)}</div>
         <div class="executive-note-conclusion">{html.escape(resumen_otras_tipificaciones(base))}</div>
     </div>
     """
@@ -1866,9 +1899,6 @@ def render_kpi_casos_cliente_externo(df):
         return
 
     st.subheader("KPI Casos Cliente Externo")
-    st.caption(
-        "Vista ejecutiva calculada con todos los casos reales del periodo; los tops solo resumen la visualizacion."
-    )
 
     render_tarjetas(
         [
