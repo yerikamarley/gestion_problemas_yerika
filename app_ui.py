@@ -1837,22 +1837,24 @@ def lectura_ejecutiva_kpi_casos(metricas):
     )
 
 
-def conclusion_rapida_kpi_casos(metricas):
-    if not metricas:
-        return "No hay datos suficientes para generar una lectura."
-    if metricas["cumplimiento_sla"] >= 90:
-        return "La operacion mantiene buen cumplimiento; conviene vigilar las categorias con mayor volumen."
-    return "El cumplimiento requiere seguimiento; prioriza los casos fuera de SLA y la tipificacion dominante."
+def resumen_otras_tipificaciones(base, top_n=3):
+    conteo = base["_tipificacion_kpi"].value_counts(dropna=False)
+    otras = conteo.iloc[top_n:]
+    total_otras = int(otras.sum())
+    if total_otras <= 0:
+        return "No hay categorias adicionales fuera del top principal."
+
+    principales_otras = ", ".join(f"{tip} ({cantidad})" for tip, cantidad in otras.head(3).items())
+    return f"Otras categorias agrupan {total_otras} casos fuera del top 3: {principales_otras}."
 
 
-def render_lectura_rapida_kpi(metricas):
+def render_lectura_kpi(metricas, base):
     contenido = f"""
     <div class="executive-note">
-        <div class="executive-note-title">Lectura rapida</div>
+        <div class="executive-note-title">Lectura</div>
         <div class="executive-note-line">Principal tipificacion: <strong>{html.escape(str(metricas[COL_PRINCIPAL_TIPIFICACION]))}</strong></div>
         <div class="executive-note-line">Causa comun: <strong>{html.escape(str(metricas[COL_PRINCIPAL_CAUSA_COMUN]))}</strong></div>
-        <div class="executive-note-line">Servicio mas consultado: <strong>{html.escape(str(metricas[COL_SERVICIO_MAS_CONSULTADO]))}</strong></div>
-        <div class="executive-note-conclusion">{html.escape(conclusion_rapida_kpi_casos(metricas))}</div>
+        <div class="executive-note-conclusion">{html.escape(resumen_otras_tipificaciones(base))}</div>
     </div>
     """
     st.markdown(contenido, unsafe_allow_html=True)
@@ -1892,7 +1894,7 @@ def render_kpi_casos_cliente_externo(df):
             UI_PALETTE[TEXT_PRIMARY],
         )
     with col_lectura:
-        render_lectura_rapida_kpi(metricas)
+        render_lectura_kpi(metricas, base)
 
     with st.expander("Detalle completo de casos usados en el calculo"):
         columnas = [
