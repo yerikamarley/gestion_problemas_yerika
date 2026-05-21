@@ -86,6 +86,7 @@ TEXT_PROXIMO_VENCER = '_proximo_vencer'
 TEXT_VENCIDO = '_vencido'
 TEXT_ADMIN = 'admin'
 TEXT_CAUSA = 'causa'
+TEXT_CAUSA_COMUN = 'causa_comun'
 TEXT_DURACION_SLA_HORAS = 'duracion_sla_horas'
 TEXT_LAVENDER = 'lavender'
 TEXT_PASSWORD = 'password'
@@ -230,6 +231,9 @@ COL_PROM_HORAS = "Prom. horas"
 COL_PROM_DIAS = "Prom. dias"
 COL_CAUSA_RAIZ = "Causa raiz"
 COL_MOTIVO_CASO = "Motivo del caso"
+COL_PRINCIPAL_TIPIFICACION = "Principal tipificacion"
+COL_PRINCIPAL_CAUSA_COMUN = "Principal causa comun"
+COL_SERVICIO_MAS_CONSULTADO = "Servicio mas consultado"
 COL_SLA_OBJETIVO = "SLA objetivo"
 COL_SLA_OBJETIVO_H = "SLA objetivo h"
 COL_MAX_HORAS = "Max. horas"
@@ -385,6 +389,41 @@ AGENDA_REASON_RULES = [
             "cita",
             "meetings.hubspot",
         ],
+    ),
+]
+
+CASE_COMMON_CAUSE_RULES = [
+    (
+        "Token fisico / ePass",
+        ["token fisico", "token", "epass", "safenet", "usb", "dispositivo"],
+    ),
+    (
+        "Firma digital",
+        ["firma", "firmar", "certifirma", "validar firma", "falla en la firma"],
+    ),
+    (
+        "Instalacion o configuracion",
+        ["instalacion", "reinstalacion", "instalar", "configuracion", "configurar", "parametrizacion"],
+    ),
+    (
+        "Activacion o descarga de certificado",
+        ["activacion", "activar", "descarga", "descargar", "certificado", ".cer"],
+    ),
+    (
+        "Error o falla tecnica",
+        ["error", "falla", "no funciona", "novedad", "inconveniente", "problema", "persiste"],
+    ),
+    (
+        "Solicitud operativa",
+        ["solicitud", "biometria", "pago", "pagar", "orden", "actualizacion", "cambio"],
+    ),
+    (
+        "Phishing o seguridad",
+        ["phishing", "correo sospechoso", "suplantacion", "fraude"],
+    ),
+    (
+        "Plataforma externa",
+        ["adobe", "acrobat", "autofirma", "docusign"],
     ),
 ]
 
@@ -1620,6 +1659,186 @@ def tabla_resumen_tipificaciones_casos(df):
     return resumen.sort_values(by=[TEXT_CANTIDAD, TEXT_TIPIFICACION], ascending=[False, True]).reset_index(drop=True)
 
 
+def texto_caso_para_causa_comun(row):
+    campos = [
+        TEXT_DESCRIPCION_2,
+        TEXT_CAUSA,
+        TEXT_CODIGO_RESOLUCION,
+        "notas_resolucion",
+        TEXT_OBSERVACIONES_ADICIONALES,
+        TEXT_OBSERVACIONES_TRABAJO,
+        TEXT_PRODUCTO,
+    ]
+    return " ".join(normalizar_texto(row.get(campo)) for campo in campos).strip()
+
+
+def inferir_causa_comun_caso(row):
+    causa_existente = valor_limpio(row.get(TEXT_CAUSA_COMUN))
+    if causa_existente:
+        return causa_existente
+
+    texto = texto_caso_para_causa_comun(row)
+    for causa, palabras in CASE_COMMON_CAUSE_RULES:
+        if any(palabra in texto for palabra in palabras):
+            return causa
+
+    causa_base = valor_limpio(row.get(TEXT_CAUSA))
+    if causa_base:
+        return causa_base
+    return "Sin causa comun"
+
+
+def serie_categorica_limpia(df, columna, etiqueta_vacia):
+    if df.empty or columna not in df.columns:
+        return pd.Series([etiqueta_vacia] * len(df), index=df.index, dtype=TEXT_OBJECT)
+    return df[columna].replace("", pd.NA).fillna(etiqueta_vacia).astype(str)
+
+
+def conteo_top_con_otras(serie, top_n=3, etiqueta_otras="Otras categorias"):
+    conteo = serie.value_counts(dropna=False)
+    top = conteo.head(top_n)
+    resumen = top.rename_axis(TEXT_TIPOLOGIA).reset_index(name=TEXT_CANTIDAD)
+    otras = int(conteo.iloc[top_n:].sum())
+    if otras > 0:
+        resumen = pd.concat(
+            [
+                resumen,
+                pd.DataFrame({TEXT_TIPOLOGIA: [etiqueta_otras], TEXT_CANTIDAD: [otras]}),
+            ],
+            ignore_index=True,
+        )
+    return resumen
+
+
+def conteo_top(serie, etiqueta_columna, top_n=5):
+    return (
+        serie.value_counts(dropna=False)
+        .head(top_n)
+        .rename_axis(etiqueta_columna)
+        .reset_index(name=TEXT_CANTIDAD)
+    )
+
+
+def preparar_kpi_casos_cliente_externo(df):
+    trabajo = df.copy()
+    if trabajo.empty:
+        return trabajo, {}
+
+    trabajo[TEXT_CAUSA_COMUN] = trabajo.apply(inferir_causa_comun_caso, axis=1)
+    trabajo["_servicio_consultado"] = serie_categorica_limpia(trabajo, TEXT_PRODUCTO, "Sin producto/servicio")
+    trabajo["_tipificacion_kpi"] = serie_categorica_limpia(trabajo, TEXT_TIPIFICACION_2, "Sin tipificacion")
+    trabajo[TEXT_CERRADO_2] = mascara_cerrados(trabajo)
+    trabajo[TEXT_ABIERTO] = ~trabajo[TEXT_CERRADO_2]
+    trabajo["_tiempo_cerrado_h"] = pd.to_numeric(trabajo.get(TEXT_TIEMPO_RESPUESTA), errors=TEXT_COERCE)
+    trabajo[TEXT_CREADO_DT_2] = pd.to_datetime(trabajo[TEXT_CREADO].apply(normalizar_fecha), errors=TEXT_COERCE)
+    ahora = pd.Timestamp.now()
+    trabajo[TEXT_HORAS_ABIERTO] = trabajo[TEXT_CREADO_DT_2].apply(lambda fecha: horas_habiles_entre(fecha, ahora))
+    trabajo["_tiempo_eval_sla_h"] = trabajo["_tiempo_cerrado_h"].where(
+        trabajo[TEXT_CERRADO_2],
+        trabajo[TEXT_HORAS_ABIERTO],
+    )
+
+    total = len(trabajo)
+    cerrados = int(trabajo[TEXT_CERRADO_2].sum())
+    abiertos = total - cerrados
+    tiempos_validos = pd.to_numeric(trabajo["_tiempo_eval_sla_h"], errors=TEXT_COERCE).dropna()
+    promedio = round(tiempos_validos.mean(), 2) if not tiempos_validos.empty else 0
+    cumple_sla = int((trabajo["_tiempo_eval_sla_h"] <= SLA_CASOS_HORAS).fillna(False).sum())
+    no_cumple_sla = total - cumple_sla
+    cumplimiento_sla = porcentaje(cumple_sla, total)
+
+    metricas = {
+        "total": total,
+        "cerrados": cerrados,
+        "abiertos": abiertos,
+        "promedio": promedio,
+        "cumplimiento_sla": cumplimiento_sla,
+        "cumple_sla": cumple_sla,
+        "no_cumple_sla": no_cumple_sla,
+        COL_PRINCIPAL_TIPIFICACION: valor_mas_frecuente(trabajo["_tipificacion_kpi"]),
+        COL_PRINCIPAL_CAUSA_COMUN: valor_mas_frecuente(trabajo[TEXT_CAUSA_COMUN]),
+        COL_SERVICIO_MAS_CONSULTADO: valor_mas_frecuente(trabajo["_servicio_consultado"]),
+    }
+    return trabajo, metricas
+
+
+def grafico_barras_kpi(df, x, y, titulo, color):
+    if df.empty:
+        st.info(f"No hay datos para {titulo.lower()}.")
+        return
+    grafico = df.sort_values(by=x, ascending=True)
+    fig = px.bar(
+        grafico,
+        x=x,
+        y=y,
+        orientation="h",
+        text=x,
+        color_discrete_sequence=[color],
+    )
+    fig.update_traces(marker_color=color, textposition=TEXT_OUTSIDE)
+    st.plotly_chart(aplicar_estilo_figura(fig, titulo), use_container_width=True)
+
+
+def lectura_ejecutiva_kpi_casos(metricas):
+    if not metricas:
+        return "No hay casos para generar lectura ejecutiva."
+    return (
+        f"En el periodo se registraron {metricas['total']} casos: {metricas['cerrados']} cerrados "
+        f"y {metricas['abiertos']} abiertos. La tipificacion principal es "
+        f"{metricas[COL_PRINCIPAL_TIPIFICACION]}, la causa comun mas frecuente es "
+        f"{metricas[COL_PRINCIPAL_CAUSA_COMUN]} y el servicio mas consultado es "
+        f"{metricas[COL_SERVICIO_MAS_CONSULTADO]}. El cumplimiento SLA <= {SLA_CASOS_HORAS} h es "
+        f"{metricas['cumplimiento_sla']}%, con {metricas['cumple_sla']} casos que cumplen y "
+        f"{metricas['no_cumple_sla']} que no cumplen."
+    )
+
+
+def render_kpi_casos_cliente_externo(df):
+    base, metricas = preparar_kpi_casos_cliente_externo(df)
+    if base.empty:
+        return
+
+    st.subheader("KPI Casos Cliente Externo")
+    st.caption(
+        "Vista ejecutiva calculada con todos los casos reales del periodo; los tops solo resumen la visualizacion."
+    )
+
+    render_tarjetas(
+        [
+            ("Total casos", metricas["total"]),
+            ("Cerrados", metricas["cerrados"]),
+            ("Abiertos", metricas["abiertos"]),
+            ("Tiempo prom. atencion", f"{metricas['promedio']} h"),
+            (f"Cumplimiento SLA <={SLA_CASOS_HORAS} h", f"{metricas['cumplimiento_sla']}%"),
+        ]
+    )
+    st.caption(
+        f"Casos que cumplen SLA: {metricas['cumple_sla']} | "
+        f"Casos que no cumplen SLA: {metricas['no_cumple_sla']}"
+    )
+
+    render_tarjetas(
+        [
+            (COL_PRINCIPAL_TIPIFICACION, metricas[COL_PRINCIPAL_TIPIFICACION]),
+            (COL_PRINCIPAL_CAUSA_COMUN, metricas[COL_PRINCIPAL_CAUSA_COMUN]),
+            (COL_SERVICIO_MAS_CONSULTADO, metricas[COL_SERVICIO_MAS_CONSULTADO]),
+        ]
+    )
+
+    col_tip, col_causa, col_servicio = st.columns(3)
+    with col_tip:
+        tipificaciones = conteo_top_con_otras(base["_tipificacion_kpi"], top_n=3)
+        grafico_barras_kpi(tipificaciones, TEXT_CANTIDAD, TEXT_TIPOLOGIA, "Top 3 tipificaciones + otras", UI_PALETTE[TEXT_PRIMARY])
+    with col_causa:
+        causas = conteo_top(base[TEXT_CAUSA_COMUN], "Causa comun", top_n=5)
+        grafico_barras_kpi(causas, TEXT_CANTIDAD, "Causa comun", "Top 5 causas comunes", UI_PALETTE[TEXT_YELLOW])
+    with col_servicio:
+        servicios = conteo_top(base["_servicio_consultado"], "Servicio", top_n=5)
+        grafico_barras_kpi(servicios, TEXT_CANTIDAD, "Servicio", "Top 5 servicios consultados", UI_PALETTE[TEXT_PURPLE])
+
+    st.info(lectura_ejecutiva_kpi_casos(metricas))
+
+
 def es_tipificacion_agendamiento(valor):
     return valor_limpio(valor) == AGENDA_CASE_TIPIFICATION
 
@@ -2321,6 +2540,9 @@ def dashboard_casos():
         ]
     )
     st.caption(f"{TEXT_PERIODO}{mes_dashboard} | Cumplen: {cumplen}{TEXT_NO_CUMPLEN}{incumplen}")
+
+    st.divider()
+    render_kpi_casos_cliente_externo(df)
 
     st.divider()
     col1, col2 = st.columns(2)
