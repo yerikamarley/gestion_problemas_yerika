@@ -474,6 +474,101 @@ CASE_INSTALLATION_SCHEDULING_KEYWORDS = [
     "sesion para instalacion",
 ]
 
+CASE_AGENDA_DIRECT_REDIRECT_HINTS = [
+    "meetings.hubspot",
+    "link de agendamiento",
+    "link para agendar",
+    "enlace de agendamiento",
+    "enlace para agendar",
+    "canal de agendamiento",
+    "agenda de instalaciones",
+    "agendamiento de instalaciones",
+    "agendamiento para instalaciones",
+    "redireccionamiento agenda",
+    "redireccionamiento a agenda",
+    "se remite al canal de agendamiento",
+    "se remite enlace de agenda",
+    "se envia link de agenda",
+    "se envia enlace de agenda",
+    "tomar una cita",
+    "tomar la cita",
+    "programar una cita",
+    "programar cita",
+    "programar instalacion",
+    "programar instalaciones",
+]
+
+CASE_AGENT_MANAGEMENT_HINTS = [
+    "se realizaron varios intentos de comunicacion",
+    "realizamos varios intentos de comunicacion",
+    "varios intentos de comunicacion",
+    "intentamos comunicarnos",
+    "no recibimos respuesta",
+    "quedamos atentos",
+    "solicitamos confirmar si el error persiste",
+    "confirmar si el error persiste",
+    "adjuntar capturas de pantalla",
+    "capturas de pantalla",
+    "se valido",
+    "se valida",
+    "se reviso",
+    "se revisa",
+    "se brinda soporte",
+    "se brindo soporte",
+    "se da soporte",
+    "se dio soporte",
+    "se contacto al usuario",
+    "se contacto",
+    "se contacta",
+    "se realizo diagnostico",
+    "se realiza diagnostico",
+    "diagnostico",
+    "error persiste",
+    "se escalo",
+    "se escala",
+    "se comunico",
+    "se comunica",
+    "se informa que se realizo",
+    "revision tecnica",
+    "validacion tecnica",
+    "validar la novedad",
+    "validar novedad",
+    "validar el error",
+    "validar error",
+    "validar la falla",
+    "validar falla",
+    "validar el inconveniente",
+    "validar inconveniente",
+    "dos opciones de fecha",
+    "dos opciones de fecha y hora",
+    "tres fechas",
+    "tres fechas disponibles",
+    "opciones de fecha",
+    "opciones de fecha y hora",
+    "fechas disponibles",
+    "horarios disponibles",
+    "compartir tres fechas",
+    "compartir fechas",
+    "agendar una sesion",
+    "agendar sesion",
+    "programar una sesion",
+    "programar sesion",
+    "proceso de reinstalacion",
+    "reinstalacion",
+    "pruebas de funcionamiento",
+    "validando el correcto acceso",
+    "correcto acceso",
+    "operatividad",
+    "usuario confirma funcionamiento",
+    "funcionamiento adecuado",
+]
+
+CASE_TEST_HINTS = [
+    "caso de prueba",
+    "caso prueba",
+    "prueba sin gestion",
+]
+
 CASE_INSTALLATION_CONTEXT_HINTS = [
     "instalacion",
     "instalaciones",
@@ -761,6 +856,26 @@ def es_caso_instalacion(texto):
         palabra in texto for palabra in CASE_INSTALLATION_CONTEXT_HINTS
     )
     return agenda_instalacion and contexto_instalacion
+
+
+def tiene_redireccion_directa_agenda(texto):
+    return contiene_alguna_palabra(texto, CASE_AGENDA_DIRECT_REDIRECT_HINTS)
+
+
+def tiene_gestion_adicional_agente(texto):
+    return contiene_alguna_palabra(texto, CASE_AGENT_MANAGEMENT_HINTS)
+
+
+def es_caso_prueba(texto):
+    return contiene_alguna_palabra(texto, CASE_TEST_HINTS)
+
+
+def es_redireccionamiento_agenda_puro(texto):
+    if es_caso_prueba(texto):
+        return False
+    if not tiene_redireccion_directa_agenda(texto):
+        return False
+    return not tiene_gestion_adicional_agente(texto)
 
 
 def aplica_reglas_desde_abril(row):
@@ -1422,7 +1537,7 @@ def clasificacion_directa_caso(texto, texto_apertura, texto_resolucion):
         return "1 - phishing"
     if es_agenda_sin_evidencia(texto):
         return "10 - Cliente no asistio"
-    if es_caso_instalacion(texto):
+    if es_redireccionamiento_agenda_puro(texto):
         return "9 - Redireccionamiento Agenda"
     if es_caso_incidente(texto_apertura, texto_resolucion, texto):
         return "5 - incidente"
