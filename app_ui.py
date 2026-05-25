@@ -116,6 +116,9 @@ TEXT_SEGMENTO = 'Segmento'
 TEXT_ALERTA = '_alerta'
 TEXT_CLIENTE_EXTERNO = '_cliente_externo'
 TEXT_PRIORIDAD_ALTA = '_prioridad_alta'
+TEXT_REINCIDENTE = '_reincidente'
+TEXT_FIRMA_REINCIDENCIA = '_firma_reincidencia'
+TEXT_FIRMA_REINCIDENCIA_LABEL = '_firma_reincidencia_label'
 TEXT_ASIGNADO_A = 'asignado_a'
 TEXT_BREVE_DESCRIPCION = 'breve_descripcion'
 TEXT_CASOS_2 = 'casos'
@@ -124,6 +127,7 @@ TEXT_CODIGO_RESOLUCION = 'codigo_resolucion'
 TEXT_COUNT = 'count'
 TEXT_DURACION_DIAS_NUM = 'duracion_dias_num'
 TEXT_ORANGE = 'orange'
+TEXT_TIPO_FALLA = 'tipo_falla'
 TEXT_SERVICIO_NEGOCIO = 'servicio_negocio'
 TEXT_SOLICITANTE = 'solicitante'
 TEXT_TOTAL_CASOS = 'total_casos'
@@ -237,6 +241,9 @@ COL_SLA_OBJETIVO = "SLA objetivo"
 COL_SLA_OBJETIVO_H = "SLA objetivo h"
 COL_MAX_HORAS = "Max. horas"
 COL_MAX_DIAS = "Max. dias"
+COL_FIRMA_REINCIDENCIA = "Firma reincidencia"
+COL_INCIDENTES_REINCIDENTES = "Incidentes reincidentes"
+COL_REINCIDENTE = "Reincidente"
 MENU_CLIENTES_CLAVE = "Clientes clave"
 MENU_KPI_CASOS_CLIENTE_EXTERNO = "KPI Casos Cliente Externo"
 MENU_KPI_INCIDENTES = "KPI Incidentes"
@@ -1961,6 +1968,124 @@ def segmento_incidente(valor):
     return "Otro"
 
 
+VALORES_REINCIDENCIA_NO_INFORMATIVOS = {
+    "",
+    "na",
+    "n/a",
+    "no aplica",
+    "otro",
+    "otros",
+    "pendiente",
+    "sin dato",
+    "sin inferencia",
+    "sin informacion",
+    "sin patron concluyente en descripcion y anotaciones",
+}
+
+
+def componente_reincidencia(valor):
+    texto = normalizar_texto(valor)
+    if texto in VALORES_REINCIDENCIA_NO_INFORMATIVOS:
+        return ""
+    return texto
+
+
+def valor_visible_reincidencia(valor):
+    texto = valor_limpio(valor)
+    return texto if componente_reincidencia(texto) else ""
+
+
+def firma_reincidencia_incidente(row):
+    segmento = componente_reincidencia(row.get(TEXT_SEGMENTO))
+    servicio = componente_reincidencia(row.get(TEXT_SERVICIO_NEGOCIO))
+    causa = componente_reincidencia(row.get(TEXT_CAUSA_RAIZ_AUTO))
+    tipo_falla = componente_reincidencia(row.get(TEXT_TIPO_FALLA))
+    base = [f"segmento:{segmento}"] if segmento else []
+
+    if servicio and causa:
+        return "|".join(base + [f"servicio:{servicio}", f"causa:{causa}"])
+    if servicio and tipo_falla:
+        return "|".join(base + [f"servicio:{servicio}", f"tipo_falla:{tipo_falla}"])
+    if causa and tipo_falla:
+        return "|".join(base + [f"causa:{causa}", f"tipo_falla:{tipo_falla}"])
+    return ""
+
+
+def etiqueta_firma_reincidencia_incidente(row):
+    servicio = valor_visible_reincidencia(row.get(TEXT_SERVICIO_NEGOCIO))
+    causa = valor_visible_reincidencia(row.get(TEXT_CAUSA_RAIZ_AUTO))
+    tipo_falla = valor_visible_reincidencia(row.get(TEXT_TIPO_FALLA))
+
+    if servicio and causa:
+        return f"Servicio: {servicio} | Causa: {causa}"
+    if servicio and tipo_falla:
+        return f"Servicio: {servicio} | Tipo falla: {tipo_falla}"
+    if causa and tipo_falla:
+        return f"Causa: {causa} | Tipo falla: {tipo_falla}"
+    return "Sin firma tecnica suficiente"
+
+
+def serie_fecha_normalizada(df, columna):
+    if columna not in df.columns:
+        return pd.Series(pd.NaT, index=df.index, dtype=PANDAS_DATETIME_DTYPE)
+    return pd.to_datetime(df[columna].apply(normalizar_fecha), errors=TEXT_COERCE)
+
+
+def marcar_reincidencias_por_firma(trabajo):
+    marcas = pd.Series(False, index=trabajo.index)
+    if trabajo.empty or TEXT_FIRMA_REINCIDENCIA not in trabajo.columns:
+        return marcas
+
+    firmas_validas = trabajo[TEXT_FIRMA_REINCIDENCIA].fillna("").ne("")
+    for _, grupo in trabajo[firmas_validas].groupby(TEXT_FIRMA_REINCIDENCIA, sort=False):
+        if len(grupo) < 2:
+            continue
+
+        grupo_ordenado = grupo.sort_values(
+            by=[TEXT_CREADO_DT_2, TEXT_CERRADO_DT, TEXT_NUMERO],
+            na_position="last",
+        )
+        tiene_fechas = (
+            grupo_ordenado[TEXT_CREADO_DT_2].notna().any()
+            and grupo_ordenado[TEXT_CERRADO_DT].notna().any()
+        )
+        if not tiene_fechas:
+            marcas.loc[grupo_ordenado.index[1:]] = True
+            continue
+
+        cierres_previos = []
+        for indice, fila in grupo_ordenado.iterrows():
+            creado = fila.get(TEXT_CREADO_DT_2)
+            if pd.notna(creado) and any(cierre <= creado for cierre in cierres_previos):
+                marcas.at[indice] = True
+
+            cierre = fila.get(TEXT_CERRADO_DT)
+            if pd.notna(cierre):
+                cierres_previos.append(cierre)
+
+    return marcas
+
+
+def agregar_reincidencia_incidentes(trabajo):
+    trabajo = trabajo.copy()
+    if trabajo.empty:
+        trabajo[TEXT_CREADO_DT_2] = pd.Series(dtype=PANDAS_DATETIME_DTYPE)
+        trabajo[TEXT_CERRADO_DT] = pd.Series(dtype=PANDAS_DATETIME_DTYPE)
+        trabajo[TEXT_FIRMA_REINCIDENCIA] = pd.Series(dtype=TEXT_OBJECT)
+        trabajo[TEXT_FIRMA_REINCIDENCIA_LABEL] = pd.Series(dtype=TEXT_OBJECT)
+        trabajo[TEXT_REINCIDENTE] = pd.Series(dtype="bool")
+        return trabajo
+
+    trabajo[TEXT_CREADO_DT_2] = serie_fecha_normalizada(trabajo, TEXT_CREADO)
+    trabajo[TEXT_CERRADO_DT] = serie_fecha_normalizada(trabajo, TEXT_CERRADO)
+    trabajo[TEXT_FIRMA_REINCIDENCIA] = trabajo.apply(firma_reincidencia_incidente, axis=1)
+    trabajo[TEXT_FIRMA_REINCIDENCIA_LABEL] = trabajo.apply(etiqueta_firma_reincidencia_incidente, axis=1)
+    trabajo[TEXT_REINCIDENTE] = marcar_reincidencias_por_firma(trabajo)
+    trabajo[COL_REINCIDENTE] = trabajo[TEXT_REINCIDENTE].map({True: "Si", False: "No"})
+    trabajo[COL_FIRMA_REINCIDENCIA] = trabajo[TEXT_FIRMA_REINCIDENCIA_LABEL]
+    return trabajo
+
+
 def preparar_kpi_incidentes(df):
     trabajo = agregar_campos_sla_incidentes(df)
     if trabajo.empty:
@@ -1978,6 +2103,7 @@ def preparar_kpi_incidentes(df):
     trabajo[TEXT_ABIERTO] = ~trabajo[TEXT_CERRADO_2]
     trabajo[TEXT_SEGMENTO] = trabajo[TEXT_TIPIFICACION_AUTO].apply(segmento_incidente)
     trabajo[TEXT_DURACION_HORAS_NUM] = pd.to_numeric(trabajo[TEXT_DURACION_SLA_HORAS], errors=TEXT_COERCE)
+    trabajo = agregar_reincidencia_incidentes(trabajo)
 
     cerrados_sla = trabajo[
         trabajo[TEXT_CERRADO_2]
@@ -1985,6 +2111,7 @@ def preparar_kpi_incidentes(df):
     ].copy()
     cumplen = int((cerrados_sla[TEXT_ESTADO_SLA] == ESTADO_SLA_CUMPLE).sum())
     no_cumplen = int((cerrados_sla[TEXT_ESTADO_SLA] == ESTADO_SLA_NO_CUMPLE).sum())
+    reincidentes = int(trabajo[TEXT_REINCIDENTE].sum())
 
     metricas = {
         "total": len(trabajo),
@@ -1992,6 +2119,8 @@ def preparar_kpi_incidentes(df):
         "internos": int((trabajo[TEXT_SEGMENTO] == "Cliente interno").sum()),
         "abiertos": int(trabajo[TEXT_ABIERTO].sum()),
         "cerrados": int(trabajo[TEXT_CERRADO_2].sum()),
+        "reincidentes": reincidentes,
+        "tasa_reincidencia": porcentaje(reincidentes, len(trabajo)),
         "cumplimiento_sla": porcentaje(cumplen, cumplen + no_cumplen),
         "cumple_sla": cumplen,
         "no_cumple_sla": no_cumplen,
@@ -2024,6 +2153,49 @@ def resumen_causas_kpi_incidentes(base):
         causas.insert(0, TEXT_SEGMENTO, segmento)
         resumenes.append(causas)
     return pd.concat(resumenes, ignore_index=True) if resumenes else pd.DataFrame()
+
+
+def resumen_reincidencia_kpi_incidentes(base):
+    columnas = [
+        COL_FIRMA_REINCIDENCIA,
+        TEXT_CANTIDAD,
+        COL_INCIDENTES_REINCIDENTES,
+        "Tasa reincidencia %",
+        "Primer incidente",
+        "Ultimo incidente",
+    ]
+    if base.empty or TEXT_FIRMA_REINCIDENCIA not in base.columns:
+        return pd.DataFrame(columns=columnas)
+
+    trabajo = base[base[TEXT_FIRMA_REINCIDENCIA].fillna("").ne("")].copy()
+    if trabajo.empty:
+        return pd.DataFrame(columns=columnas)
+
+    resumen = (
+        trabajo.groupby([TEXT_FIRMA_REINCIDENCIA, TEXT_FIRMA_REINCIDENCIA_LABEL], as_index=False)
+        .agg(
+            **{
+                TEXT_CANTIDAD: (TEXT_NUMERO, "count"),
+                COL_INCIDENTES_REINCIDENTES: (TEXT_REINCIDENTE, "sum"),
+                "Primer incidente": (TEXT_CREADO_DT_2, "min"),
+                "Ultimo incidente": (TEXT_CREADO_DT_2, "max"),
+            }
+        )
+        .rename(columns={TEXT_FIRMA_REINCIDENCIA_LABEL: COL_FIRMA_REINCIDENCIA})
+    )
+    resumen[COL_INCIDENTES_REINCIDENTES] = resumen[COL_INCIDENTES_REINCIDENTES].astype(int)
+    resumen = resumen[resumen[COL_INCIDENTES_REINCIDENTES] > 0].copy()
+    if resumen.empty:
+        return pd.DataFrame(columns=columnas)
+
+    resumen["Tasa reincidencia %"] = resumen.apply(
+        lambda row: porcentaje(row[COL_INCIDENTES_REINCIDENTES], row[TEXT_CANTIDAD]),
+        axis=1,
+    )
+    return resumen[columnas].sort_values(
+        by=[COL_INCIDENTES_REINCIDENTES, TEXT_CANTIDAD],
+        ascending=False,
+    )
 
 
 def lectura_causa_kpi_incidente(row):
@@ -2107,6 +2279,23 @@ def render_grafico_causas_kpi_incidentes(causas):
             st.plotly_chart(aplicar_estilo_figura(fig, titulo), use_container_width=True)
 
 
+def render_reincidencia_kpi_incidentes(base, metricas):
+    st.caption(
+        "Calculo: incidentes reincidentes / total incidentes x 100. "
+        "La reincidencia se marca cuando se repite una firma tecnica despues de un cierre anterior."
+    )
+    resumen = resumen_reincidencia_kpi_incidentes(base)
+    if resumen.empty:
+        st.info("No se identificaron incidentes reincidentes con firma tecnica suficiente en el periodo.")
+        return
+
+    st.dataframe(resumen, use_container_width=True, hide_index=True)
+    st.caption(
+        f"Incidentes reincidentes: {metricas['reincidentes']} de {metricas['total']} "
+        f"({metricas['tasa_reincidencia']}%)."
+    )
+
+
 def render_kpi_incidentes(df):
     base, metricas = preparar_kpi_incidentes(df)
     if base.empty:
@@ -2122,11 +2311,13 @@ def render_kpi_incidentes(df):
             ("Cliente externo", metricas["externos"]),
             ("Cliente interno", metricas["internos"]),
             ("Abiertos", metricas["abiertos"]),
+            ("Reincidencia", f"{metricas['tasa_reincidencia']}%"),
             ("SLA incidentes", f"{metricas['cumplimiento_sla']}%"),
         ]
     )
     st.caption(
-        f"Cerrados: {metricas['cerrados']} | Promedio: {metricas['promedio']} h | "
+        f"Cerrados: {metricas['cerrados']} | Reincidentes: {metricas['reincidentes']} | "
+        f"Promedio: {metricas['promedio']} h | "
         f"Cumplen SLA: {metricas['cumple_sla']} | No cumplen: {metricas['no_cumple_sla']}"
     )
 
@@ -2136,8 +2327,8 @@ def render_kpi_incidentes(df):
     with col_lectura:
         render_lectura_kpi_incidentes(causas)
 
-    tab_resumen, tab_externo, tab_interno, tab_detalle = st.tabs(
-        [TEXT_RESUMEN, "Cliente externo", "Cliente interno", "Detalle"]
+    tab_resumen, tab_externo, tab_interno, tab_reincidencia, tab_detalle = st.tabs(
+        [TEXT_RESUMEN, "Cliente externo", "Cliente interno", "Reincidencia", "Detalle"]
     )
     with tab_resumen:
         st.dataframe(causas, use_container_width=True, hide_index=True)
@@ -2153,6 +2344,8 @@ def render_kpi_incidentes(df):
             use_container_width=True,
             hide_index=True,
         )
+    with tab_reincidencia:
+        render_reincidencia_kpi_incidentes(base, metricas)
     with tab_detalle:
         columnas = [
             TEXT_NUMERO,
@@ -2164,6 +2357,8 @@ def render_kpi_incidentes(df):
             TEXT_TIPO_INCIDENTE_AUTO,
             TEXT_DURACION_SLA_HORAS,
             TEXT_ESTADO_SLA,
+            COL_REINCIDENTE,
+            COL_FIRMA_REINCIDENCIA,
             TEXT_EMPRESA,
             TEXT_SOLICITANTE,
             TEXT_CREADO,
