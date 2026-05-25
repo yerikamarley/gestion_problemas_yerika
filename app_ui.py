@@ -244,6 +244,9 @@ COL_MAX_DIAS = "Max. dias"
 COL_FIRMA_REINCIDENCIA = "Firma reincidencia"
 COL_INCIDENTES_REINCIDENTES = "Incidentes reincidentes"
 COL_REINCIDENTE = "Reincidente"
+COL_REINCIDENTE_AGENDA = "Reincidente agenda"
+COL_CASOS_REINCIDENTES_AGENDA = "Casos reincidentes agenda"
+COL_REINCIDENCIA_AGENDAMIENTO = "Reincidencia agendamiento %"
 MENU_CLIENTES_CLAVE = "Clientes clave"
 MENU_KPI_CASOS_CLIENTE_EXTERNO = "KPI Casos Cliente Externo"
 MENU_KPI_INCIDENTES = "KPI Incidentes"
@@ -2435,6 +2438,7 @@ AGENDAMIENTO_COLUMNAS_BASE = [
     COL_CLIENTE_AGENDA,
     COL_CICLO_CLIENTE,
     COL_CLIENTE_RECURRENTE_AGENDA,
+    COL_REINCIDENTE_AGENDA,
     COL_CASOS_HISTORICOS_CLIENTE,
     COL_AGENDAS_HISTORICAS_CLIENTE,
 ]
@@ -2503,6 +2507,60 @@ def agregar_historial_agendamiento(agenda, historico):
     )
 
 
+def marcar_reincidencia_agendamiento(agenda, historico):
+    agenda[COL_REINCIDENTE_AGENDA] = "No"
+    if agenda.empty or TEXT_CLIENTE_NORM_AGENDA not in agenda.columns:
+        return
+
+    historico_agenda = historico[
+        historico[TEXT_TIPIFICACION_2].apply(es_tipificacion_agendamiento)
+    ].copy()
+    if historico_agenda.empty:
+        return
+    if TEXT_CLIENTE_NORM_AGENDA not in historico_agenda.columns:
+        historico_agenda[TEXT_CLIENTE_NORM_AGENDA] = historico_agenda[TEXT_CUENTA].apply(normalizar_texto)
+
+    historico_agenda = historico_agenda[historico_agenda[TEXT_CLIENTE_NORM_AGENDA] != ""].copy()
+    if historico_agenda.empty:
+        return
+
+    historico_agenda = historico_agenda.sort_values(
+        by=[TEXT_CLIENTE_NORM_AGENDA, TEXT_CREADO_DT_DASHBOARD, TEXT_NUMERO],
+        na_position="last",
+    ).copy()
+    historico_agenda["_agenda_previa_cliente"] = historico_agenda.groupby(TEXT_CLIENTE_NORM_AGENDA).cumcount()
+    previas_por_numero = (
+        historico_agenda.dropna(subset=[TEXT_NUMERO])
+        .set_index(TEXT_NUMERO)["_agenda_previa_cliente"]
+        .to_dict()
+    )
+    fechas_por_cliente = {
+        cliente: grupo[TEXT_CREADO_DT_DASHBOARD].dropna()
+        for cliente, grupo in historico_agenda.groupby(TEXT_CLIENTE_NORM_AGENDA)
+    }
+
+    def es_reincidente(row):
+        numero = valor_limpio(row.get(TEXT_NUMERO))
+        if numero in previas_por_numero:
+            return previas_por_numero[numero] > 0
+
+        cliente = row.get(TEXT_CLIENTE_NORM_AGENDA)
+        if not cliente:
+            return False
+
+        creado = row.get(TEXT_CREADO_DT_DASHBOARD)
+        fechas_cliente = fechas_por_cliente.get(cliente, pd.Series(dtype=PANDAS_DATETIME_DTYPE))
+        if pd.notna(creado) and not fechas_cliente.empty:
+            return bool((fechas_cliente < creado).any())
+
+        return row.get(COL_AGENDAS_HISTORICAS_CLIENTE, 0) > 1
+
+    agenda[COL_REINCIDENTE_AGENDA] = agenda.apply(
+        lambda row: "Si" if es_reincidente(row) else "No",
+        axis=1,
+    )
+
+
 def clasificar_ciclo_agendamiento(row, inicio_periodo):
     if row[TEXT_CLIENTE_NORM_AGENDA] == "":
         return SIN_CUENTA
@@ -2537,8 +2595,16 @@ def preparar_analisis_agendamiento(df_periodo, df_historico, mes_dashboard):
     asegurar_columnas_agenda(agenda, historico)
     agregar_datos_basicos_agenda(agenda)
     agregar_historial_agendamiento(agenda, historico)
+    marcar_reincidencia_agendamiento(agenda, historico)
     agregar_ciclo_agendamiento(agenda, mes_dashboard)
     return agenda
+
+
+def metricas_reincidencia_agendamiento(agenda):
+    if agenda.empty or COL_REINCIDENTE_AGENDA not in agenda.columns:
+        return 0, 0
+    reincidentes = int((agenda[COL_REINCIDENTE_AGENDA] == "Si").sum())
+    return reincidentes, porcentaje(reincidentes, len(agenda))
 
 def lectura_ejecutiva_agendamiento(agenda, total_casos_periodo):
     columnas = [TEXT_PREGUNTA, TEXT_LECTURA, TEXT_EVIDENCIA, COL_ACCION_SUGERIDA]
@@ -2549,6 +2615,8 @@ def lectura_ejecutiva_agendamiento(agenda, total_casos_periodo):
     mesa = int((agenda[COL_CANAL_AGRUPADO] == "Mesa de ayuda").sum())
     directa = int((agenda[COL_CANAL_AGRUPADO] == "Agenda directa").sum())
     token_fisico = int((agenda[COL_MOTIVO_INFERIDO] == AGENDA_MOTIVO_TOKEN_FISICO).sum())
+    reincidentes, porcentaje_reincidencia = metricas_reincidencia_agendamiento(agenda)
+    clientes_reincidentes = agenda[agenda[COL_REINCIDENTE_AGENDA] == "Si"][COL_CLIENTE_AGENDA].nunique()
     motivo_principal = valor_mas_frecuente(agenda[COL_MOTIVO_INFERIDO])
     canal_principal = valor_mas_frecuente(agenda[TEXT_CANAL].replace("", "Sin canal"))
     producto_principal = valor_mas_frecuente(agenda.get(TEXT_PRODUCTO, pd.Series(dtype=TEXT_OBJECT)))
@@ -2598,6 +2666,21 @@ def lectura_ejecutiva_agendamiento(agenda, total_casos_periodo):
                     "de una agenda generica."
                 ),
             },
+            {
+                TEXT_PREGUNTA: "Que porcentaje es reincidente?",
+                TEXT_LECTURA: (
+                    "La reincidencia muestra casos de agenda que vuelven a aparecer para un cliente que ya tenia "
+                    "un redireccionamiento previo."
+                ),
+                TEXT_EVIDENCIA: (
+                    f"{reincidentes} de {total_agenda} casos de agendamiento son reincidentes "
+                    f"({porcentaje_reincidencia}%). Clientes involucrados: {clientes_reincidentes}."
+                ),
+                COL_ACCION_SUGERIDA: (
+                    "Revisar los clientes con mas de una agenda para separar si falta comunicacion del enlace, "
+                    "si hay bloqueo tecnico recurrente o si el cierre esta quedando generico."
+                ),
+            },
         ],
         columns=columnas,
     )
@@ -2607,6 +2690,8 @@ def resumen_clientes_agendamiento(agenda):
     columnas = [
         TEXT_CLIENTE,
         COL_CASOS_AGENDA,
+        COL_CASOS_REINCIDENTES_AGENDA,
+        COL_REINCIDENCIA_AGENDAMIENTO,
         "Canal principal",
         "Motivo principal",
         COL_CICLO_CLIENTE,
@@ -2622,6 +2707,7 @@ def resumen_clientes_agendamiento(agenda):
         agenda.groupby(COL_CLIENTE_AGENDA, dropna=False)
         .agg(
             Casos_agenda=(TEXT_NUMERO, TEXT_COUNT),
+            Casos_reincidentes_agenda=(COL_REINCIDENTE_AGENDA, lambda serie: int((serie == "Si").sum())),
             Canal_principal=(COL_CANAL_AGRUPADO, valor_mas_frecuente),
             Motivo_principal=(COL_MOTIVO_INFERIDO, valor_mas_frecuente),
             Ciclo_cliente=(COL_CICLO_CLIENTE, valor_mas_frecuente),
@@ -2635,6 +2721,7 @@ def resumen_clientes_agendamiento(agenda):
             columns={
                 COL_CLIENTE_AGENDA: TEXT_CLIENTE,
                 "Casos_agenda": COL_CASOS_AGENDA,
+                "Casos_reincidentes_agenda": COL_CASOS_REINCIDENTES_AGENDA,
                 "Canal_principal": "Canal principal",
                 "Motivo_principal": "Motivo principal",
                 "Ciclo_cliente": COL_CICLO_CLIENTE,
@@ -2644,6 +2731,10 @@ def resumen_clientes_agendamiento(agenda):
                 "Ultima_agenda": COL_ULTIMA_AGENDA,
             }
         )
+    )
+    resumen[COL_REINCIDENCIA_AGENDAMIENTO] = resumen.apply(
+        lambda row: porcentaje(row[COL_CASOS_REINCIDENTES_AGENDA], row[COL_CASOS_AGENDA]),
+        axis=1,
     )
     resumen[COL_PRIMERA_AGENDA] = resumen[COL_PRIMERA_AGENDA].apply(fecha_corta)
     resumen[COL_ULTIMA_AGENDA] = resumen[COL_ULTIMA_AGENDA].apply(fecha_corta)
@@ -2667,6 +2758,35 @@ def resumen_canales_agendamiento(agenda):
     return resumen[columnas]
 
 
+def data_reincidencia_agendamiento(agenda):
+    columnas = [
+        TEXT_NUMERO,
+        COL_CLIENTE_AGENDA,
+        TEXT_CUENTA,
+        TEXT_CANAL,
+        COL_CANAL_AGRUPADO,
+        COL_MOTIVO_INFERIDO,
+        COL_CICLO_CLIENTE,
+        COL_AGENDAS_HISTORICAS_CLIENTE,
+        COL_CASOS_HISTORICOS_CLIENTE,
+        TEXT_PRODUCTO,
+        TEXT_ASIGNADO,
+        TEXT_CREADO,
+        TEXT_ESTADO,
+        TEXT_DESCRIPCION_2,
+        TEXT_CAUSA,
+    ]
+    if agenda.empty or COL_REINCIDENTE_AGENDA not in agenda.columns:
+        return pd.DataFrame(columns=columnas)
+
+    reincidentes = agenda[agenda[COL_REINCIDENTE_AGENDA] == "Si"].copy()
+    if reincidentes.empty:
+        return pd.DataFrame(columns=columnas)
+
+    visibles = [col for col in columnas if col in reincidentes.columns]
+    return reincidentes.sort_values(by=TEXT_CREADO_DT_DASHBOARD, ascending=False)[visibles]
+
+
 def render_analisis_agendamiento_mesa(df_periodo, df_historico, mes_dashboard):
     agenda = preparar_analisis_agendamiento(df_periodo, df_historico, mes_dashboard)
 
@@ -2683,17 +2803,19 @@ def render_analisis_agendamiento_mesa(df_periodo, df_historico, mes_dashboard):
     total_agenda = len(agenda)
     mesa = int((agenda[COL_CANAL_AGRUPADO] == "Mesa de ayuda").sum())
     token_fisico = int((agenda[COL_MOTIVO_INFERIDO] == AGENDA_MOTIVO_TOKEN_FISICO).sum())
+    reincidentes, porcentaje_reincidencia = metricas_reincidencia_agendamiento(agenda)
 
     render_tarjetas(
         [
             ("Agendamiento", total_agenda),
             ("Mesa ayuda", f"{mesa} ({porcentaje(mesa, total_agenda)}%)"),
             ("Token fisico/ePass", f"{token_fisico} ({porcentaje(token_fisico, total_agenda)}%)"),
+            ("Reincidencia", f"{reincidentes} ({porcentaje_reincidencia}%)"),
         ]
     )
 
-    tab_lectura, tab_motivos, tab_canales, tab_detalle = st.tabs(
-        [TEXT_LECTURA, "Motivos", "Canales", "Detalle"]
+    tab_lectura, tab_motivos, tab_canales, tab_reincidencias, tab_clientes, tab_detalle = st.tabs(
+        [TEXT_LECTURA, "Motivos", "Canales", "Reincidencias", TEXT_CLIENTE, "Detalle"]
     )
 
     with tab_lectura:
@@ -2727,6 +2849,26 @@ def render_analisis_agendamiento_mesa(df_periodo, df_historico, mes_dashboard):
         st.caption("Entrada por canal de los casos mostrados en este analisis.")
         st.dataframe(canales, use_container_width=True, hide_index=True)
 
+    with tab_reincidencias:
+        data_reincidentes = data_reincidencia_agendamiento(agenda)
+        st.caption("Data base del porcentaje: casos con una agenda previa del mismo cliente.")
+        if data_reincidentes.empty:
+            st.info("No hay casos reincidentes de agendamiento en el periodo seleccionado.")
+        else:
+            st.dataframe(data_reincidentes, use_container_width=True, hide_index=True)
+            st.download_button(
+                "Descargar data reincidencias",
+                data_reincidentes.to_csv(index=False).encode("utf-8"),
+                file_name="reincidencias_agendamiento.csv",
+                mime="text/csv",
+            )
+
+    with tab_clientes:
+        st.caption(
+            "Reincidencia por cliente: casos de agenda con un redireccionamiento previo del mismo cliente."
+        )
+        st.dataframe(resumen_clientes_agendamiento(agenda), use_container_width=True, hide_index=True)
+
     with tab_detalle:
         columnas = [
             TEXT_NUMERO,
@@ -2734,6 +2876,9 @@ def render_analisis_agendamiento_mesa(df_periodo, df_historico, mes_dashboard):
             TEXT_CANAL,
             COL_CANAL_AGRUPADO,
             COL_MOTIVO_INFERIDO,
+            COL_REINCIDENTE_AGENDA,
+            COL_CLIENTE_RECURRENTE_AGENDA,
+            COL_AGENDAS_HISTORICAS_CLIENTE,
             TEXT_PRODUCTO,
             TEXT_ASIGNADO,
             TEXT_CREADO,
