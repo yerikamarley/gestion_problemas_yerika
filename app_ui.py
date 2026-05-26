@@ -202,6 +202,7 @@ PANDAS_DATETIME_DTYPE = "datetime64[ns]"
 SIN_DATO = "Sin dato"
 SIN_DURACION = "Sin duracion"
 SIN_CUENTA = "Sin cuenta"
+SIN_SERVICIO = "Sin servicio"
 PRIORIDAD_ALTA = "Prioridad alta"
 ESTADO_SLA_CUMPLE = "Cumple"
 ESTADO_SLA_NO_CUMPLE = "No cumple"
@@ -293,6 +294,26 @@ def selector_mes_dashboard(df, key, columna_dt=TEXT_CREADO_DT_DASHBOARD):
         return TEXT_TODOS
     opciones = [TEXT_TODOS] + meses
     return st.selectbox("Mes del dashboard", opciones, index=len(opciones) - 1, key=key)
+
+
+def serie_servicio_filtro(df, columna_servicio):
+    if df.empty or columna_servicio not in df.columns:
+        return pd.Series(dtype=TEXT_OBJECT)
+    return df[columna_servicio].fillna("").astype(str).str.strip().replace("", SIN_SERVICIO)
+
+
+def opciones_filtro_servicio(df, columna_servicio):
+    servicios = serie_servicio_filtro(df, columna_servicio)
+    if servicios.empty:
+        return []
+    return sorted(servicios.dropna().unique().tolist())
+
+
+def filtrar_por_servicio(df, columna_servicio, servicio):
+    if servicio == TEXT_TODOS or df.empty or columna_servicio not in df.columns:
+        return df
+    servicios = serie_servicio_filtro(df, columna_servicio)
+    return df[servicios == servicio].copy()
 
 
 def filtrar_mes_dashboard(df, mes, columna_dt=TEXT_CREADO_DT_DASHBOARD):
@@ -4025,7 +4046,7 @@ def vista_casos():
         df = preparar_fechas_dashboard(df)
         df["mes"] = df[TEXT_CREADO_DT_DASHBOARD].dt.to_period("M").astype(str).replace("NaT", "Sin fecha")
 
-        filtro_col1, filtro_col2, filtro_col3, filtro_col4 = st.columns([1, 1, 1.5, 2])
+        filtro_col1, filtro_col2, filtro_col3, filtro_col4, filtro_col5 = st.columns([1, 1, 1.5, 1.5, 2])
         with filtro_col1:
             filtro_mes = selector_mes_dashboard(df, "vista_casos_mes")
         if filtro_mes != TEXT_TODOS:
@@ -4042,12 +4063,17 @@ def vista_casos():
                 key="clasificacion_casos",
             )
         with filtro_col4:
+            servicios = opciones_filtro_servicio(df, TEXT_PRODUCTO)
+            filtro_servicio = st.selectbox("Servicio", [TEXT_TODOS] + servicios, key="servicio_casos")
+        with filtro_col5:
             filtro_cuenta = st.text_input("Cuenta", key="cuenta_casos")
 
         if filtro_estado != TEXT_TODOS:
             df = df[df[TEXT_ESTADO] == filtro_estado]
         if filtro_clasificacion != TEXT_TODOS:
             df = df[df[TEXT_TIPIFICACION_2] == filtro_clasificacion]
+        if filtro_servicio != TEXT_TODOS:
+            df = filtrar_por_servicio(df, TEXT_PRODUCTO, filtro_servicio)
         if filtro_cuenta:
             df = df[df[TEXT_CUENTA].fillna("").str.contains(filtro_cuenta, case=False, na=False)]
         df = df.drop(columns=[TEXT_CREADO_DT_DASHBOARD], errors="ignore")
@@ -4102,7 +4128,7 @@ def vista_incidentes():
         df = preparar_fechas_dashboard(df)
         df["mes"] = df[TEXT_CREADO_DT_DASHBOARD].dt.to_period("M").astype(str).replace("NaT", "Sin fecha")
 
-        filtro_col1, filtro_col2, filtro_col3, filtro_col4 = st.columns(4)
+        filtro_col1, filtro_col2, filtro_col3, filtro_col4, filtro_col5 = st.columns([1, 1, 1.4, 1.4, 1])
         with filtro_col1:
             filtro_mes = selector_mes_dashboard(df, "vista_incidentes_mes")
         if filtro_mes != TEXT_TODOS:
@@ -4118,6 +4144,9 @@ def vista_incidentes():
                 key="tip_inc",
             )
         with filtro_col4:
+            servicios = opciones_filtro_servicio(df, TEXT_SERVICIO_NEGOCIO)
+            filtro_servicio = st.selectbox("Servicio", [TEXT_TODOS] + servicios, key="servicio_inc")
+        with filtro_col5:
             filtro_alerta = st.selectbox(
                 "Es alerta",
                 [TEXT_TODOS] + sorted(df[TEXT_ES_ALERTA_AUTO].dropna().unique().tolist()),
@@ -4128,6 +4157,8 @@ def vista_incidentes():
             df = df[df[TEXT_ESTADO] == filtro_estado]
         if filtro_tipificacion != TEXT_TODOS:
             df = df[df[TEXT_TIPIFICACION_AUTO] == filtro_tipificacion]
+        if filtro_servicio != TEXT_TODOS:
+            df = filtrar_por_servicio(df, TEXT_SERVICIO_NEGOCIO, filtro_servicio)
         if filtro_alerta != TEXT_TODOS:
             df = df[df[TEXT_ES_ALERTA_AUTO] == filtro_alerta]
         columnas = [
