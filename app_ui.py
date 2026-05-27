@@ -893,28 +893,28 @@ def aplicar_estilo_figura(fig, titulo=None):
     fig.update_layout(
         title=titulo,
         paper_bgcolor="rgba(255,255,255,0)",
-        plot_bgcolor="rgba(255,250,250,0.94)",
-        font={"color": UI_PALETTE["text"], "size": 17},
+        plot_bgcolor="#ffffff",
+        font={"color": UI_PALETTE["text"], "size": 17, "family": "Arial, sans-serif"},
         title_font={"color": UI_PALETTE[TEXT_PRIMARY], "size": 23},
         margin={"l": 12, "r": 12, "t": 52, "b": 12},
-        legend={"bgcolor": "rgba(255,250,250,0.82)", "font": {"size": 16}},
+        legend={"bgcolor": "#ffffff", "font": {"size": 16, "color": UI_PALETTE["text"]}},
     )
     fig.update_xaxes(
         showgrid=True,
         gridcolor="rgba(20, 20, 20, 0.10)",
         zeroline=False,
-        tickfont={"size": 16},
-        title_font={"size": 17},
+        tickfont={"size": 16, "color": UI_PALETTE["text"]},
+        title_font={"size": 17, "color": UI_PALETTE["text"]},
         automargin=True,
     )
     fig.update_yaxes(
         showgrid=False,
         zeroline=False,
-        tickfont={"size": 16},
-        title_font={"size": 17},
+        tickfont={"size": 16, "color": UI_PALETTE["text"]},
+        title_font={"size": 17, "color": UI_PALETTE["text"]},
         automargin=True,
     )
-    fig.update_traces(textfont={"size": 16}, selector={"type": "bar"})
+    fig.update_traces(textfont={"size": 16, "color": UI_PALETTE["text"]}, selector={"type": "bar"})
     return fig
 
 
@@ -1948,6 +1948,8 @@ def grafico_barras_kpi(df, x, y, titulo, color):
     fig.update_layout(height=max(300, 46 * len(grafico) + 125))
     fig = aplicar_estilo_figura(fig, titulo)
     fig.update_layout(margin={"l": 185, "r": 72, "t": 62, "b": 48}, showlegend=False)
+    fig.update_xaxes(tickfont={"size": 16, "color": UI_PALETTE["text"]}, title_font={"size": 17, "color": UI_PALETTE["text"]})
+    fig.update_yaxes(tickfont={"size": 16, "color": UI_PALETTE["text"]}, title_font={"size": 17, "color": UI_PALETTE["text"]})
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
 
@@ -2357,7 +2359,16 @@ def render_grafico_causas_kpi_incidentes(causas):
                 textfont={"size": 17, "color": UI_PALETTE["text"]},
             )
             fig.update_layout(height=max(340, 54 * len(grafico) + 125), yaxis={"automargin": True})
-            st.plotly_chart(aplicar_estilo_figura(fig, titulo), use_container_width=True)
+            fig = aplicar_estilo_figura(fig, titulo)
+            fig.update_xaxes(
+                tickfont={"size": 16, "color": UI_PALETTE["text"]},
+                title_font={"size": 17, "color": UI_PALETTE["text"]},
+            )
+            fig.update_yaxes(
+                tickfont={"size": 16, "color": UI_PALETTE["text"]},
+                title_font={"size": 17, "color": UI_PALETTE["text"]},
+            )
+            st.plotly_chart(fig, use_container_width=True)
 
 
 def render_reincidencia_kpi_incidentes(base, metricas):
