@@ -4002,23 +4002,15 @@ def render_tabs_clientes_clave(resumen, casos, incidentes, resumen_actividad):
         render_tab_seguimiento_clientes(resumen_actividad)
 
 
-def render_tarjetas_kpi_clientes_clave(metricas, resumen_actividad):
-    score_promedio = (
-        round(resumen_actividad[TEXT_SCORE].mean(), 2)
-        if not resumen_actividad.empty and TEXT_SCORE in resumen_actividad.columns
-        else 100
-    )
+def render_tarjetas_kpi_clientes_clave(metricas):
     render_tarjetas(
         [
             ("Clientes activos", metricas["clientes_activos"]),
             (TEXT_ATENCIONES, metricas[TEXT_TOTAL_CASOS] + metricas[TEXT_TOTAL_INCIDENTES]),
-            (TEXT_CASOS, metricas[TEXT_TOTAL_CASOS]),
-            (TEXT_INCIDENTES, metricas[TEXT_TOTAL_INCIDENTES]),
             (TEXT_ABIERTOS, metricas["abiertos"]),
             ("En seguimiento", metricas["clientes_seguimiento"]),
             (f"SLA casos <{SLA_CASOS_HORAS}h", f"{metricas['sla_casos']}%"),
             ("SLA incidentes", f"{metricas['sla_incidentes']}%"),
-            ("Score promedio", score_promedio),
         ]
     )
 
@@ -4039,11 +4031,9 @@ def render_lectura_kpi_clientes_clave(metricas, resumen_actividad):
         st.info("No hay clientes clave con actividad para generar lectura KPI.")
         return
 
-    total_atenciones = metricas[TEXT_TOTAL_CASOS] + metricas[TEXT_TOTAL_INCIDENTES]
     mayor_actividad = resumen_actividad.sort_values(by=COL_TOTAL_ATENCIONES, ascending=False).iloc[0]
     prioritario = fila_cliente_prioritario(resumen_actividad)
-    alertas = int(resumen_actividad[COL_ALERTAS_INCIDENTES].sum())
-    prioridades_altas = int(resumen_actividad[PRIORIDAD_ALTA].sum())
+    score_promedio = round(resumen_actividad[TEXT_SCORE].mean(), 2)
 
     cliente_top = html.escape(str(mayor_actividad[TEXT_CLIENTE]))
     cliente_prioritario = html.escape(str(prioritario[TEXT_CLIENTE]))
@@ -4052,46 +4042,29 @@ def render_lectura_kpi_clientes_clave(metricas, resumen_actividad):
         <div class="executive-note-title">Lectura</div>
         <div class="executive-note-line">Cliente con mas actividad: <strong>{cliente_top}</strong> ({int(mayor_actividad[COL_TOTAL_ATENCIONES])} atenciones).</div>
         <div class="executive-note-line">Cliente a priorizar: <strong>{cliente_prioritario}</strong> (score {prioritario[TEXT_SCORE]}, abiertos {int(prioritario[TEXT_ABIERTOS])}).</div>
-        <div class="executive-note-detail">Total analizado: {total_atenciones} atenciones, con {metricas['clientes_seguimiento']} clientes en seguimiento, {alertas} alertas y {prioridades_altas} prioridades altas.</div>
-        <div class="executive-note-conclusion">SLA casos: {metricas['sla_casos']}% | SLA incidentes: {metricas['sla_incidentes']}%.</div>
+        <div class="executive-note-conclusion">Score promedio: {score_promedio} | Clientes en seguimiento: {metricas['clientes_seguimiento']}.</div>
     </div>
     """
     st.markdown(contenido, unsafe_allow_html=True)
 
 
-def render_grafico_estado_kpi_clientes(resumen_actividad):
-    if resumen_actividad.empty:
-        st.info("No hay actividad para graficar estados de clientes.")
-        return
-    estados = (
-        resumen_actividad[TEXT_NIVEL]
-        .value_counts()
-        .rename_axis(TEXT_NIVEL)
-        .reset_index(name=TEXT_CANTIDAD)
-        .sort_values(by=TEXT_CANTIDAD, ascending=True)
-    )
-    fig = px.bar(
-        estados,
-        x=TEXT_CANTIDAD,
-        y=TEXT_NIVEL,
-        orientation="h",
-        text=TEXT_CANTIDAD,
-        color=TEXT_NIVEL,
-        color_discrete_map={
-            "Verde": UI_PALETTE[TEXT_LAVENDER],
-            TEXT_AMARILLO: UI_PALETTE[TEXT_YELLOW],
-            "Rojo": UI_PALETTE[TEXT_PRIMARY],
-        },
-    )
-    fig.update_traces(textposition=TEXT_OUTSIDE)
-    st.plotly_chart(aplicar_estilo_figura(fig, "Estado de clientes clave"), use_container_width=True)
+def render_detalle_kpi_clientes_clave(resumen):
+    columnas = [
+        TEXT_CLIENTE,
+        TEXT_NIVEL,
+        TEXT_SCORE,
+        COL_TOTAL_ATENCIONES,
+        TEXT_ABIERTOS,
+        COL_SLA_CASOS_PCT,
+        COL_SLA_INCIDENTES_PCT,
+    ]
+    with st.expander("Ver resumen por cliente"):
+        st.dataframe(
+            resumen[columnas].sort_values(by=[COL_TOTAL_ATENCIONES, TEXT_SCORE], ascending=[False, True]),
+            use_container_width=True,
+            hide_index=True,
+        )
 
-
-def render_detalle_kpi_clientes_clave(resumen, casos, incidentes):
-    with st.expander("Detalle KPI por cliente", expanded=True):
-        render_tab_resumen_clientes(resumen)
-    with st.expander("Atenciones abiertas"):
-        render_tab_abiertos_clientes(casos, incidentes)
 
 
 def dashboard_kpi_clientes_clave():
@@ -4120,7 +4093,7 @@ def dashboard_kpi_clientes_clave():
     resumen_actividad = resumen[resumen[COL_TOTAL_ATENCIONES] > 0].copy()
     metricas = metricas_dashboard_clientes(casos, incidentes, resumen_actividad)
 
-    render_tarjetas_kpi_clientes_clave(metricas, resumen_actividad)
+    render_tarjetas_kpi_clientes_clave(metricas)
     st.caption(
         f"{TEXT_PERIODO}{mes_dashboard} | Clientes seleccionados: {len(clientes_seleccionados)} | "
         f"Casos: {metricas[TEXT_TOTAL_CASOS]} | Incidentes: {metricas[TEXT_TOTAL_INCIDENTES]}"
@@ -4137,13 +4110,7 @@ def dashboard_kpi_clientes_clave():
     with col_lectura:
         render_lectura_kpi_clientes_clave(metricas, resumen_actividad)
 
-    estado_col, actividad_col = st.columns(2)
-    with estado_col:
-        render_grafico_estado_kpi_clientes(resumen_actividad)
-    with actividad_col:
-        render_grafico_actividad_clientes(casos, incidentes)
-
-    render_detalle_kpi_clientes_clave(resumen, casos, incidentes)
+    render_detalle_kpi_clientes_clave(resumen)
 
 
 def dashboard_clientes_clave():
