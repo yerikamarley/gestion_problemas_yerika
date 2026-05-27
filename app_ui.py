@@ -2314,9 +2314,9 @@ def slide_note_html(titulo, lineas):
     )
 
 
-def render_slide_frame_kpi(titulo, periodo, tarjetas, caption, izquierda_html, derecha_html):
+def slide_frame_html(titulo, periodo, tarjetas, caption, izquierda_html, derecha_html):
     periodo_html = f"{TEXT_PERIODO}{periodo}" if periodo else ""
-    contenido = (
+    return (
         '<div class="slide-frame" id="kpi-slide-frame" data-kpi-slide-id="kpi-slide-frame">'
         f'<div class="slide-period">{html.escape(periodo_html)}</div>'
         f'<div class="slide-title">{html.escape(str(titulo))}</div>'
@@ -2328,7 +2328,371 @@ def render_slide_frame_kpi(titulo, periodo, tarjetas, caption, izquierda_html, d
         "</div>"
         "</div>"
     )
-    st.markdown(contenido, unsafe_allow_html=True)
+
+
+def render_slide_frame_kpi(titulo, periodo, tarjetas, caption, izquierda_html, derecha_html):
+    st.markdown(slide_frame_html(titulo, periodo, tarjetas, caption, izquierda_html, derecha_html), unsafe_allow_html=True)
+
+
+def slide_component_css():
+    return f"""
+    :root {{
+        --border: {UI_PALETTE["border"]};
+        --text: {UI_PALETTE["text"]};
+        --muted: {UI_PALETTE["muted"]};
+        --primary: {UI_PALETTE[TEXT_PRIMARY]};
+        --mustard: {UI_PALETTE["mustard"]};
+    }}
+
+    html, body {{
+        margin: 0;
+        padding: 0;
+        background: #ffffff;
+        color: var(--text);
+        font-family: Arial, sans-serif;
+    }}
+
+    * {{
+        box-sizing: border-box;
+    }}
+
+    .slide-export-shell {{
+        width: 100%;
+        background: #ffffff;
+    }}
+
+    .slide-frame {{
+        width: 100%;
+        max-width: 1600px;
+        aspect-ratio: 16 / 9;
+        background: #ffffff;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        box-shadow: 0 12px 28px rgba(20, 20, 20, 0.08);
+        padding: 28px 32px;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        overflow: hidden;
+    }}
+
+    .slide-period {{
+        color: var(--muted);
+        font-size: 1.04rem;
+        font-weight: 700;
+        line-height: 1.15;
+    }}
+
+    .slide-title {{
+        color: var(--text);
+        font-size: 1.85rem;
+        font-weight: 900;
+        line-height: 1.12;
+    }}
+
+    .slide-kpi-grid {{
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(165px, 1fr));
+        gap: 12px;
+    }}
+
+    .slide-kpi-card {{
+        background: #ffffff;
+        border: 1px solid var(--border);
+        border-top: 4px solid var(--primary);
+        border-radius: 8px;
+        min-height: 104px;
+        padding: 16px 12px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+    }}
+
+    .slide-kpi-title {{
+        color: var(--text);
+        font-size: 0.92rem;
+        font-weight: 900;
+        line-height: 1.18;
+        text-transform: uppercase;
+    }}
+
+    .slide-kpi-value {{
+        color: var(--primary);
+        font-size: 2.35rem;
+        font-weight: 900;
+        line-height: 1;
+        margin-top: 0.42rem;
+        font-variant-numeric: tabular-nums;
+    }}
+
+    .slide-caption {{
+        color: var(--muted);
+        font-size: 1.02rem;
+        font-weight: 700;
+        line-height: 1.25;
+    }}
+
+    .slide-body {{
+        display: grid;
+        grid-template-columns: minmax(0, 2fr) minmax(300px, 0.9fr);
+        gap: 14px;
+        min-height: 0;
+        flex: 1;
+    }}
+
+    .slide-panel {{
+        background: #ffffff;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 16px 18px;
+        min-height: 0;
+        overflow: hidden;
+    }}
+
+    .slide-panel-group {{
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 14px;
+        min-height: 0;
+    }}
+
+    .slide-panel-title {{
+        color: var(--primary);
+        font-size: 1.18rem;
+        font-weight: 800;
+        line-height: 1.2;
+        margin-bottom: 0.9rem;
+    }}
+
+    .slide-ranking-list {{
+        display: flex;
+        flex-direction: column;
+        gap: 0.64rem;
+    }}
+
+    .slide-ranking-row {{
+        display: grid;
+        grid-template-columns: minmax(0, 1.6fr) minmax(120px, 1fr) 3.1rem;
+        gap: 0.8rem;
+        align-items: center;
+    }}
+
+    .slide-ranking-label {{
+        color: var(--text);
+        font-size: 0.96rem;
+        font-weight: 650;
+        line-height: 1.18;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }}
+
+    .slide-ranking-track {{
+        height: 17px;
+        background: #f1f3f5;
+        border-radius: 999px;
+        overflow: hidden;
+    }}
+
+    .slide-ranking-bar {{
+        height: 100%;
+        background: var(--mustard);
+        border-radius: inherit;
+    }}
+
+    .slide-ranking-value {{
+        color: var(--text);
+        font-size: 1.05rem;
+        font-weight: 800;
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+    }}
+
+    .kpi-ranking-empty {{
+        color: var(--muted);
+        font-size: 1rem;
+        font-weight: 700;
+    }}
+
+    .slide-note {{
+        display: flex;
+        flex-direction: column;
+        gap: 0.64rem;
+        color: var(--text);
+        font-size: 1rem;
+        font-weight: 500;
+        line-height: 1.38;
+    }}
+
+    .slide-note strong {{
+        color: var(--text);
+        font-weight: 700;
+    }}
+
+    .slide-note-muted {{
+        color: var(--muted);
+        font-weight: 500;
+    }}
+
+    .slide-download-bar {{
+        max-width: 1600px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-top: 12px;
+    }}
+
+    #download-kpi-slide {{
+        min-height: 42px;
+        border: 0;
+        border-radius: 8px;
+        background: var(--primary);
+        color: #ffffff;
+        padding: 0 20px;
+        font-size: 15px;
+        font-weight: 800;
+        cursor: pointer;
+    }}
+
+    #download-kpi-slide:disabled {{
+        opacity: 0.7;
+        cursor: wait;
+    }}
+
+    #download-kpi-status {{
+        color: var(--muted);
+        font-size: 12px;
+        min-height: 16px;
+    }}
+    """
+
+
+def render_slide_component_kpi(titulo, periodo, tarjetas, caption, izquierda_html, derecha_html):
+    archivo = nombre_archivo_slide(titulo, periodo)
+    slide_html = slide_frame_html(titulo, periodo, tarjetas, caption, izquierda_html, derecha_html)
+    componente = f"""
+    <style>{slide_component_css()}</style>
+    <div class="slide-export-shell">
+        {slide_html}
+        <div class="slide-download-bar">
+            <button id="download-kpi-slide" type="button">Descargar imagen PNG</button>
+            <div id="download-kpi-status"></div>
+        </div>
+    </div>
+    <script>
+    const fileName = {json.dumps(archivo)};
+    const button = document.getElementById("download-kpi-slide");
+    const status = document.getElementById("download-kpi-status");
+
+    function setStatus(message) {{
+        status.textContent = message || "";
+    }}
+
+    function copyComputedStyles(source, target) {{
+        const computed = window.getComputedStyle(source);
+        for (const property of computed) {{
+            target.style.setProperty(
+                property,
+                computed.getPropertyValue(property),
+                computed.getPropertyPriority(property)
+            );
+        }}
+        target.style.transform = "none";
+        target.style.animation = "none";
+        target.style.transition = "none";
+    }}
+
+    function inlineStyles(source, target) {{
+        copyComputedStyles(source, target);
+        const sourceChildren = Array.from(source.children || []);
+        const targetChildren = Array.from(target.children || []);
+        for (let index = 0; index < sourceChildren.length; index += 1) {{
+            inlineStyles(sourceChildren[index], targetChildren[index]);
+        }}
+    }}
+
+    async function captureSlide() {{
+        const slide = document.getElementById("kpi-slide-frame");
+        if (!slide) {{
+            throw new Error("No se encontro el recuadro del slide.");
+        }}
+
+        const rect = slide.getBoundingClientRect();
+        const clone = slide.cloneNode(true);
+        inlineStyles(slide, clone);
+        clone.style.margin = "0";
+        clone.style.width = `${{rect.width}}px`;
+        clone.style.height = `${{rect.height}}px`;
+        clone.style.boxSizing = "border-box";
+
+        const wrapper = document.createElement("div");
+        wrapper.setAttribute("xmlns", "http://www.w3.org/1999/xhtml");
+        wrapper.style.width = `${{rect.width}}px`;
+        wrapper.style.height = `${{rect.height}}px`;
+        wrapper.style.background = "#ffffff";
+        wrapper.appendChild(clone);
+
+        const serialized = new XMLSerializer().serializeToString(wrapper);
+        const svg = `
+            <svg xmlns="http://www.w3.org/2000/svg"
+                 width="${{rect.width}}" height="${{rect.height}}"
+                 viewBox="0 0 ${{rect.width}} ${{rect.height}}">
+                <foreignObject width="100%" height="100%">
+                    ${{serialized}}
+                </foreignObject>
+            </svg>
+        `;
+
+        const blob = new Blob([svg], {{ type: "image/svg+xml;charset=utf-8" }});
+        const url = URL.createObjectURL(blob);
+        try {{
+            const image = new Image();
+            await new Promise((resolve, reject) => {{
+                image.onload = resolve;
+                image.onerror = reject;
+                image.src = url;
+            }});
+
+            const targetWidth = 1920;
+            const scale = targetWidth / rect.width;
+            const canvas = document.createElement("canvas");
+            canvas.width = Math.round(rect.width * scale);
+            canvas.height = Math.round(rect.height * scale);
+            const context = canvas.getContext("2d");
+            context.fillStyle = "#ffffff";
+            context.fillRect(0, 0, canvas.width, canvas.height);
+            context.scale(scale, scale);
+            context.drawImage(image, 0, 0);
+
+            const link = document.createElement("a");
+            link.href = canvas.toDataURL("image/png");
+            link.download = fileName;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+        }} finally {{
+            URL.revokeObjectURL(url);
+        }}
+    }}
+
+    button.addEventListener("click", async () => {{
+        button.disabled = true;
+        setStatus("Generando imagen desde el recuadro visible...");
+        try {{
+            await captureSlide();
+            setStatus("Imagen generada.");
+        }} catch (error) {{
+            console.error(error);
+            setStatus("No se pudo generar la imagen. Intenta de nuevo con el navegador en zoom 100%.");
+        }} finally {{
+            button.disabled = false;
+        }}
+    }});
+    </script>
+    """
+    components.html(componente, height=980, scrolling=True)
 
 
 def color_rgb(hex_color):
@@ -2575,173 +2939,14 @@ def nombre_archivo_slide(titulo, periodo):
 
 
 def render_descarga_slide_png(titulo, periodo, tarjetas, caption, ranking_panels, note_lines):
-    archivo = nombre_archivo_slide(titulo, periodo)
-    slide_id = "kpi-slide-frame"
-    boton_html = f"""
-    <button id="download-kpi-slide" type="button">
-        Descargar imagen PNG
-    </button>
-    <div id="download-kpi-status"></div>
-    <style>
-        body {{
-            margin: 0;
-            font-family: Arial, sans-serif;
-            background: transparent;
-        }}
-        #download-kpi-slide {{
-            width: 100%;
-            min-height: 42px;
-            border: 0;
-            border-radius: 8px;
-            background: {UI_PALETTE[TEXT_PRIMARY]};
-            color: #ffffff;
-            font-size: 15px;
-            font-weight: 800;
-            cursor: pointer;
-        }}
-        #download-kpi-slide:disabled {{
-            opacity: 0.7;
-            cursor: wait;
-        }}
-        #download-kpi-status {{
-            color: {UI_PALETTE["muted"]};
-            font-size: 12px;
-            margin-top: 6px;
-            min-height: 16px;
-        }}
-    </style>
-    <script>
-    const slideId = {json.dumps(slide_id)};
-    const fileName = {json.dumps(archivo)};
-    const button = document.getElementById("download-kpi-slide");
-    const status = document.getElementById("download-kpi-status");
-
-    function setStatus(message) {{
-        status.textContent = message || "";
-    }}
-
-    function parentDocument() {{
-        try {{
-            return window.parent.document;
-        }} catch (error) {{
-            return null;
-        }}
-    }}
-
-    function copyComputedStyles(source, target, sourceWindow) {{
-        const computed = sourceWindow.getComputedStyle(source);
-        for (const property of computed) {{
-            target.style.setProperty(
-                property,
-                computed.getPropertyValue(property),
-                computed.getPropertyPriority(property)
-            );
-        }}
-        target.style.transform = "none";
-        target.style.animation = "none";
-        target.style.transition = "none";
-    }}
-
-    function inlineStyles(source, target, sourceWindow) {{
-        copyComputedStyles(source, target, sourceWindow);
-        const sourceChildren = Array.from(source.children || []);
-        const targetChildren = Array.from(target.children || []);
-        for (let index = 0; index < sourceChildren.length; index += 1) {{
-            inlineStyles(sourceChildren[index], targetChildren[index], sourceWindow);
-        }}
-    }}
-
-    async function captureSlide() {{
-        const doc = parentDocument();
-        if (!doc) {{
-            throw new Error("No se pudo acceder al documento de la app.");
-        }}
-        const slide = doc.getElementById(slideId);
-        if (!slide) {{
-            throw new Error("No se encontro el recuadro del slide.");
-        }}
-
-        const sourceWindow = doc.defaultView || window.parent;
-        const rect = slide.getBoundingClientRect();
-        const clone = slide.cloneNode(true);
-        inlineStyles(slide, clone, sourceWindow);
-
-        clone.style.margin = "0";
-        clone.style.left = "0";
-        clone.style.top = "0";
-        clone.style.width = `${{rect.width}}px`;
-        clone.style.height = `${{rect.height}}px`;
-        clone.style.boxSizing = "border-box";
-
-        const wrapper = doc.createElement("div");
-        wrapper.setAttribute("xmlns", "http://www.w3.org/1999/xhtml");
-        wrapper.style.width = `${{rect.width}}px`;
-        wrapper.style.height = `${{rect.height}}px`;
-        wrapper.style.background = "#ffffff";
-        wrapper.appendChild(clone);
-
-        const serialized = new XMLSerializer().serializeToString(wrapper);
-        const svg = `
-            <svg xmlns="http://www.w3.org/2000/svg"
-                 width="${{rect.width}}" height="${{rect.height}}"
-                 viewBox="0 0 ${{rect.width}} ${{rect.height}}">
-                <foreignObject width="100%" height="100%">
-                    ${{serialized}}
-                </foreignObject>
-            </svg>
-        `;
-
-        const blob = new Blob([svg], {{ type: "image/svg+xml;charset=utf-8" }});
-        const url = URL.createObjectURL(blob);
-        try {{
-            const image = new Image();
-            image.decoding = "sync";
-            await new Promise((resolve, reject) => {{
-                image.onload = resolve;
-                image.onerror = reject;
-                image.src = url;
-            }});
-
-            const targetWidth = 1920;
-            const scale = targetWidth / rect.width;
-            const canvas = document.createElement("canvas");
-            canvas.width = Math.round(rect.width * scale);
-            canvas.height = Math.round(rect.height * scale);
-            const context = canvas.getContext("2d");
-            context.fillStyle = "#ffffff";
-            context.fillRect(0, 0, canvas.width, canvas.height);
-            context.scale(scale, scale);
-            context.drawImage(image, 0, 0);
-
-            const pngUrl = canvas.toDataURL("image/png");
-            const link = doc.createElement("a");
-            link.href = pngUrl;
-            link.download = fileName;
-            doc.body.appendChild(link);
-            link.click();
-            link.remove();
-        }} finally {{
-            URL.revokeObjectURL(url);
-        }}
-    }}
-
-    button.addEventListener("click", async () => {{
-        button.disabled = true;
-        setStatus("Generando imagen desde el recuadro visible...");
-        try {{
-            await captureSlide();
-            setStatus("Imagen generada.");
-        }} catch (error) {{
-            console.error(error);
-            setStatus("No se pudo generar la imagen. Intenta con el navegador en zoom 100%.");
-        }} finally {{
-            button.disabled = false;
-        }}
-    }});
-    </script>
-    """
-    components.html(boton_html, height=70)
-
+    png = crear_png_slide_kpi(titulo, periodo, tarjetas, caption, ranking_panels, note_lines)
+    st.download_button(
+        "Descargar imagen PNG",
+        data=png,
+        file_name=nombre_archivo_slide(titulo, periodo),
+        mime="image/png",
+        use_container_width=True,
+    )
 
 def grafico_barras_kpi(df, x, y, titulo, color):
     render_ranking_kpi(df, y, x, titulo)
@@ -2798,14 +3003,6 @@ def render_slide_kpi_casos_cliente_externo(base, metricas, mes_dashboard):
         f"Cumplen SLA: {metricas['cumple_sla']} | No cumplen: {metricas['no_cumple_sla']}"
     )
     tipificaciones = conteo_top_con_otras(base["_tipificacion_kpi"], top_n=3)
-    panel_ranking = {
-        "df": tipificaciones,
-        "etiqueta_columna": TEXT_TIPOLOGIA,
-        "valor_columna": TEXT_CANTIDAD,
-        "titulo": "Top 3 tipificaciones + otras",
-        "top_n": 4,
-        "limite": 68,
-    }
     lineas = lineas_lectura_kpi_casos(metricas, base)
     izquierda = slide_ranking_html(
         tipificaciones,
@@ -2815,14 +3012,13 @@ def render_slide_kpi_casos_cliente_externo(base, metricas, mes_dashboard):
         top_n=4,
     )
     derecha = slide_note_html("Lectura", lineas)
-    render_slide_frame_kpi("KPI Casos Cliente Externo", mes_dashboard, tarjetas, caption, izquierda, derecha)
-    render_descarga_slide_png(
+    render_slide_component_kpi(
         "KPI Casos Cliente Externo",
         mes_dashboard,
         tarjetas,
         caption,
-        [panel_ranking],
-        lineas,
+        izquierda,
+        derecha,
     )
 
 
@@ -3260,24 +3456,6 @@ def render_slide_kpi_incidentes(metricas, causas, mes_dashboard):
     )
     ranking_externo = ranking_causas_segmento_kpi(causas, "Cliente externo")
     ranking_interno = ranking_causas_segmento_kpi(causas, "Cliente interno")
-    paneles = [
-        {
-            "df": ranking_externo,
-            "etiqueta_columna": COL_LECTURA_EJECUTIVA,
-            "valor_columna": TEXT_CANTIDAD,
-            "titulo": "Causas cliente externo",
-            "top_n": 5,
-            "limite": 54,
-        },
-        {
-            "df": ranking_interno,
-            "etiqueta_columna": COL_LECTURA_EJECUTIVA,
-            "valor_columna": TEXT_CANTIDAD,
-            "titulo": "Causas cliente interno",
-            "top_n": 5,
-            "limite": 54,
-        },
-    ]
     lineas = lineas_lectura_kpi_incidentes(causas)
     izquierda = (
         '<div class="slide-panel-group">'
@@ -3286,8 +3464,7 @@ def render_slide_kpi_incidentes(metricas, causas, mes_dashboard):
         "</div>"
     )
     derecha = slide_note_html("Lectura", lineas)
-    render_slide_frame_kpi(MENU_KPI_INCIDENTES, mes_dashboard, tarjetas, caption, izquierda, derecha)
-    render_descarga_slide_png(MENU_KPI_INCIDENTES, mes_dashboard, tarjetas, caption, paneles, lineas)
+    render_slide_component_kpi(MENU_KPI_INCIDENTES, mes_dashboard, tarjetas, caption, izquierda, derecha)
 
 
 def render_kpi_incidentes(df, mes_dashboard=None):
@@ -5031,14 +5208,6 @@ def render_slide_kpi_clientes_clave(metricas, resumen_actividad, mes_dashboard, 
         f"Clientes seleccionados: {len(clientes_seleccionados)} | "
         f"Casos: {metricas[TEXT_TOTAL_CASOS]} | Incidentes: {metricas[TEXT_TOTAL_INCIDENTES]}"
     )
-    panel_ranking = {
-        "df": resumen_actividad,
-        "etiqueta_columna": TEXT_CLIENTE,
-        "valor_columna": COL_TOTAL_ATENCIONES,
-        "titulo": "Atenciones por cliente clave",
-        "top_n": 6,
-        "limite": 58,
-    }
     lineas = lineas_lectura_kpi_clientes_clave(metricas, resumen_actividad)
     izquierda = slide_ranking_html(
         resumen_actividad,
@@ -5049,8 +5218,7 @@ def render_slide_kpi_clientes_clave(metricas, resumen_actividad, mes_dashboard, 
         limite=58,
     )
     derecha = slide_note_html("Lectura", lineas)
-    render_slide_frame_kpi(MENU_KPI_CLIENTES_CLAVE, mes_dashboard, tarjetas, caption, izquierda, derecha)
-    render_descarga_slide_png(MENU_KPI_CLIENTES_CLAVE, mes_dashboard, tarjetas, caption, [panel_ranking], lineas)
+    render_slide_component_kpi(MENU_KPI_CLIENTES_CLAVE, mes_dashboard, tarjetas, caption, izquierda, derecha)
 
 
 
