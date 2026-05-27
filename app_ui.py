@@ -596,6 +596,11 @@ def aplicar_tema_visual():
             color: var(--text) !important;
         }}
 
+        [data-testid="stCaptionContainer"] {{
+            font-size: 0.98rem !important;
+            line-height: 1.45 !important;
+        }}
+
         [data-testid="stFileUploader"],
         [data-testid="stDataFrame"],
         [data-testid="stMetric"],
@@ -689,18 +694,18 @@ def aplicar_tema_visual():
 
         .kpi-grid {{
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
             gap: 1rem;
             margin: 0.35rem 0 0.25rem;
         }}
 
         .kpi-card {{
             background: var(--surface);
-            padding: 18px;
+            padding: 24px 20px;
             border-radius: 8px;
             text-align: center;
             color: var(--text);
-            min-height: 112px;
+            min-height: 152px;
             display: flex;
             flex-direction: column;
             justify-content: center;
@@ -721,19 +726,23 @@ def aplicar_tema_visual():
         }}
 
         .kpi-title {{
-            font-size: 13px;
-            font-weight: 700;
-            margin-bottom: 8px;
+            font-size: 17px;
+            font-weight: 800;
+            line-height: 1.25;
+            margin-bottom: 12px;
             color: var(--muted);
             text-transform: uppercase;
             letter-spacing: 0;
+            max-width: 100%;
+            overflow-wrap: anywhere;
         }}
 
         .kpi-value {{
-            font-size: 28px;
+            font-size: 46px;
             font-weight: 800;
             color: var(--primary);
-            line-height: 1.1;
+            line-height: 1.05;
+            font-variant-numeric: tabular-nums;
         }}
 
         .executive-note {{
@@ -744,6 +753,7 @@ def aplicar_tema_visual():
             padding: 14px 16px 12px;
             margin: 0.1rem 0 0.25rem;
             line-height: 1.45;
+            font-size: 1rem;
             box-shadow: 0 6px 16px rgba(20, 20, 20, 0.04);
         }}
 
@@ -800,6 +810,19 @@ def aplicar_tema_visual():
                 gap: 0.75rem;
             }}
 
+            .kpi-card {{
+                min-height: 138px;
+                padding: 22px 18px;
+            }}
+
+            .kpi-title {{
+                font-size: 16px;
+            }}
+
+            .kpi-value {{
+                font-size: 42px;
+            }}
+
             [data-testid="stTabs"] div[role="tablist"] {{
                 gap: 0.35rem;
                 overflow-x: auto;
@@ -829,17 +852,17 @@ def aplicar_tema_visual():
             }}
 
             .kpi-card {{
-                min-height: 88px;
-                padding: 14px;
+                min-height: 120px;
+                padding: 18px 14px;
             }}
 
             .kpi-title {{
-                font-size: 11px;
-                margin-bottom: 6px;
+                font-size: 15px;
+                margin-bottom: 8px;
             }}
 
             .kpi-value {{
-                font-size: 24px;
+                font-size: 36px;
             }}
 
             [data-baseweb="tag"] {{
@@ -861,13 +884,26 @@ def aplicar_estilo_figura(fig, titulo=None):
         title=titulo,
         paper_bgcolor="rgba(255,255,255,0)",
         plot_bgcolor="rgba(255,250,250,0.94)",
-        font={"color": UI_PALETTE["text"]},
-        title_font={"color": UI_PALETTE[TEXT_PRIMARY], "size": 17},
+        font={"color": UI_PALETTE["text"], "size": 15},
+        title_font={"color": UI_PALETTE[TEXT_PRIMARY], "size": 20},
         margin={"l": 12, "r": 12, "t": 52, "b": 12},
-        legend={"bgcolor": "rgba(255,250,250,0.82)"},
+        legend={"bgcolor": "rgba(255,250,250,0.82)", "font": {"size": 14}},
     )
-    fig.update_xaxes(showgrid=True, gridcolor="rgba(20, 20, 20, 0.10)", zeroline=False)
-    fig.update_yaxes(showgrid=False, zeroline=False)
+    fig.update_xaxes(
+        showgrid=True,
+        gridcolor="rgba(20, 20, 20, 0.10)",
+        zeroline=False,
+        tickfont={"size": 14},
+        title_font={"size": 15},
+        automargin=True,
+    )
+    fig.update_yaxes(
+        showgrid=False,
+        zeroline=False,
+        tickfont={"size": 14},
+        title_font={"size": 15},
+        automargin=True,
+    )
     return fig
 
 
