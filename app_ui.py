@@ -800,6 +800,73 @@ def aplicar_tema_visual():
             font-size: 1.04rem;
         }}
 
+        .kpi-ranking {{
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 18px 18px 16px;
+            box-shadow: 0 8px 18px rgba(20, 20, 20, 0.04);
+        }}
+
+        .kpi-ranking-title {{
+            color: var(--primary);
+            font-size: 1.25rem;
+            font-weight: 900;
+            line-height: 1.25;
+            margin-bottom: 1rem;
+        }}
+
+        .kpi-ranking-list {{
+            display: flex;
+            flex-direction: column;
+            gap: 0.72rem;
+        }}
+
+        .kpi-ranking-row {{
+            display: grid;
+            grid-template-columns: minmax(0, 1.65fr) minmax(118px, 1fr) 3.2rem;
+            align-items: center;
+            gap: 0.85rem;
+        }}
+
+        .kpi-ranking-label {{
+            color: var(--text);
+            font-size: 1.02rem;
+            font-weight: 800;
+            line-height: 1.25;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }}
+
+        .kpi-ranking-track {{
+            height: 18px;
+            background: #f1f3f5;
+            border-radius: 999px;
+            overflow: hidden;
+        }}
+
+        .kpi-ranking-bar {{
+            height: 100%;
+            background: var(--mustard);
+            border-radius: inherit;
+        }}
+
+        .kpi-ranking-value {{
+            color: var(--text);
+            font-size: 1.12rem;
+            font-weight: 900;
+            line-height: 1;
+            text-align: right;
+            font-variant-numeric: tabular-nums;
+        }}
+
+        .kpi-ranking-empty {{
+            color: var(--muted);
+            font-size: 1rem;
+            font-weight: 700;
+        }}
+
         @media (max-width: 900px) {{
             .block-container {{
                 padding-left: 1rem;
@@ -831,6 +898,10 @@ def aplicar_tema_visual():
 
             .kpi-value {{
                 font-size: 42px;
+            }}
+
+            .kpi-ranking-row {{
+                grid-template-columns: minmax(0, 1.35fr) minmax(90px, 1fr) 2.8rem;
             }}
 
             [data-testid="stTabs"] div[role="tablist"] {{
@@ -873,6 +944,24 @@ def aplicar_tema_visual():
 
             .kpi-value {{
                 font-size: 36px;
+            }}
+
+            .kpi-ranking {{
+                padding: 16px 14px;
+            }}
+
+            .kpi-ranking-row {{
+                grid-template-columns: 1fr 2.6rem;
+                gap: 0.35rem 0.6rem;
+            }}
+
+            .kpi-ranking-label {{
+                grid-column: 1 / -1;
+                white-space: normal;
+            }}
+
+            .kpi-ranking-track {{
+                height: 16px;
             }}
 
             [data-baseweb="tag"] {{
@@ -1929,35 +2018,63 @@ def preparar_kpi_casos_cliente_externo(df):
     return trabajo, metricas
 
 
-def grafico_barras_kpi(df, x, y, titulo, color):
+def texto_ranking_kpi(valor, limite=78):
+    texto = valor_limpio(valor)
+    if len(texto) <= limite:
+        return texto
+    return texto[: limite - 3].rstrip() + "..."
+
+
+def numero_ranking_kpi(valor):
+    try:
+        numero = float(valor)
+    except (TypeError, ValueError):
+        return str(valor)
+    if numero.is_integer():
+        return str(int(numero))
+    return str(round(numero, 2))
+
+
+def render_ranking_kpi(df, etiqueta_columna, valor_columna, titulo, top_n=6):
     if df.empty:
         st.info(f"No hay datos para {titulo.lower()}.")
         return
-    grafico = df[df[x] > 0].sort_values(by=x, ascending=True)
-    if grafico.empty:
+
+    ranking = df.copy()
+    ranking[valor_columna] = pd.to_numeric(ranking[valor_columna], errors=TEXT_COERCE).fillna(0)
+    ranking = ranking[ranking[valor_columna] > 0].sort_values(by=valor_columna, ascending=False).head(top_n)
+    if ranking.empty:
         st.info(f"No hay datos para {titulo.lower()}.")
         return
-    fig = px.bar(
-        grafico,
-        x=x,
-        y=y,
-        orientation="h",
-        text=x,
-        color_discrete_sequence=[color],
+
+    maximo = ranking[valor_columna].max()
+    filas = []
+    for _, row in ranking.iterrows():
+        valor = row[valor_columna]
+        porcentaje_barra = (valor / maximo) * 100 if maximo else 0
+        etiqueta_completa = valor_limpio(row[etiqueta_columna]) or SIN_DATO
+        etiqueta = texto_ranking_kpi(etiqueta_completa)
+        filas.append(
+            '<div class="kpi-ranking-row">'
+            f'<div class="kpi-ranking-label" title="{html.escape(etiqueta_completa)}">{html.escape(etiqueta)}</div>'
+            '<div class="kpi-ranking-track">'
+            f'<div class="kpi-ranking-bar" style="width: max(8px, {porcentaje_barra:.2f}%);"></div>'
+            "</div>"
+            f'<div class="kpi-ranking-value">{html.escape(numero_ranking_kpi(valor))}</div>'
+            "</div>"
+        )
+
+    contenido = (
+        '<div class="kpi-ranking">'
+        f'<div class="kpi-ranking-title">{html.escape(str(titulo))}</div>'
+        f'<div class="kpi-ranking-list">{"".join(filas)}</div>'
+        "</div>"
     )
-    fig.update_traces(
-        marker_color=color,
-        textposition=TEXT_OUTSIDE,
-        cliponaxis=False,
-        textfont={"size": 17, "color": UI_PALETTE["text"]},
-    )
-    fig.update_layout(height=max(300, 46 * len(grafico) + 125))
-    fig = aplicar_estilo_figura(fig, titulo)
-    fig.update_layout(margin={"l": 185, "r": 72, "t": 62, "b": 48}, showlegend=False)
-    fig.update_xaxes(tickfont={"size": 16, "color": UI_PALETTE["text"]}, title_font={"size": 17, "color": UI_PALETTE["text"]})
-    fig.update_yaxes(tickfont={"size": 16, "color": UI_PALETTE["text"]}, title_font={"size": 17, "color": UI_PALETTE["text"]})
-    fig = limpiar_ejes_kpi(fig)
-    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+    st.markdown(contenido, unsafe_allow_html=True)
+
+
+def grafico_barras_kpi(df, x, y, titulo, color):
+    render_ranking_kpi(df, y, x, titulo)
 
 
 def resumen_otras_tipificaciones(base, top_n=3):
@@ -2351,32 +2468,7 @@ def render_grafico_causas_kpi_incidentes(causas):
                 st.info(f"No hay causas para {segmento.lower()} en el periodo.")
                 continue
 
-            fig = px.bar(
-                grafico,
-                x=TEXT_CANTIDAD,
-                y=COL_LECTURA_EJECUTIVA,
-                orientation="h",
-                text=TEXT_CANTIDAD,
-                color_discrete_sequence=[UI_PALETTE["mustard"]],
-            )
-            fig.update_traces(
-                marker_color=UI_PALETTE["mustard"],
-                textposition=TEXT_OUTSIDE,
-                cliponaxis=False,
-                textfont={"size": 17, "color": UI_PALETTE["text"]},
-            )
-            fig.update_layout(height=max(340, 54 * len(grafico) + 125), yaxis={"automargin": True})
-            fig = aplicar_estilo_figura(fig, titulo)
-            fig.update_xaxes(
-                tickfont={"size": 16, "color": UI_PALETTE["text"]},
-                title_font={"size": 17, "color": UI_PALETTE["text"]},
-            )
-            fig.update_yaxes(
-                tickfont={"size": 16, "color": UI_PALETTE["text"]},
-                title_font={"size": 17, "color": UI_PALETTE["text"]},
-            )
-            fig = limpiar_ejes_kpi(fig)
-            st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+            render_ranking_kpi(grafico, COL_LECTURA_EJECUTIVA, TEXT_CANTIDAD, titulo)
 
 
 def render_reincidencia_kpi_incidentes(base, metricas):
@@ -3767,6 +3859,10 @@ def render_clientes_sin_actividad(resumen):
 
 def render_grafico_atenciones_cliente(resumen_actividad, color_estado=True):
     grafico = resumen_actividad.sort_values(by=COL_TOTAL_ATENCIONES, ascending=True)
+    if not color_estado:
+        render_ranking_kpi(grafico, TEXT_CLIENTE, COL_TOTAL_ATENCIONES, "Atenciones por cliente clave")
+        return
+
     parametros_color = (
         {
             "color": TEXT_NIVEL,
@@ -3787,12 +3883,8 @@ def render_grafico_atenciones_cliente(resumen_actividad, color_estado=True):
         text=COL_TOTAL_ATENCIONES,
         **parametros_color,
     )
-    if not color_estado:
-        fig.update_traces(marker_color=UI_PALETTE["mustard"])
     fig.update_traces(textposition=TEXT_OUTSIDE)
     fig = aplicar_estilo_figura(fig, "Atenciones por cliente clave")
-    if not color_estado:
-        fig = limpiar_ejes_kpi(fig)
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
 
