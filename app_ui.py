@@ -2434,29 +2434,30 @@ def ranking_para_slide(panel):
 
 
 def dibujar_tarjetas_slide(draw, tarjetas, x, y, width):
-    gap = 14
-    alto = 118
+    gap = 16
+    alto = 150
     cantidad = len(tarjetas)
     ancho = (width - gap * (cantidad - 1)) / cantidad
     borde = color_rgb(UI_PALETTE["border"])
     naranja = color_rgb(UI_PALETTE[TEXT_PRIMARY])
     texto = color_rgb(UI_PALETTE["text"])
-    titulo_font = fuente_slide(20, bold=True)
-    valor_font = fuente_slide(44, bold=True)
+    titulo_font = fuente_slide(29, bold=True)
+    valor_font = fuente_slide(76, bold=True)
     for indice, (titulo, valor) in enumerate(tarjetas):
+        titulo_visible = re.sub(r"^Cumplimiento\s+", "", str(titulo), flags=re.IGNORECASE)
         x0 = int(x + indice * (ancho + gap))
         x1 = int(x0 + ancho)
         draw.rounded_rectangle((x0, y, x1, y + alto), radius=12, fill="white", outline=borde, width=2)
-        draw.rounded_rectangle((x0, y, x1, y + 7), radius=8, fill=naranja)
-        titulo_lineas = envolver_texto(draw, str(titulo), titulo_font, int(ancho - 24), max_lines=2)
-        titulo_y = y + 28 if len(titulo_lineas) == 1 else y + 20
+        draw.rounded_rectangle((x0, y, x1, y + 9), radius=8, fill=naranja)
+        titulo_lineas = envolver_texto(draw, titulo_visible, titulo_font, int(ancho - 28), max_lines=2)
+        titulo_y = y + 31 if len(titulo_lineas) == 1 else y + 20
         for linea in titulo_lineas:
             linea_x = x0 + (ancho - ancho_texto(draw, linea, titulo_font)) / 2
             draw.text((linea_x, titulo_y), linea, font=titulo_font, fill=texto)
-            titulo_y += 23
+            titulo_y += 32
         valor_texto = str(valor)
         valor_x = x0 + (ancho - ancho_texto(draw, valor_texto, valor_font)) / 2
-        draw.text((valor_x, y + 66), valor_texto, font=valor_font, fill=naranja)
+        draw.text((valor_x, y + 78), valor_texto, font=valor_font, fill=naranja)
     return y + alto
 
 
@@ -2467,37 +2468,37 @@ def dibujar_ranking_panel(draw, panel, x, y, width, height):
     naranja = color_rgb(UI_PALETTE[TEXT_PRIMARY])
     mostaza = color_rgb(UI_PALETTE["mustard"])
     pista = (241, 243, 245)
-    title_font = fuente_slide(24, bold=True)
-    label_font = fuente_slide(20, bold=False)
-    value_font = fuente_slide(22, bold=True)
+    title_font = fuente_slide(34, bold=True)
+    label_font = fuente_slide(30, bold=False)
+    value_font = fuente_slide(32, bold=True)
     draw.rounded_rectangle((x, y, x + width, y + height), radius=12, fill="white", outline=borde, width=2)
-    draw.text((x + 18, y + 18), str(panel["titulo"]), font=title_font, fill=naranja)
+    draw.text((x + 22, y + 20), str(panel["titulo"]), font=title_font, fill=naranja)
     ranking = ranking_para_slide(panel)
     if ranking.empty:
-        draw.text((x + 18, y + 70), "Sin datos para mostrar.", font=label_font, fill=muted)
+        draw.text((x + 22, y + 82), "Sin datos para mostrar.", font=label_font, fill=muted)
         return
     maximo = ranking[panel["valor_columna"]].max()
-    row_top = y + 72
-    row_gap = 15
-    row_height = min(52, max(34, int((height - 92) / max(len(ranking), 1))))
-    label_w = int(width * 0.48)
-    value_w = 54
-    bar_x = x + 22 + label_w + 18
-    bar_w = width - 44 - label_w - value_w - 34
+    row_top = y + 96
+    row_gap = 18
+    row_height = min(74, max(50, int((height - 122) / max(len(ranking), 1))))
+    label_w = int(width * 0.43)
+    value_w = 76
+    bar_x = x + 24 + label_w + 22
+    bar_w = width - 48 - label_w - value_w - 36
     for fila_idx, (_, row) in enumerate(ranking.iterrows()):
         y_row = row_top + fila_idx * row_height
-        if y_row + 24 > y + height - 12:
+        if y_row + 34 > y + height - 12:
             break
         etiqueta = texto_ranking_kpi(valor_limpio(row[panel["etiqueta_columna"]]) or SIN_DATO, panel.get("limite", 62))
         etiqueta = cortar_texto(draw, etiqueta, label_font, label_w)
         valor = float(row[panel["valor_columna"]])
         porcentaje_barra = valor / maximo if maximo else 0
-        draw.text((x + 22, y_row), etiqueta, font=label_font, fill=texto)
-        track_y = y_row + 5
-        draw.rounded_rectangle((bar_x, track_y, bar_x + bar_w, track_y + 18), radius=9, fill=pista)
-        draw.rounded_rectangle((bar_x, track_y, bar_x + max(8, int(bar_w * porcentaje_barra)), track_y + 18), radius=9, fill=mostaza)
+        draw.text((x + 24, y_row), etiqueta, font=label_font, fill=texto)
+        track_y = y_row + 9
+        draw.rounded_rectangle((bar_x, track_y, bar_x + bar_w, track_y + 24), radius=12, fill=pista)
+        draw.rounded_rectangle((bar_x, track_y, bar_x + max(10, int(bar_w * porcentaje_barra)), track_y + 24), radius=12, fill=mostaza)
         valor_texto = numero_ranking_kpi(valor)
-        draw.text((x + width - 22 - ancho_texto(draw, valor_texto, value_font), y_row - 1), valor_texto, font=value_font, fill=texto)
+        draw.text((x + width - 24 - ancho_texto(draw, valor_texto, value_font), y_row - 2), valor_texto, font=value_font, fill=texto)
         row_top += row_gap
 
 
@@ -2505,12 +2506,12 @@ def dibujar_nota_slide(draw, titulo, lineas, x, y, width, height):
     borde = color_rgb(UI_PALETTE["border"])
     texto = color_rgb(UI_PALETTE["text"])
     naranja = color_rgb(UI_PALETTE[TEXT_PRIMARY])
-    title_font = fuente_slide(24, bold=True)
-    body_font = fuente_slide(21, bold=False)
+    title_font = fuente_slide(34, bold=True)
+    body_font = fuente_slide(29, bold=False)
     draw.rounded_rectangle((x, y, x + width, y + height), radius=12, fill="white", outline=borde, width=2)
-    draw.text((x + 18, y + 18), str(titulo), font=title_font, fill=naranja)
-    cursor_y = y + 66
-    max_width = width - 36
+    draw.text((x + 22, y + 20), str(titulo), font=title_font, fill=naranja)
+    cursor_y = y + 82
+    max_width = width - 44
     for linea in lineas:
         texto_linea = texto_plano_html(linea)
         if not texto_linea:
@@ -2518,14 +2519,14 @@ def dibujar_nota_slide(draw, titulo, lineas, x, y, width, height):
         cursor_y = dibujar_texto_envuelto(
             draw,
             texto_linea,
-            (x + 18, cursor_y),
+            (x + 22, cursor_y),
             body_font,
             texto,
             max_width,
-            line_gap=7,
-            max_lines=5,
+            line_gap=9,
+            max_lines=4,
         )
-        cursor_y += 12
+        cursor_y += 16
         if cursor_y > y + height - 32:
             break
 
@@ -2537,20 +2538,20 @@ def crear_png_slide_kpi(titulo, periodo, tarjetas, caption, ranking_panels, note
     borde = color_rgb(UI_PALETTE["border"])
     texto = color_rgb(UI_PALETTE["text"])
     muted = color_rgb(UI_PALETTE["muted"])
-    pad = 36
+    pad = 30
     draw.rounded_rectangle((2, 2, width - 3, height - 3), radius=14, outline=borde, width=2)
-    period_font = fuente_slide(22, bold=False)
-    title_font = fuente_slide(36, bold=True)
-    caption_font = fuente_slide(22, bold=False)
+    period_font = fuente_slide(30, bold=False)
+    title_font = fuente_slide(54, bold=True)
+    caption_font = fuente_slide(30, bold=False)
     periodo_texto = f"{TEXT_PERIODO}{periodo}" if periodo else ""
-    draw.text((pad, 24), periodo_texto, font=period_font, fill=muted)
-    draw.text((pad, 72), str(titulo), font=title_font, fill=texto)
-    cards_bottom = dibujar_tarjetas_slide(draw, tarjetas, pad, 126, width - 2 * pad)
-    draw.text((pad, cards_bottom + 14), str(caption), font=caption_font, fill=muted)
-    body_y = cards_bottom + 58
+    draw.text((pad, 20), periodo_texto, font=period_font, fill=muted)
+    draw.text((pad, 64), str(titulo), font=title_font, fill=texto)
+    cards_bottom = dibujar_tarjetas_slide(draw, tarjetas, pad, 128, width - 2 * pad)
+    draw.text((pad, cards_bottom + 16), str(caption), font=caption_font, fill=muted)
+    body_y = cards_bottom + 62
     body_h = height - body_y - pad
     gap = 18
-    note_w = 430
+    note_w = 470
     left_w = width - 2 * pad - note_w - gap
     if len(ranking_panels) > 1:
         panel_gap = 14
