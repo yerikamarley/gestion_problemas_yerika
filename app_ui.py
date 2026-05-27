@@ -1,10 +1,12 @@
 import html
+import json
 import re
 from io import BytesIO
 
 import pandas as pd
 import plotly.express as px
 import streamlit as st
+import streamlit.components.v1 as components
 from PIL import Image, ImageDraw, ImageFont
 
 from app_logic import (
@@ -2315,7 +2317,7 @@ def slide_note_html(titulo, lineas):
 def render_slide_frame_kpi(titulo, periodo, tarjetas, caption, izquierda_html, derecha_html):
     periodo_html = f"{TEXT_PERIODO}{periodo}" if periodo else ""
     contenido = (
-        '<div class="slide-frame">'
+        '<div class="slide-frame" id="kpi-slide-frame" data-kpi-slide-id="kpi-slide-frame">'
         f'<div class="slide-period">{html.escape(periodo_html)}</div>'
         f'<div class="slide-title">{html.escape(str(titulo))}</div>'
         f"{slide_kpi_cards_html(tarjetas)}"
@@ -2573,14 +2575,172 @@ def nombre_archivo_slide(titulo, periodo):
 
 
 def render_descarga_slide_png(titulo, periodo, tarjetas, caption, ranking_panels, note_lines):
-    png = crear_png_slide_kpi(titulo, periodo, tarjetas, caption, ranking_panels, note_lines)
-    st.download_button(
-        "Descargar imagen PNG",
-        data=png,
-        file_name=nombre_archivo_slide(titulo, periodo),
-        mime="image/png",
-        use_container_width=True,
-    )
+    archivo = nombre_archivo_slide(titulo, periodo)
+    slide_id = "kpi-slide-frame"
+    boton_html = f"""
+    <button id="download-kpi-slide" type="button">
+        Descargar imagen PNG
+    </button>
+    <div id="download-kpi-status"></div>
+    <style>
+        body {{
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background: transparent;
+        }}
+        #download-kpi-slide {{
+            width: 100%;
+            min-height: 42px;
+            border: 0;
+            border-radius: 8px;
+            background: {UI_PALETTE[TEXT_PRIMARY]};
+            color: #ffffff;
+            font-size: 15px;
+            font-weight: 800;
+            cursor: pointer;
+        }}
+        #download-kpi-slide:disabled {{
+            opacity: 0.7;
+            cursor: wait;
+        }}
+        #download-kpi-status {{
+            color: {UI_PALETTE["muted"]};
+            font-size: 12px;
+            margin-top: 6px;
+            min-height: 16px;
+        }}
+    </style>
+    <script>
+    const slideId = {json.dumps(slide_id)};
+    const fileName = {json.dumps(archivo)};
+    const button = document.getElementById("download-kpi-slide");
+    const status = document.getElementById("download-kpi-status");
+
+    function setStatus(message) {{
+        status.textContent = message || "";
+    }}
+
+    function parentDocument() {{
+        try {{
+            return window.parent.document;
+        }} catch (error) {{
+            return null;
+        }}
+    }}
+
+    function copyComputedStyles(source, target, sourceWindow) {{
+        const computed = sourceWindow.getComputedStyle(source);
+        for (const property of computed) {{
+            target.style.setProperty(
+                property,
+                computed.getPropertyValue(property),
+                computed.getPropertyPriority(property)
+            );
+        }}
+        target.style.transform = "none";
+        target.style.animation = "none";
+        target.style.transition = "none";
+    }}
+
+    function inlineStyles(source, target, sourceWindow) {{
+        copyComputedStyles(source, target, sourceWindow);
+        const sourceChildren = Array.from(source.children || []);
+        const targetChildren = Array.from(target.children || []);
+        for (let index = 0; index < sourceChildren.length; index += 1) {{
+            inlineStyles(sourceChildren[index], targetChildren[index], sourceWindow);
+        }}
+    }}
+
+    async function captureSlide() {{
+        const doc = parentDocument();
+        if (!doc) {{
+            throw new Error("No se pudo acceder al documento de la app.");
+        }}
+        const slide = doc.getElementById(slideId);
+        if (!slide) {{
+            throw new Error("No se encontro el recuadro del slide.");
+        }}
+
+        const sourceWindow = doc.defaultView || window.parent;
+        const rect = slide.getBoundingClientRect();
+        const clone = slide.cloneNode(true);
+        inlineStyles(slide, clone, sourceWindow);
+
+        clone.style.margin = "0";
+        clone.style.left = "0";
+        clone.style.top = "0";
+        clone.style.width = `${{rect.width}}px`;
+        clone.style.height = `${{rect.height}}px`;
+        clone.style.boxSizing = "border-box";
+
+        const wrapper = doc.createElement("div");
+        wrapper.setAttribute("xmlns", "http://www.w3.org/1999/xhtml");
+        wrapper.style.width = `${{rect.width}}px`;
+        wrapper.style.height = `${{rect.height}}px`;
+        wrapper.style.background = "#ffffff";
+        wrapper.appendChild(clone);
+
+        const serialized = new XMLSerializer().serializeToString(wrapper);
+        const svg = `
+            <svg xmlns="http://www.w3.org/2000/svg"
+                 width="${{rect.width}}" height="${{rect.height}}"
+                 viewBox="0 0 ${{rect.width}} ${{rect.height}}">
+                <foreignObject width="100%" height="100%">
+                    ${{serialized}}
+                </foreignObject>
+            </svg>
+        `;
+
+        const blob = new Blob([svg], {{ type: "image/svg+xml;charset=utf-8" }});
+        const url = URL.createObjectURL(blob);
+        try {{
+            const image = new Image();
+            image.decoding = "sync";
+            await new Promise((resolve, reject) => {{
+                image.onload = resolve;
+                image.onerror = reject;
+                image.src = url;
+            }});
+
+            const targetWidth = 1920;
+            const scale = targetWidth / rect.width;
+            const canvas = document.createElement("canvas");
+            canvas.width = Math.round(rect.width * scale);
+            canvas.height = Math.round(rect.height * scale);
+            const context = canvas.getContext("2d");
+            context.fillStyle = "#ffffff";
+            context.fillRect(0, 0, canvas.width, canvas.height);
+            context.scale(scale, scale);
+            context.drawImage(image, 0, 0);
+
+            const pngUrl = canvas.toDataURL("image/png");
+            const link = doc.createElement("a");
+            link.href = pngUrl;
+            link.download = fileName;
+            doc.body.appendChild(link);
+            link.click();
+            link.remove();
+        }} finally {{
+            URL.revokeObjectURL(url);
+        }}
+    }}
+
+    button.addEventListener("click", async () => {{
+        button.disabled = true;
+        setStatus("Generando imagen desde el recuadro visible...");
+        try {{
+            await captureSlide();
+            setStatus("Imagen generada.");
+        }} catch (error) {{
+            console.error(error);
+            setStatus("No se pudo generar la imagen. Intenta con el navegador en zoom 100%.");
+        }} finally {{
+            button.disabled = false;
+        }}
+    }});
+    </script>
+    """
+    components.html(boton_html, height=70)
 
 
 def grafico_barras_kpi(df, x, y, titulo, color):
