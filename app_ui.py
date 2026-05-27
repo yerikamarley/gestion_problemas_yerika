@@ -149,6 +149,7 @@ UI_PALETTE = {
     TEXT_ORANGE: TEXT_F18701,
     TEXT_YELLOW: "#f7b801",
     "yellow_soft": "#ffe0a1",
+    "mustard": "#d6a21a",
     TEXT_LAVENDER: "#9683ec",
     TEXT_PURPLE: "#5d16a6",
 
@@ -556,6 +557,7 @@ def aplicar_tema_visual():
             --orange: {UI_PALETTE[TEXT_ORANGE]};
             --yellow: {UI_PALETTE[TEXT_YELLOW]};
             --yellow-soft: {UI_PALETTE["yellow_soft"]};
+            --mustard: {UI_PALETTE["mustard"]};
             --lavender: {UI_PALETTE[TEXT_LAVENDER]};
             --purple: {UI_PALETTE[TEXT_PURPLE]};
             --red: {UI_PALETTE["red"]};
@@ -733,10 +735,10 @@ def aplicar_tema_visual():
 
         .kpi-title {{
             font-size: 17px;
-            font-weight: 800;
+            font-weight: 900 !important;
             line-height: 1.25;
             margin-bottom: 12px;
-            color: var(--muted);
+            color: var(--text);
             text-transform: uppercase;
             letter-spacing: 0;
             max-width: 100%;
@@ -745,7 +747,7 @@ def aplicar_tema_visual():
 
         .kpi-value {{
             font-size: 46px;
-            font-weight: 800;
+            font-weight: 900 !important;
             color: var(--primary);
             line-height: 1.05;
             font-variant-numeric: tabular-nums;
@@ -2003,7 +2005,7 @@ def render_kpi_casos_cliente_externo(df):
             TEXT_CANTIDAD,
             TEXT_TIPOLOGIA,
             "Top 3 tipificaciones + otras",
-            UI_PALETTE[TEXT_PRIMARY],
+            UI_PALETTE["mustard"],
         )
     with col_lectura:
         render_lectura_kpi(metricas, base)
@@ -2346,10 +2348,10 @@ def render_grafico_causas_kpi_incidentes(causas):
                 y=COL_LECTURA_EJECUTIVA,
                 orientation="h",
                 text=TEXT_CANTIDAD,
-                color_discrete_sequence=[UI_PALETTE[TEXT_PURPLE]],
+                color_discrete_sequence=[UI_PALETTE["mustard"]],
             )
             fig.update_traces(
-                marker_color=UI_PALETTE[TEXT_PURPLE],
+                marker_color=UI_PALETTE["mustard"],
                 textposition=TEXT_OUTSIDE,
                 cliponaxis=False,
                 textfont={"size": 17, "color": UI_PALETTE["text"]},
@@ -3744,21 +3746,30 @@ def render_clientes_sin_actividad(resumen):
         st.caption("Sin actividad en el periodo: " + ", ".join(clientes_sin_actividad))
 
 
-def render_grafico_atenciones_cliente(resumen_actividad):
+def render_grafico_atenciones_cliente(resumen_actividad, color_estado=True):
     grafico = resumen_actividad.sort_values(by=COL_TOTAL_ATENCIONES, ascending=True)
+    parametros_color = (
+        {
+            "color": TEXT_NIVEL,
+            "color_discrete_map": {
+                "Verde": UI_PALETTE[TEXT_LAVENDER],
+                TEXT_AMARILLO: UI_PALETTE[TEXT_YELLOW],
+                "Rojo": UI_PALETTE[TEXT_PRIMARY],
+            },
+        }
+        if color_estado
+        else {"color_discrete_sequence": [UI_PALETTE["mustard"]]}
+    )
     fig = px.bar(
         grafico,
         x=COL_TOTAL_ATENCIONES,
         y=TEXT_CLIENTE,
         orientation="h",
         text=COL_TOTAL_ATENCIONES,
-        color=TEXT_NIVEL,
-        color_discrete_map={
-            "Verde": UI_PALETTE[TEXT_LAVENDER],
-            TEXT_AMARILLO: UI_PALETTE[TEXT_YELLOW],
-            "Rojo": UI_PALETTE[TEXT_PRIMARY],
-        },
+        **parametros_color,
     )
+    if not color_estado:
+        fig.update_traces(marker_color=UI_PALETTE["mustard"])
     fig.update_traces(textposition=TEXT_OUTSIDE)
     st.plotly_chart(aplicar_estilo_figura(fig, "Atenciones por cliente clave"), use_container_width=True)
 
@@ -4106,7 +4117,7 @@ def dashboard_kpi_clientes_clave():
 
     col_grafico, col_lectura = st.columns([2.15, 1])
     with col_grafico:
-        render_grafico_atenciones_cliente(resumen_actividad)
+        render_grafico_atenciones_cliente(resumen_actividad, color_estado=False)
     with col_lectura:
         render_lectura_kpi_clientes_clave(metricas, resumen_actividad)
 
