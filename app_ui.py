@@ -249,6 +249,7 @@ COL_REINCIDENTE_AGENDA = "Reincidente agenda"
 COL_CASOS_REINCIDENTES_AGENDA = "Casos reincidentes agenda"
 COL_REINCIDENCIA_AGENDAMIENTO = "Reincidencia agendamiento %"
 MENU_CLIENTES_CLAVE = "Clientes clave"
+MENU_KPI_CLIENTES_CLAVE = "KPI Clientes Clave"
 MENU_KPI_CASOS_CLIENTE_EXTERNO = "KPI Casos Cliente Externo"
 MENU_KPI_INCIDENTES = "KPI Incidentes"
 MENU_SEGUIMIENTO_INCIDENTES_VIEWER = "Seguimiento incidentes"
@@ -3613,24 +3614,24 @@ def fechas_clientes_clave(casos, incidentes):
     return pd.concat(fechas).dropna() if fechas else pd.Series(dtype=PANDAS_DATETIME_DTYPE)
 
 
-def seleccionar_filtros_clientes_clave(fechas):
+def seleccionar_filtros_clientes_clave(fechas, key_prefix="clientes_clave"):
     filtro_col1, filtro_col2, filtro_col3 = st.columns([2, 1, 1])
     with filtro_col1:
         clientes_seleccionados = st.multiselect(
             "Clientes",
             CLIENTES_CLAVE,
             default=CLIENTES_CLAVE,
-            key="clientes_clave_filtro",
+            key=f"{key_prefix}_filtro",
         )
     with filtro_col2:
         base_meses = pd.DataFrame({TEXT_CREADO_DT: fechas})
-        mes_dashboard = selector_mes_dashboard(base_meses, "clientes_clave_mes", TEXT_CREADO_DT)
+        mes_dashboard = selector_mes_dashboard(base_meses, f"{key_prefix}_mes", TEXT_CREADO_DT)
     with filtro_col3:
-        rango_fechas = selector_rango_fechas_clientes(fechas)
+        rango_fechas = selector_rango_fechas_clientes(fechas, key_prefix)
     return clientes_seleccionados, mes_dashboard, rango_fechas
 
 
-def selector_rango_fechas_clientes(fechas):
+def selector_rango_fechas_clientes(fechas, key_prefix="clientes_clave"):
     if fechas.empty:
         return None
     fecha_min = fechas.min().date()
@@ -3640,7 +3641,7 @@ def selector_rango_fechas_clientes(fechas):
         value=(fecha_min, fecha_max),
         min_value=fecha_min,
         max_value=fecha_max,
-        key="clientes_clave_rango",
+        key=f"{key_prefix}_rango",
     )
 
 
@@ -3999,6 +4000,150 @@ def render_tabs_clientes_clave(resumen, casos, incidentes, resumen_actividad):
         render_tab_incidentes_clientes(incidentes)
     with tab_seguimiento:
         render_tab_seguimiento_clientes(resumen_actividad)
+
+
+def render_tarjetas_kpi_clientes_clave(metricas, resumen_actividad):
+    score_promedio = (
+        round(resumen_actividad[TEXT_SCORE].mean(), 2)
+        if not resumen_actividad.empty and TEXT_SCORE in resumen_actividad.columns
+        else 100
+    )
+    render_tarjetas(
+        [
+            ("Clientes activos", metricas["clientes_activos"]),
+            (TEXT_ATENCIONES, metricas[TEXT_TOTAL_CASOS] + metricas[TEXT_TOTAL_INCIDENTES]),
+            (TEXT_CASOS, metricas[TEXT_TOTAL_CASOS]),
+            (TEXT_INCIDENTES, metricas[TEXT_TOTAL_INCIDENTES]),
+            (TEXT_ABIERTOS, metricas["abiertos"]),
+            ("En seguimiento", metricas["clientes_seguimiento"]),
+            (f"SLA casos <{SLA_CASOS_HORAS}h", f"{metricas['sla_casos']}%"),
+            ("SLA incidentes", f"{metricas['sla_incidentes']}%"),
+            ("Score promedio", score_promedio),
+        ]
+    )
+
+
+def fila_cliente_prioritario(resumen_actividad):
+    if resumen_actividad.empty:
+        return None
+    seguimiento = clientes_en_seguimiento(resumen_actividad)
+    base = seguimiento if not seguimiento.empty else resumen_actividad
+    return base.sort_values(
+        by=[TEXT_SCORE, TEXT_ABIERTOS, COL_TOTAL_ATENCIONES],
+        ascending=[True, False, False],
+    ).iloc[0]
+
+
+def render_lectura_kpi_clientes_clave(metricas, resumen_actividad):
+    if resumen_actividad.empty:
+        st.info("No hay clientes clave con actividad para generar lectura KPI.")
+        return
+
+    total_atenciones = metricas[TEXT_TOTAL_CASOS] + metricas[TEXT_TOTAL_INCIDENTES]
+    mayor_actividad = resumen_actividad.sort_values(by=COL_TOTAL_ATENCIONES, ascending=False).iloc[0]
+    prioritario = fila_cliente_prioritario(resumen_actividad)
+    alertas = int(resumen_actividad[COL_ALERTAS_INCIDENTES].sum())
+    prioridades_altas = int(resumen_actividad[PRIORIDAD_ALTA].sum())
+
+    cliente_top = html.escape(str(mayor_actividad[TEXT_CLIENTE]))
+    cliente_prioritario = html.escape(str(prioritario[TEXT_CLIENTE]))
+    contenido = f"""
+    <div class="executive-note">
+        <div class="executive-note-title">Lectura</div>
+        <div class="executive-note-line">Cliente con mas actividad: <strong>{cliente_top}</strong> ({int(mayor_actividad[COL_TOTAL_ATENCIONES])} atenciones).</div>
+        <div class="executive-note-line">Cliente a priorizar: <strong>{cliente_prioritario}</strong> (score {prioritario[TEXT_SCORE]}, abiertos {int(prioritario[TEXT_ABIERTOS])}).</div>
+        <div class="executive-note-detail">Total analizado: {total_atenciones} atenciones, con {metricas['clientes_seguimiento']} clientes en seguimiento, {alertas} alertas y {prioridades_altas} prioridades altas.</div>
+        <div class="executive-note-conclusion">SLA casos: {metricas['sla_casos']}% | SLA incidentes: {metricas['sla_incidentes']}%.</div>
+    </div>
+    """
+    st.markdown(contenido, unsafe_allow_html=True)
+
+
+def render_grafico_estado_kpi_clientes(resumen_actividad):
+    if resumen_actividad.empty:
+        st.info("No hay actividad para graficar estados de clientes.")
+        return
+    estados = (
+        resumen_actividad[TEXT_NIVEL]
+        .value_counts()
+        .rename_axis(TEXT_NIVEL)
+        .reset_index(name=TEXT_CANTIDAD)
+        .sort_values(by=TEXT_CANTIDAD, ascending=True)
+    )
+    fig = px.bar(
+        estados,
+        x=TEXT_CANTIDAD,
+        y=TEXT_NIVEL,
+        orientation="h",
+        text=TEXT_CANTIDAD,
+        color=TEXT_NIVEL,
+        color_discrete_map={
+            "Verde": UI_PALETTE[TEXT_LAVENDER],
+            TEXT_AMARILLO: UI_PALETTE[TEXT_YELLOW],
+            "Rojo": UI_PALETTE[TEXT_PRIMARY],
+        },
+    )
+    fig.update_traces(textposition=TEXT_OUTSIDE)
+    st.plotly_chart(aplicar_estilo_figura(fig, "Estado de clientes clave"), use_container_width=True)
+
+
+def render_detalle_kpi_clientes_clave(resumen, casos, incidentes):
+    with st.expander("Detalle KPI por cliente", expanded=True):
+        render_tab_resumen_clientes(resumen)
+    with st.expander("Atenciones abiertas"):
+        render_tab_abiertos_clientes(casos, incidentes)
+
+
+def dashboard_kpi_clientes_clave():
+    casos = preparar_casos_clientes_clave(load_casos())
+    incidentes = preparar_incidentes_clientes_clave(load_incidentes())
+    st.subheader(MENU_KPI_CLIENTES_CLAVE)
+
+    fechas = fechas_clientes_clave(casos, incidentes)
+    clientes_seleccionados, mes_dashboard, rango_fechas = seleccionar_filtros_clientes_clave(
+        fechas,
+        "kpi_clientes_clave",
+    )
+    if not clientes_seleccionados:
+        st.warning("Selecciona al menos un cliente clave.")
+        return
+
+    casos, incidentes = aplicar_filtros_clientes_clave(
+        casos,
+        incidentes,
+        clientes_seleccionados,
+        mes_dashboard,
+        rango_fechas,
+    )
+    resumen = resumen_clientes_clave(casos, incidentes)
+    resumen = resumen[resumen[TEXT_CLIENTE].isin(clientes_seleccionados)].copy()
+    resumen_actividad = resumen[resumen[COL_TOTAL_ATENCIONES] > 0].copy()
+    metricas = metricas_dashboard_clientes(casos, incidentes, resumen_actividad)
+
+    render_tarjetas_kpi_clientes_clave(metricas, resumen_actividad)
+    st.caption(
+        f"{TEXT_PERIODO}{mes_dashboard} | Clientes seleccionados: {len(clientes_seleccionados)} | "
+        f"Casos: {metricas[TEXT_TOTAL_CASOS]} | Incidentes: {metricas[TEXT_TOTAL_INCIDENTES]}"
+    )
+    render_clientes_sin_actividad(resumen)
+
+    if resumen_actividad.empty:
+        st.info("No hay casos o incidentes asociados a los clientes seleccionados en el periodo.")
+        return
+
+    col_grafico, col_lectura = st.columns([2.15, 1])
+    with col_grafico:
+        render_grafico_atenciones_cliente(resumen_actividad)
+    with col_lectura:
+        render_lectura_kpi_clientes_clave(metricas, resumen_actividad)
+
+    estado_col, actividad_col = st.columns(2)
+    with estado_col:
+        render_grafico_estado_kpi_clientes(resumen_actividad)
+    with actividad_col:
+        render_grafico_actividad_clientes(casos, incidentes)
+
+    render_detalle_kpi_clientes_clave(resumen, casos, incidentes)
 
 
 def dashboard_clientes_clave():
@@ -4397,6 +4542,7 @@ ADMIN_MENU_OPTIONS = [
     "Dashboard Incidentes",
     MENU_KPI_INCIDENTES,
     MENU_SEGUIMIENTO_INCIDENTES_ADMIN,
+    MENU_KPI_CLIENTES_CLAVE,
     "Clientes Clave",
     "Administrar Usuarios",
 ]
@@ -4407,6 +4553,7 @@ VIEWER_MENU_OPTIONS = [
     TEXT_INCIDENTES,
     MENU_KPI_INCIDENTES,
     MENU_SEGUIMIENTO_INCIDENTES_VIEWER,
+    MENU_KPI_CLIENTES_CLAVE,
     MENU_CLIENTES_CLAVE,
 ]
 
@@ -4420,6 +4567,7 @@ ADMIN_VIEWS = {
     "Dashboard Incidentes": dashboard_incidentes,
     MENU_KPI_INCIDENTES: dashboard_kpi_incidentes,
     MENU_SEGUIMIENTO_INCIDENTES_ADMIN: vista_seguimiento_incidentes,
+    MENU_KPI_CLIENTES_CLAVE: dashboard_kpi_clientes_clave,
     "Clientes Clave": dashboard_clientes_clave,
     "Administrar Usuarios": vista_administrar_usuarios,
 }
@@ -4430,6 +4578,7 @@ VIEWER_VIEWS = {
     TEXT_INCIDENTES: dashboard_incidentes,
     MENU_KPI_INCIDENTES: dashboard_kpi_incidentes,
     MENU_SEGUIMIENTO_INCIDENTES_VIEWER: vista_seguimiento_incidentes,
+    MENU_KPI_CLIENTES_CLAVE: dashboard_kpi_clientes_clave,
     MENU_CLIENTES_CLAVE: dashboard_clientes_clave,
 }
 
