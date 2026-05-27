@@ -1,9 +1,11 @@
 import html
 import re
+from io import BytesIO
 
 import pandas as pd
 import plotly.express as px
 import streamlit as st
+from PIL import Image, ImageDraw, ImageFont
 
 from app_logic import (
     agregar_campos_sla_incidentes,
@@ -966,7 +968,7 @@ def aplicar_tema_visual():
         .slide-panel-title {{
             color: var(--primary);
             font-size: 1.18rem;
-            font-weight: 900;
+            font-weight: 800;
             line-height: 1.2;
             margin-bottom: 0.9rem;
         }}
@@ -987,7 +989,7 @@ def aplicar_tema_visual():
         .slide-ranking-label {{
             color: var(--text);
             font-size: 0.96rem;
-            font-weight: 900;
+            font-weight: 650;
             line-height: 1.18;
             overflow: hidden;
             text-overflow: ellipsis;
@@ -1010,7 +1012,7 @@ def aplicar_tema_visual():
         .slide-ranking-value {{
             color: var(--text);
             font-size: 1.05rem;
-            font-weight: 900;
+            font-weight: 800;
             text-align: right;
             font-variant-numeric: tabular-nums;
         }}
@@ -1021,18 +1023,18 @@ def aplicar_tema_visual():
             gap: 0.64rem;
             color: var(--text);
             font-size: 1rem;
-            font-weight: 700;
+            font-weight: 500;
             line-height: 1.38;
         }}
 
         .slide-note strong {{
             color: var(--text);
-            font-weight: 900;
+            font-weight: 700;
         }}
 
         .slide-note-muted {{
             color: var(--muted);
-            font-weight: 700;
+            font-weight: 500;
         }}
 
         @media (max-width: 900px) {{
@@ -2327,6 +2329,259 @@ def render_slide_frame_kpi(titulo, periodo, tarjetas, caption, izquierda_html, d
     st.markdown(contenido, unsafe_allow_html=True)
 
 
+def color_rgb(hex_color):
+    color = hex_color.lstrip("#")
+    return tuple(int(color[indice : indice + 2], 16) for indice in (0, 2, 4))
+
+
+def fuente_slide(tamano, bold=False):
+    candidatos = (
+        [
+            "C:/Windows/Fonts/arialbd.ttf",
+            "C:/Windows/Fonts/segoeuib.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        ]
+        if bold
+        else [
+            "C:/Windows/Fonts/arial.ttf",
+            "C:/Windows/Fonts/segoeui.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        ]
+    )
+    for ruta in candidatos:
+        try:
+            return ImageFont.truetype(ruta, tamano)
+        except OSError:
+            continue
+    return ImageFont.load_default()
+
+
+def texto_plano_html(valor):
+    texto = re.sub(r"<[^>]+>", "", str(valor or ""))
+    return html.unescape(texto).strip()
+
+
+def ancho_texto(draw, texto, fuente):
+    bbox = draw.textbbox((0, 0), texto, font=fuente)
+    return bbox[2] - bbox[0]
+
+
+def cortar_texto(draw, texto, fuente, max_width):
+    if ancho_texto(draw, texto, fuente) <= max_width:
+        return texto
+    puntos = "..."
+    disponible = max_width - ancho_texto(draw, puntos, fuente)
+    if disponible <= 0:
+        return puntos
+    inicio, fin = 0, len(texto)
+    while inicio < fin:
+        medio = (inicio + fin + 1) // 2
+        if ancho_texto(draw, texto[:medio], fuente) <= disponible:
+            inicio = medio
+        else:
+            fin = medio - 1
+    return texto[:inicio].rstrip() + puntos
+
+
+def envolver_texto(draw, texto, fuente, max_width, max_lines=None):
+    palabras = str(texto or "").split()
+    lineas = []
+    linea = ""
+    for palabra in palabras:
+        candidata = f"{linea} {palabra}".strip()
+        if ancho_texto(draw, candidata, fuente) <= max_width:
+            linea = candidata
+            continue
+        if linea:
+            lineas.append(linea)
+        if ancho_texto(draw, palabra, fuente) > max_width:
+            lineas.append(cortar_texto(draw, palabra, fuente, max_width))
+            linea = ""
+        else:
+            linea = palabra
+        if max_lines and len(lineas) >= max_lines:
+            break
+    if linea and (not max_lines or len(lineas) < max_lines):
+        lineas.append(linea)
+    if max_lines and len(lineas) > max_lines:
+        lineas = lineas[:max_lines]
+    if max_lines and len(lineas) == max_lines:
+        lineas[-1] = cortar_texto(draw, lineas[-1], fuente, max_width)
+    return lineas
+
+
+def dibujar_texto_envuelto(draw, texto, xy, fuente, fill, max_width, line_gap=6, max_lines=None):
+    x, y = xy
+    alto_linea = fuente.size + line_gap
+    for linea in envolver_texto(draw, texto, fuente, max_width, max_lines):
+        draw.text((x, y), linea, font=fuente, fill=fill)
+        y += alto_linea
+    return y
+
+
+def ranking_para_slide(panel):
+    df = panel["df"]
+    valor_columna = panel["valor_columna"]
+    if df.empty:
+        return pd.DataFrame(columns=[panel["etiqueta_columna"], valor_columna])
+    ranking = df.copy()
+    ranking[valor_columna] = pd.to_numeric(ranking[valor_columna], errors=TEXT_COERCE).fillna(0)
+    return (
+        ranking[ranking[valor_columna] > 0]
+        .sort_values(by=valor_columna, ascending=False)
+        .head(panel.get("top_n", 6))
+    )
+
+
+def dibujar_tarjetas_slide(draw, tarjetas, x, y, width):
+    gap = 14
+    alto = 118
+    cantidad = len(tarjetas)
+    ancho = (width - gap * (cantidad - 1)) / cantidad
+    borde = color_rgb(UI_PALETTE["border"])
+    naranja = color_rgb(UI_PALETTE[TEXT_PRIMARY])
+    texto = color_rgb(UI_PALETTE["text"])
+    titulo_font = fuente_slide(20, bold=True)
+    valor_font = fuente_slide(44, bold=True)
+    for indice, (titulo, valor) in enumerate(tarjetas):
+        x0 = int(x + indice * (ancho + gap))
+        x1 = int(x0 + ancho)
+        draw.rounded_rectangle((x0, y, x1, y + alto), radius=12, fill="white", outline=borde, width=2)
+        draw.rounded_rectangle((x0, y, x1, y + 7), radius=8, fill=naranja)
+        titulo_lineas = envolver_texto(draw, str(titulo), titulo_font, int(ancho - 24), max_lines=2)
+        titulo_y = y + 28 if len(titulo_lineas) == 1 else y + 20
+        for linea in titulo_lineas:
+            linea_x = x0 + (ancho - ancho_texto(draw, linea, titulo_font)) / 2
+            draw.text((linea_x, titulo_y), linea, font=titulo_font, fill=texto)
+            titulo_y += 23
+        valor_texto = str(valor)
+        valor_x = x0 + (ancho - ancho_texto(draw, valor_texto, valor_font)) / 2
+        draw.text((valor_x, y + 66), valor_texto, font=valor_font, fill=naranja)
+    return y + alto
+
+
+def dibujar_ranking_panel(draw, panel, x, y, width, height):
+    borde = color_rgb(UI_PALETTE["border"])
+    texto = color_rgb(UI_PALETTE["text"])
+    muted = color_rgb(UI_PALETTE["muted"])
+    naranja = color_rgb(UI_PALETTE[TEXT_PRIMARY])
+    mostaza = color_rgb(UI_PALETTE["mustard"])
+    pista = (241, 243, 245)
+    title_font = fuente_slide(24, bold=True)
+    label_font = fuente_slide(20, bold=False)
+    value_font = fuente_slide(22, bold=True)
+    draw.rounded_rectangle((x, y, x + width, y + height), radius=12, fill="white", outline=borde, width=2)
+    draw.text((x + 18, y + 18), str(panel["titulo"]), font=title_font, fill=naranja)
+    ranking = ranking_para_slide(panel)
+    if ranking.empty:
+        draw.text((x + 18, y + 70), "Sin datos para mostrar.", font=label_font, fill=muted)
+        return
+    maximo = ranking[panel["valor_columna"]].max()
+    row_top = y + 72
+    row_gap = 15
+    row_height = min(52, max(34, int((height - 92) / max(len(ranking), 1))))
+    label_w = int(width * 0.48)
+    value_w = 54
+    bar_x = x + 22 + label_w + 18
+    bar_w = width - 44 - label_w - value_w - 34
+    for fila_idx, (_, row) in enumerate(ranking.iterrows()):
+        y_row = row_top + fila_idx * row_height
+        if y_row + 24 > y + height - 12:
+            break
+        etiqueta = texto_ranking_kpi(valor_limpio(row[panel["etiqueta_columna"]]) or SIN_DATO, panel.get("limite", 62))
+        etiqueta = cortar_texto(draw, etiqueta, label_font, label_w)
+        valor = float(row[panel["valor_columna"]])
+        porcentaje_barra = valor / maximo if maximo else 0
+        draw.text((x + 22, y_row), etiqueta, font=label_font, fill=texto)
+        track_y = y_row + 5
+        draw.rounded_rectangle((bar_x, track_y, bar_x + bar_w, track_y + 18), radius=9, fill=pista)
+        draw.rounded_rectangle((bar_x, track_y, bar_x + max(8, int(bar_w * porcentaje_barra)), track_y + 18), radius=9, fill=mostaza)
+        valor_texto = numero_ranking_kpi(valor)
+        draw.text((x + width - 22 - ancho_texto(draw, valor_texto, value_font), y_row - 1), valor_texto, font=value_font, fill=texto)
+        row_top += row_gap
+
+
+def dibujar_nota_slide(draw, titulo, lineas, x, y, width, height):
+    borde = color_rgb(UI_PALETTE["border"])
+    texto = color_rgb(UI_PALETTE["text"])
+    naranja = color_rgb(UI_PALETTE[TEXT_PRIMARY])
+    title_font = fuente_slide(24, bold=True)
+    body_font = fuente_slide(21, bold=False)
+    draw.rounded_rectangle((x, y, x + width, y + height), radius=12, fill="white", outline=borde, width=2)
+    draw.text((x + 18, y + 18), str(titulo), font=title_font, fill=naranja)
+    cursor_y = y + 66
+    max_width = width - 36
+    for linea in lineas:
+        texto_linea = texto_plano_html(linea)
+        if not texto_linea:
+            continue
+        cursor_y = dibujar_texto_envuelto(
+            draw,
+            texto_linea,
+            (x + 18, cursor_y),
+            body_font,
+            texto,
+            max_width,
+            line_gap=7,
+            max_lines=5,
+        )
+        cursor_y += 12
+        if cursor_y > y + height - 32:
+            break
+
+
+def crear_png_slide_kpi(titulo, periodo, tarjetas, caption, ranking_panels, note_lines):
+    width, height = 1600, 900
+    img = Image.new("RGB", (width, height), "white")
+    draw = ImageDraw.Draw(img)
+    borde = color_rgb(UI_PALETTE["border"])
+    texto = color_rgb(UI_PALETTE["text"])
+    muted = color_rgb(UI_PALETTE["muted"])
+    pad = 36
+    draw.rounded_rectangle((2, 2, width - 3, height - 3), radius=14, outline=borde, width=2)
+    period_font = fuente_slide(22, bold=False)
+    title_font = fuente_slide(36, bold=True)
+    caption_font = fuente_slide(22, bold=False)
+    periodo_texto = f"{TEXT_PERIODO}{periodo}" if periodo else ""
+    draw.text((pad, 24), periodo_texto, font=period_font, fill=muted)
+    draw.text((pad, 72), str(titulo), font=title_font, fill=texto)
+    cards_bottom = dibujar_tarjetas_slide(draw, tarjetas, pad, 126, width - 2 * pad)
+    draw.text((pad, cards_bottom + 14), str(caption), font=caption_font, fill=muted)
+    body_y = cards_bottom + 58
+    body_h = height - body_y - pad
+    gap = 18
+    note_w = 430
+    left_w = width - 2 * pad - note_w - gap
+    if len(ranking_panels) > 1:
+        panel_gap = 14
+        panel_w = int((left_w - panel_gap) / 2)
+        for indice, panel in enumerate(ranking_panels[:2]):
+            dibujar_ranking_panel(draw, panel, pad + indice * (panel_w + panel_gap), body_y, panel_w, body_h)
+    else:
+        dibujar_ranking_panel(draw, ranking_panels[0], pad, body_y, left_w, body_h)
+    dibujar_nota_slide(draw, "Lectura", note_lines, pad + left_w + gap, body_y, note_w, body_h)
+    buffer = BytesIO()
+    img.save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
+def nombre_archivo_slide(titulo, periodo):
+    base = normalizar_texto(f"{titulo} {periodo or ''}")
+    base = re.sub(r"[^a-z0-9]+", "_", base).strip("_") or "kpi_slide"
+    return f"{base}.png"
+
+
+def render_descarga_slide_png(titulo, periodo, tarjetas, caption, ranking_panels, note_lines):
+    png = crear_png_slide_kpi(titulo, periodo, tarjetas, caption, ranking_panels, note_lines)
+    st.download_button(
+        "Descargar imagen PNG",
+        data=png,
+        file_name=nombre_archivo_slide(titulo, periodo),
+        mime="image/png",
+        use_container_width=True,
+    )
+
+
 def grafico_barras_kpi(df, x, y, titulo, color):
     render_ranking_kpi(df, y, x, titulo)
 
@@ -2382,6 +2637,15 @@ def render_slide_kpi_casos_cliente_externo(base, metricas, mes_dashboard):
         f"Cumplen SLA: {metricas['cumple_sla']} | No cumplen: {metricas['no_cumple_sla']}"
     )
     tipificaciones = conteo_top_con_otras(base["_tipificacion_kpi"], top_n=3)
+    panel_ranking = {
+        "df": tipificaciones,
+        "etiqueta_columna": TEXT_TIPOLOGIA,
+        "valor_columna": TEXT_CANTIDAD,
+        "titulo": "Top 3 tipificaciones + otras",
+        "top_n": 4,
+        "limite": 68,
+    }
+    lineas = lineas_lectura_kpi_casos(metricas, base)
     izquierda = slide_ranking_html(
         tipificaciones,
         TEXT_TIPOLOGIA,
@@ -2389,8 +2653,16 @@ def render_slide_kpi_casos_cliente_externo(base, metricas, mes_dashboard):
         "Top 3 tipificaciones + otras",
         top_n=4,
     )
-    derecha = slide_note_html("Lectura", lineas_lectura_kpi_casos(metricas, base))
+    derecha = slide_note_html("Lectura", lineas)
     render_slide_frame_kpi("KPI Casos Cliente Externo", mes_dashboard, tarjetas, caption, izquierda, derecha)
+    render_descarga_slide_png(
+        "KPI Casos Cliente Externo",
+        mes_dashboard,
+        tarjetas,
+        caption,
+        [panel_ranking],
+        lineas,
+    )
 
 
 def render_kpi_casos_cliente_externo(df, mes_dashboard=None):
@@ -2401,7 +2673,7 @@ def render_kpi_casos_cliente_externo(df, mes_dashboard=None):
     modo_diapositiva = st.toggle("Formato diapositiva 16:9", key="slide_kpi_casos_cliente_externo")
     if modo_diapositiva:
         render_slide_kpi_casos_cliente_externo(base, metricas, mes_dashboard)
-        st.caption("Captura el borde del recuadro blanco. La proporcion queda lista para PowerPoint 16:9.")
+        st.caption("Usa el boton de descarga para obtener la imagen PNG lista para PowerPoint 16:9.")
         return
 
     if mes_dashboard:
@@ -2827,14 +3099,34 @@ def render_slide_kpi_incidentes(metricas, causas, mes_dashboard):
     )
     ranking_externo = ranking_causas_segmento_kpi(causas, "Cliente externo")
     ranking_interno = ranking_causas_segmento_kpi(causas, "Cliente interno")
+    paneles = [
+        {
+            "df": ranking_externo,
+            "etiqueta_columna": COL_LECTURA_EJECUTIVA,
+            "valor_columna": TEXT_CANTIDAD,
+            "titulo": "Causas cliente externo",
+            "top_n": 5,
+            "limite": 54,
+        },
+        {
+            "df": ranking_interno,
+            "etiqueta_columna": COL_LECTURA_EJECUTIVA,
+            "valor_columna": TEXT_CANTIDAD,
+            "titulo": "Causas cliente interno",
+            "top_n": 5,
+            "limite": 54,
+        },
+    ]
+    lineas = lineas_lectura_kpi_incidentes(causas)
     izquierda = (
         '<div class="slide-panel-group">'
         f'{slide_ranking_html(ranking_externo, COL_LECTURA_EJECUTIVA, TEXT_CANTIDAD, "Causas cliente externo", top_n=5, limite=54)}'
         f'{slide_ranking_html(ranking_interno, COL_LECTURA_EJECUTIVA, TEXT_CANTIDAD, "Causas cliente interno", top_n=5, limite=54)}'
         "</div>"
     )
-    derecha = slide_note_html("Lectura", lineas_lectura_kpi_incidentes(causas))
+    derecha = slide_note_html("Lectura", lineas)
     render_slide_frame_kpi(MENU_KPI_INCIDENTES, mes_dashboard, tarjetas, caption, izquierda, derecha)
+    render_descarga_slide_png(MENU_KPI_INCIDENTES, mes_dashboard, tarjetas, caption, paneles, lineas)
 
 
 def render_kpi_incidentes(df, mes_dashboard=None):
@@ -2848,7 +3140,7 @@ def render_kpi_incidentes(df, mes_dashboard=None):
     modo_diapositiva = st.toggle("Formato diapositiva 16:9", key="slide_kpi_incidentes")
     if modo_diapositiva:
         render_slide_kpi_incidentes(metricas, causas, mes_dashboard)
-        st.caption("Captura el borde del recuadro blanco. La proporcion queda lista para PowerPoint 16:9.")
+        st.caption("Usa el boton de descarga para obtener la imagen PNG lista para PowerPoint 16:9.")
         return
 
     if mes_dashboard:
@@ -4578,6 +4870,15 @@ def render_slide_kpi_clientes_clave(metricas, resumen_actividad, mes_dashboard, 
         f"Clientes seleccionados: {len(clientes_seleccionados)} | "
         f"Casos: {metricas[TEXT_TOTAL_CASOS]} | Incidentes: {metricas[TEXT_TOTAL_INCIDENTES]}"
     )
+    panel_ranking = {
+        "df": resumen_actividad,
+        "etiqueta_columna": TEXT_CLIENTE,
+        "valor_columna": COL_TOTAL_ATENCIONES,
+        "titulo": "Atenciones por cliente clave",
+        "top_n": 6,
+        "limite": 58,
+    }
+    lineas = lineas_lectura_kpi_clientes_clave(metricas, resumen_actividad)
     izquierda = slide_ranking_html(
         resumen_actividad,
         TEXT_CLIENTE,
@@ -4586,8 +4887,9 @@ def render_slide_kpi_clientes_clave(metricas, resumen_actividad, mes_dashboard, 
         top_n=6,
         limite=58,
     )
-    derecha = slide_note_html("Lectura", lineas_lectura_kpi_clientes_clave(metricas, resumen_actividad))
+    derecha = slide_note_html("Lectura", lineas)
     render_slide_frame_kpi(MENU_KPI_CLIENTES_CLAVE, mes_dashboard, tarjetas, caption, izquierda, derecha)
+    render_descarga_slide_png(MENU_KPI_CLIENTES_CLAVE, mes_dashboard, tarjetas, caption, [panel_ranking], lineas)
 
 
 
@@ -4620,7 +4922,7 @@ def dashboard_kpi_clientes_clave():
     modo_diapositiva = st.toggle("Formato diapositiva 16:9", key="slide_kpi_clientes_clave")
     if modo_diapositiva and not resumen_actividad.empty:
         render_slide_kpi_clientes_clave(metricas, resumen_actividad, mes_dashboard, clientes_seleccionados)
-        st.caption("Captura el borde del recuadro blanco. La proporcion queda lista para PowerPoint 16:9.")
+        st.caption("Usa el boton de descarga para obtener la imagen PNG lista para PowerPoint 16:9.")
         return
 
     render_tarjetas_kpi_clientes_clave(metricas)
