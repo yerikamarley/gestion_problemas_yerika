@@ -135,11 +135,11 @@ TEXT_TOTAL_INCIDENTES = 'total_incidentes'
 TEXT_VIEWER = 'viewer'
 
 UI_PALETTE = {
-    "bg": "#fffafa",
-    "bg_soft": "#fff3ec",
-    "surface": "#fffafa",
-    "surface_alt": "#fff4ef",
-    "border": "#ead8d1",
+    "bg": "#ffffff",
+    "bg_soft": "#ffffff",
+    "surface": "#ffffff",
+    "surface_alt": "#ffffff",
+    "border": "#e5e7eb",
 
     "text": "#141414",
     "muted": "#5a5151",
@@ -569,7 +569,7 @@ def aplicar_tema_visual():
         }}
 
         html, body, [data-testid="stAppViewContainer"], .stApp {{
-            background: linear-gradient(180deg, var(--bg-soft) 0%, var(--bg) 42%, var(--surface) 100%);
+            background: var(--bg) !important;
             color: var(--text) !important;
             color-scheme: light !important;
         }}
@@ -579,7 +579,7 @@ def aplicar_tema_visual():
         }}
 
         [data-testid="stSidebar"] {{
-            background: linear-gradient(180deg, var(--surface) 0%, var(--surface-alt) 100%) !important;
+            background: var(--surface) !important;
             border-right: 1px solid var(--border);
         }}
 
@@ -927,7 +927,7 @@ def estilos_login():
 
         /* Fondo general */
         .stApp {
-            background: linear-gradient(180deg, var(--bg-soft) 0%, var(--bg) 54%, var(--surface) 100%);
+            background: var(--bg) !important;
         }
 
         .block-container {
