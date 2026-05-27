@@ -867,6 +867,174 @@ def aplicar_tema_visual():
             font-weight: 700;
         }}
 
+        .slide-frame {{
+            width: min(100%, 1600px);
+            aspect-ratio: 16 / 9;
+            background: #ffffff;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            box-shadow: 0 12px 28px rgba(20, 20, 20, 0.08);
+            padding: 28px 32px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            overflow: hidden;
+        }}
+
+        .slide-period {{
+            color: var(--muted);
+            font-size: 1.04rem;
+            font-weight: 700;
+            line-height: 1.15;
+        }}
+
+        .slide-title {{
+            color: var(--text);
+            font-size: 1.85rem;
+            font-weight: 900;
+            line-height: 1.12;
+        }}
+
+        .slide-kpi-grid {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(165px, 1fr));
+            gap: 12px;
+        }}
+
+        .slide-kpi-card {{
+            background: #ffffff;
+            border: 1px solid var(--border);
+            border-top: 4px solid var(--primary);
+            border-radius: 8px;
+            min-height: 104px;
+            padding: 16px 12px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+        }}
+
+        .slide-kpi-title {{
+            color: var(--text);
+            font-size: 0.92rem;
+            font-weight: 900;
+            line-height: 1.18;
+            text-transform: uppercase;
+        }}
+
+        .slide-kpi-value {{
+            color: var(--primary);
+            font-size: 2.35rem;
+            font-weight: 900;
+            line-height: 1;
+            margin-top: 0.42rem;
+            font-variant-numeric: tabular-nums;
+        }}
+
+        .slide-caption {{
+            color: var(--muted);
+            font-size: 1.02rem;
+            font-weight: 700;
+            line-height: 1.25;
+        }}
+
+        .slide-body {{
+            display: grid;
+            grid-template-columns: minmax(0, 2fr) minmax(300px, 0.9fr);
+            gap: 14px;
+            min-height: 0;
+            flex: 1;
+        }}
+
+        .slide-panel {{
+            background: #ffffff;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 16px 18px;
+            min-height: 0;
+            overflow: hidden;
+        }}
+
+        .slide-panel-group {{
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 14px;
+            min-height: 0;
+        }}
+
+        .slide-panel-title {{
+            color: var(--primary);
+            font-size: 1.18rem;
+            font-weight: 900;
+            line-height: 1.2;
+            margin-bottom: 0.9rem;
+        }}
+
+        .slide-ranking-list {{
+            display: flex;
+            flex-direction: column;
+            gap: 0.64rem;
+        }}
+
+        .slide-ranking-row {{
+            display: grid;
+            grid-template-columns: minmax(0, 1.6fr) minmax(120px, 1fr) 3.1rem;
+            gap: 0.8rem;
+            align-items: center;
+        }}
+
+        .slide-ranking-label {{
+            color: var(--text);
+            font-size: 0.96rem;
+            font-weight: 900;
+            line-height: 1.18;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }}
+
+        .slide-ranking-track {{
+            height: 17px;
+            background: #f1f3f5;
+            border-radius: 999px;
+            overflow: hidden;
+        }}
+
+        .slide-ranking-bar {{
+            height: 100%;
+            background: var(--mustard);
+            border-radius: inherit;
+        }}
+
+        .slide-ranking-value {{
+            color: var(--text);
+            font-size: 1.05rem;
+            font-weight: 900;
+            text-align: right;
+            font-variant-numeric: tabular-nums;
+        }}
+
+        .slide-note {{
+            display: flex;
+            flex-direction: column;
+            gap: 0.64rem;
+            color: var(--text);
+            font-size: 1rem;
+            font-weight: 700;
+            line-height: 1.38;
+        }}
+
+        .slide-note strong {{
+            color: var(--text);
+            font-weight: 900;
+        }}
+
+        .slide-note-muted {{
+            color: var(--muted);
+            font-weight: 700;
+        }}
+
         @media (max-width: 900px) {{
             .block-container {{
                 padding-left: 1rem;
@@ -902,6 +1070,20 @@ def aplicar_tema_visual():
 
             .kpi-ranking-row {{
                 grid-template-columns: minmax(0, 1.35fr) minmax(90px, 1fr) 2.8rem;
+            }}
+
+            .slide-frame {{
+                aspect-ratio: auto;
+                min-height: 760px;
+                padding: 22px;
+            }}
+
+            .slide-body {{
+                grid-template-columns: 1fr;
+            }}
+
+            .slide-panel-group {{
+                grid-template-columns: 1fr;
             }}
 
             [data-testid="stTabs"] div[role="tablist"] {{
@@ -2073,6 +2255,78 @@ def render_ranking_kpi(df, etiqueta_columna, valor_columna, titulo, top_n=6):
     st.markdown(contenido, unsafe_allow_html=True)
 
 
+def slide_kpi_cards_html(items):
+    tarjetas = []
+    for titulo, valor in items:
+        tarjetas.append(
+            '<div class="slide-kpi-card">'
+            f'<div class="slide-kpi-title">{html.escape(str(titulo))}</div>'
+            f'<div class="slide-kpi-value">{html.escape(str(valor))}</div>'
+            "</div>"
+        )
+    return f'<div class="slide-kpi-grid">{"".join(tarjetas)}</div>'
+
+
+def slide_ranking_html(df, etiqueta_columna, valor_columna, titulo, top_n=6, limite=68):
+    if df.empty:
+        filas = '<div class="kpi-ranking-empty">Sin datos para mostrar.</div>'
+    else:
+        ranking = df.copy()
+        ranking[valor_columna] = pd.to_numeric(ranking[valor_columna], errors=TEXT_COERCE).fillna(0)
+        ranking = ranking[ranking[valor_columna] > 0].sort_values(by=valor_columna, ascending=False).head(top_n)
+        maximo = ranking[valor_columna].max() if not ranking.empty else 0
+        filas_lista = []
+        for _, row in ranking.iterrows():
+            valor = row[valor_columna]
+            porcentaje_barra = (valor / maximo) * 100 if maximo else 0
+            etiqueta_completa = valor_limpio(row[etiqueta_columna]) or SIN_DATO
+            etiqueta = texto_ranking_kpi(etiqueta_completa, limite)
+            filas_lista.append(
+                '<div class="slide-ranking-row">'
+                f'<div class="slide-ranking-label" title="{html.escape(etiqueta_completa)}">{html.escape(etiqueta)}</div>'
+                '<div class="slide-ranking-track">'
+                f'<div class="slide-ranking-bar" style="width: max(8px, {porcentaje_barra:.2f}%);"></div>'
+                "</div>"
+                f'<div class="slide-ranking-value">{html.escape(numero_ranking_kpi(valor))}</div>'
+                "</div>"
+            )
+        filas = "".join(filas_lista) if filas_lista else '<div class="kpi-ranking-empty">Sin datos para mostrar.</div>'
+
+    return (
+        '<div class="slide-panel">'
+        f'<div class="slide-panel-title">{html.escape(str(titulo))}</div>'
+        f'<div class="slide-ranking-list">{filas}</div>'
+        "</div>"
+    )
+
+
+def slide_note_html(titulo, lineas):
+    contenido_lineas = "".join(f'<div>{linea}</div>' for linea in lineas if linea)
+    return (
+        '<div class="slide-panel">'
+        f'<div class="slide-panel-title">{html.escape(str(titulo))}</div>'
+        f'<div class="slide-note">{contenido_lineas}</div>'
+        "</div>"
+    )
+
+
+def render_slide_frame_kpi(titulo, periodo, tarjetas, caption, izquierda_html, derecha_html):
+    periodo_html = f"{TEXT_PERIODO}{periodo}" if periodo else ""
+    contenido = (
+        '<div class="slide-frame">'
+        f'<div class="slide-period">{html.escape(periodo_html)}</div>'
+        f'<div class="slide-title">{html.escape(str(titulo))}</div>'
+        f"{slide_kpi_cards_html(tarjetas)}"
+        f'<div class="slide-caption">{html.escape(str(caption))}</div>'
+        '<div class="slide-body">'
+        f"{izquierda_html}"
+        f"{derecha_html}"
+        "</div>"
+        "</div>"
+    )
+    st.markdown(contenido, unsafe_allow_html=True)
+
+
 def grafico_barras_kpi(df, x, y, titulo, color):
     render_ranking_kpi(df, y, x, titulo)
 
@@ -2088,26 +2342,70 @@ def resumen_otras_tipificaciones(base, top_n=3):
     return f"Otras categorias agrupan {total_otras} casos fuera del top 3: {principales_otras}."
 
 
-def render_lectura_kpi(metricas, base):
+def lineas_lectura_kpi_casos(metricas, base):
     causa_principal = metricas[COL_PRINCIPAL_CAUSA_COMUN]
     detalle_causa = resumen_detalle_causa_principal(base, causa_principal)
+    return [
+        (
+            "Principal tipificacion: "
+            f"<strong>{html.escape(str(metricas[COL_PRINCIPAL_TIPIFICACION]))}</strong>"
+        ),
+        f"Causa comun: <strong>{html.escape(str(causa_principal))}</strong>",
+        f'<div class="slide-note-muted">{html.escape(detalle_causa)}</div>',
+        f'<div class="slide-note-muted">{html.escape(resumen_otras_tipificaciones(base))}</div>',
+    ]
+
+
+def render_lectura_kpi(metricas, base):
+    lineas = lineas_lectura_kpi_casos(metricas, base)
     contenido = f"""
     <div class="executive-note">
         <div class="executive-note-title">Lectura</div>
-        <div class="executive-note-line">Principal tipificacion: <strong>{html.escape(str(metricas[COL_PRINCIPAL_TIPIFICACION]))}</strong></div>
-        <div class="executive-note-line">Causa comun: <strong>{html.escape(str(causa_principal))}</strong></div>
-        <div class="executive-note-detail">{html.escape(detalle_causa)}</div>
-        <div class="executive-note-conclusion">{html.escape(resumen_otras_tipificaciones(base))}</div>
+        <div class="executive-note-line">{lineas[0]}</div>
+        <div class="executive-note-line">{lineas[1]}</div>
+        <div class="executive-note-detail">{lineas[2]}</div>
+        <div class="executive-note-conclusion">{lineas[3]}</div>
     </div>
     """
     st.markdown(contenido, unsafe_allow_html=True)
 
 
-def render_kpi_casos_cliente_externo(df):
+def render_slide_kpi_casos_cliente_externo(base, metricas, mes_dashboard):
+    tarjetas = [
+        ("Total casos", metricas["total"]),
+        ("Cerrados", metricas["cerrados"]),
+        ("Abiertos", metricas["abiertos"]),
+        (f"Cumplimiento SLA <={SLA_CASOS_HORAS} h", f"{metricas['cumplimiento_sla']}%"),
+    ]
+    caption = (
+        f"Tiempo promedio: {metricas['promedio']} h | "
+        f"Cumplen SLA: {metricas['cumple_sla']} | No cumplen: {metricas['no_cumple_sla']}"
+    )
+    tipificaciones = conteo_top_con_otras(base["_tipificacion_kpi"], top_n=3)
+    izquierda = slide_ranking_html(
+        tipificaciones,
+        TEXT_TIPOLOGIA,
+        TEXT_CANTIDAD,
+        "Top 3 tipificaciones + otras",
+        top_n=4,
+    )
+    derecha = slide_note_html("Lectura", lineas_lectura_kpi_casos(metricas, base))
+    render_slide_frame_kpi("KPI Casos Cliente Externo", mes_dashboard, tarjetas, caption, izquierda, derecha)
+
+
+def render_kpi_casos_cliente_externo(df, mes_dashboard=None):
     base, metricas = preparar_kpi_casos_cliente_externo(df)
     if base.empty:
         return
 
+    modo_diapositiva = st.toggle("Formato diapositiva 16:9", key="slide_kpi_casos_cliente_externo")
+    if modo_diapositiva:
+        render_slide_kpi_casos_cliente_externo(base, metricas, mes_dashboard)
+        st.caption("Captura el borde del recuadro blanco. La proporcion queda lista para PowerPoint 16:9.")
+        return
+
+    if mes_dashboard:
+        st.caption(f"{TEXT_PERIODO}{mes_dashboard}")
     st.subheader("KPI Casos Cliente Externo")
 
     render_tarjetas(
@@ -2432,14 +2730,28 @@ def texto_lectura_causa_segmento(causas, segmento):
     )
 
 
-def render_lectura_kpi_incidentes(causas):
+def lineas_lectura_kpi_incidentes(causas):
     lectura_externo = texto_lectura_causa_segmento(causas, "Cliente externo")
     lectura_interno = texto_lectura_causa_segmento(causas, "Cliente interno")
+    return [
+        (
+            "<strong>Cliente externo:</strong> "
+            f'{html.escape(lectura_externo.replace("Cliente externo: ", ""))}'
+        ),
+        (
+            "<strong>Cliente interno:</strong> "
+            f'{html.escape(lectura_interno.replace("Cliente interno: ", ""))}'
+        ),
+    ]
+
+
+def render_lectura_kpi_incidentes(causas):
+    lineas = lineas_lectura_kpi_incidentes(causas)
     contenido = f"""
     <div class="executive-note">
         <div class="executive-note-title">Lectura</div>
-        <div class="executive-note-detail"><strong>Cliente externo:</strong> {html.escape(lectura_externo.replace("Cliente externo: ", ""))}</div>
-        <div class="executive-note-detail"><strong>Cliente interno:</strong> {html.escape(lectura_interno.replace("Cliente interno: ", ""))}</div>
+        <div class="executive-note-detail">{lineas[0]}</div>
+        <div class="executive-note-detail">{lineas[1]}</div>
     </div>
     """
     st.markdown(contenido, unsafe_allow_html=True)
@@ -2488,7 +2800,44 @@ def render_reincidencia_kpi_incidentes(base, metricas):
     )
 
 
-def render_kpi_incidentes(df):
+def ranking_causas_segmento_kpi(causas, segmento):
+    if causas.empty:
+        return pd.DataFrame(columns=[COL_LECTURA_EJECUTIVA, TEXT_CANTIDAD])
+    return (
+        causas[causas[TEXT_SEGMENTO] == segmento]
+        .groupby(COL_LECTURA_EJECUTIVA, as_index=False)
+        .agg(Cantidad=(TEXT_CANTIDAD, "sum"))
+        .sort_values(by=TEXT_CANTIDAD, ascending=False)
+    )
+
+
+def render_slide_kpi_incidentes(metricas, causas, mes_dashboard):
+    tarjetas = [
+        ("Incidentes", metricas["total"]),
+        ("Cliente externo", metricas["externos"]),
+        ("Cliente interno", metricas["internos"]),
+        ("Abiertos", metricas["abiertos"]),
+        ("Reincidencia", f"{metricas['tasa_reincidencia']}%"),
+        ("SLA incidentes", f"{metricas['cumplimiento_sla']}%"),
+    ]
+    caption = (
+        f"Cerrados: {metricas['cerrados']} | Reincidentes: {metricas['reincidentes']} | "
+        f"Promedio: {metricas['promedio']} h | "
+        f"Cumplen SLA: {metricas['cumple_sla']} | No cumplen: {metricas['no_cumple_sla']}"
+    )
+    ranking_externo = ranking_causas_segmento_kpi(causas, "Cliente externo")
+    ranking_interno = ranking_causas_segmento_kpi(causas, "Cliente interno")
+    izquierda = (
+        '<div class="slide-panel-group">'
+        f'{slide_ranking_html(ranking_externo, COL_LECTURA_EJECUTIVA, TEXT_CANTIDAD, "Causas cliente externo", top_n=5, limite=54)}'
+        f'{slide_ranking_html(ranking_interno, COL_LECTURA_EJECUTIVA, TEXT_CANTIDAD, "Causas cliente interno", top_n=5, limite=54)}'
+        "</div>"
+    )
+    derecha = slide_note_html("Lectura", lineas_lectura_kpi_incidentes(causas))
+    render_slide_frame_kpi(MENU_KPI_INCIDENTES, mes_dashboard, tarjetas, caption, izquierda, derecha)
+
+
+def render_kpi_incidentes(df, mes_dashboard=None):
     base, metricas = preparar_kpi_incidentes(df)
     if base.empty:
         st.info("No hay incidentes cliente interno o externo para el periodo seleccionado.")
@@ -2496,6 +2845,14 @@ def render_kpi_incidentes(df):
 
     causas = resumen_causas_kpi_incidentes(base)
 
+    modo_diapositiva = st.toggle("Formato diapositiva 16:9", key="slide_kpi_incidentes")
+    if modo_diapositiva:
+        render_slide_kpi_incidentes(metricas, causas, mes_dashboard)
+        st.caption("Captura el borde del recuadro blanco. La proporcion queda lista para PowerPoint 16:9.")
+        return
+
+    if mes_dashboard:
+        st.caption(f"{TEXT_PERIODO}{mes_dashboard}")
     st.subheader(MENU_KPI_INCIDENTES)
     render_tarjetas(
         [
@@ -3459,8 +3816,7 @@ def dashboard_kpi_casos_cliente_externo():
         st.info(f"No hay casos cargados para {mes_dashboard}.")
         return
 
-    st.caption(f"{TEXT_PERIODO}{mes_dashboard}")
-    render_kpi_casos_cliente_externo(df)
+    render_kpi_casos_cliente_externo(df, mes_dashboard)
 
 
 def dashboard_kpi_incidentes():
@@ -3476,8 +3832,7 @@ def dashboard_kpi_incidentes():
         st.info(f"No hay incidentes cargados para {mes_dashboard}.")
         return
 
-    st.caption(f"{TEXT_PERIODO}{mes_dashboard}")
-    render_kpi_incidentes(df)
+    render_kpi_incidentes(df, mes_dashboard)
 
 
 def dashboard_incidentes():
@@ -4151,23 +4506,42 @@ def fila_cliente_prioritario(resumen_actividad):
     ).iloc[0]
 
 
-def render_lectura_kpi_clientes_clave(metricas, resumen_actividad):
-    if resumen_actividad.empty:
-        st.info("No hay clientes clave con actividad para generar lectura KPI.")
-        return
-
+def lineas_lectura_kpi_clientes_clave(metricas, resumen_actividad):
     mayor_actividad = resumen_actividad.sort_values(by=COL_TOTAL_ATENCIONES, ascending=False).iloc[0]
     prioritario = fila_cliente_prioritario(resumen_actividad)
     score_promedio = round(resumen_actividad[TEXT_SCORE].mean(), 2)
 
     cliente_top = html.escape(str(mayor_actividad[TEXT_CLIENTE]))
     cliente_prioritario = html.escape(str(prioritario[TEXT_CLIENTE]))
+    return [
+        (
+            "Cliente con mas actividad: "
+            f"<strong>{cliente_top}</strong> ({int(mayor_actividad[COL_TOTAL_ATENCIONES])} atenciones)."
+        ),
+        (
+            "Cliente a priorizar: "
+            f"<strong>{cliente_prioritario}</strong> "
+            f"(score {prioritario[TEXT_SCORE]}, abiertos {int(prioritario[TEXT_ABIERTOS])})."
+        ),
+        (
+            f'<div class="slide-note-muted">Score promedio: {score_promedio} | '
+            f"Clientes en seguimiento: {metricas['clientes_seguimiento']}.</div>"
+        ),
+    ]
+
+
+def render_lectura_kpi_clientes_clave(metricas, resumen_actividad):
+    if resumen_actividad.empty:
+        st.info("No hay clientes clave con actividad para generar lectura KPI.")
+        return
+
+    lineas = lineas_lectura_kpi_clientes_clave(metricas, resumen_actividad)
     contenido = f"""
     <div class="executive-note">
         <div class="executive-note-title">Lectura</div>
-        <div class="executive-note-line">Cliente con mas actividad: <strong>{cliente_top}</strong> ({int(mayor_actividad[COL_TOTAL_ATENCIONES])} atenciones).</div>
-        <div class="executive-note-line">Cliente a priorizar: <strong>{cliente_prioritario}</strong> (score {prioritario[TEXT_SCORE]}, abiertos {int(prioritario[TEXT_ABIERTOS])}).</div>
-        <div class="executive-note-conclusion">Score promedio: {score_promedio} | Clientes en seguimiento: {metricas['clientes_seguimiento']}.</div>
+        <div class="executive-note-line">{lineas[0]}</div>
+        <div class="executive-note-line">{lineas[1]}</div>
+        <div class="executive-note-conclusion">{lineas[2]}</div>
     </div>
     """
     st.markdown(contenido, unsafe_allow_html=True)
@@ -4189,6 +4563,31 @@ def render_detalle_kpi_clientes_clave(resumen):
             use_container_width=True,
             hide_index=True,
         )
+
+
+def render_slide_kpi_clientes_clave(metricas, resumen_actividad, mes_dashboard, clientes_seleccionados):
+    tarjetas = [
+        ("Clientes activos", metricas["clientes_activos"]),
+        (TEXT_ATENCIONES, metricas[TEXT_TOTAL_CASOS] + metricas[TEXT_TOTAL_INCIDENTES]),
+        (TEXT_ABIERTOS, metricas["abiertos"]),
+        ("En seguimiento", metricas["clientes_seguimiento"]),
+        (f"SLA casos <{SLA_CASOS_HORAS}h", f"{metricas['sla_casos']}%"),
+        ("SLA incidentes", f"{metricas['sla_incidentes']}%"),
+    ]
+    caption = (
+        f"Clientes seleccionados: {len(clientes_seleccionados)} | "
+        f"Casos: {metricas[TEXT_TOTAL_CASOS]} | Incidentes: {metricas[TEXT_TOTAL_INCIDENTES]}"
+    )
+    izquierda = slide_ranking_html(
+        resumen_actividad,
+        TEXT_CLIENTE,
+        COL_TOTAL_ATENCIONES,
+        "Atenciones por cliente clave",
+        top_n=6,
+        limite=58,
+    )
+    derecha = slide_note_html("Lectura", lineas_lectura_kpi_clientes_clave(metricas, resumen_actividad))
+    render_slide_frame_kpi(MENU_KPI_CLIENTES_CLAVE, mes_dashboard, tarjetas, caption, izquierda, derecha)
 
 
 
@@ -4217,6 +4616,12 @@ def dashboard_kpi_clientes_clave():
     resumen = resumen[resumen[TEXT_CLIENTE].isin(clientes_seleccionados)].copy()
     resumen_actividad = resumen[resumen[COL_TOTAL_ATENCIONES] > 0].copy()
     metricas = metricas_dashboard_clientes(casos, incidentes, resumen_actividad)
+
+    modo_diapositiva = st.toggle("Formato diapositiva 16:9", key="slide_kpi_clientes_clave")
+    if modo_diapositiva and not resumen_actividad.empty:
+        render_slide_kpi_clientes_clave(metricas, resumen_actividad, mes_dashboard, clientes_seleccionados)
+        st.caption("Captura el borde del recuadro blanco. La proporcion queda lista para PowerPoint 16:9.")
+        return
 
     render_tarjetas_kpi_clientes_clave(metricas)
     st.caption(
