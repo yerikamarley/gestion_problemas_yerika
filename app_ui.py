@@ -597,8 +597,13 @@ def aplicar_tema_visual():
         }}
 
         [data-testid="stCaptionContainer"] {{
-            font-size: 0.98rem !important;
-            line-height: 1.45 !important;
+            font-size: 1.12rem !important;
+            line-height: 1.5 !important;
+        }}
+
+        [data-testid="stCaptionContainer"] p {{
+            font-size: 1.12rem !important;
+            line-height: 1.5 !important;
         }}
 
         [data-testid="stFileUploader"],
@@ -750,22 +755,24 @@ def aplicar_tema_visual():
             border: 1px solid var(--border);
             border-radius: 8px;
             color: var(--text);
-            padding: 14px 16px 12px;
+            padding: 18px 18px 16px;
             margin: 0.1rem 0 0.25rem;
-            line-height: 1.45;
-            font-size: 1rem;
+            line-height: 1.55;
+            font-size: 1.12rem;
             box-shadow: 0 6px 16px rgba(20, 20, 20, 0.04);
         }}
 
         .executive-note-title {{
             color: var(--primary);
             font-weight: 800;
-            margin-bottom: 0.55rem;
+            margin-bottom: 0.75rem;
+            font-size: 1.16rem;
         }}
 
         .executive-note-line {{
             color: var(--muted);
-            margin: 0.24rem 0;
+            margin: 0.35rem 0;
+            font-size: 1.08rem;
         }}
 
         .executive-note-line strong {{
@@ -774,8 +781,8 @@ def aplicar_tema_visual():
 
         .executive-note-detail {{
             color: var(--muted);
-            margin-top: 0.45rem;
-            font-size: 0.94rem;
+            margin-top: 0.55rem;
+            font-size: 1.06rem;
         }}
 
         .executive-note-detail strong {{
@@ -785,9 +792,9 @@ def aplicar_tema_visual():
         .executive-note-conclusion {{
             border-top: 1px solid var(--border);
             color: var(--muted);
-            margin-top: 0.7rem;
-            padding-top: 0.65rem;
-            font-size: 0.94rem;
+            margin-top: 0.9rem;
+            padding-top: 0.8rem;
+            font-size: 1.04rem;
         }}
 
         @media (max-width: 900px) {{
@@ -884,26 +891,27 @@ def aplicar_estilo_figura(fig, titulo=None):
         title=titulo,
         paper_bgcolor="rgba(255,255,255,0)",
         plot_bgcolor="rgba(255,250,250,0.94)",
-        font={"color": UI_PALETTE["text"], "size": 15},
-        title_font={"color": UI_PALETTE[TEXT_PRIMARY], "size": 20},
+        font={"color": UI_PALETTE["text"], "size": 17},
+        title_font={"color": UI_PALETTE[TEXT_PRIMARY], "size": 23},
         margin={"l": 12, "r": 12, "t": 52, "b": 12},
-        legend={"bgcolor": "rgba(255,250,250,0.82)", "font": {"size": 14}},
+        legend={"bgcolor": "rgba(255,250,250,0.82)", "font": {"size": 16}},
     )
     fig.update_xaxes(
         showgrid=True,
         gridcolor="rgba(20, 20, 20, 0.10)",
         zeroline=False,
-        tickfont={"size": 14},
-        title_font={"size": 15},
+        tickfont={"size": 16},
+        title_font={"size": 17},
         automargin=True,
     )
     fig.update_yaxes(
         showgrid=False,
         zeroline=False,
-        tickfont={"size": 14},
-        title_font={"size": 15},
+        tickfont={"size": 16},
+        title_font={"size": 17},
         automargin=True,
     )
+    fig.update_traces(textfont={"size": 16}, selector={"type": "bar"})
     return fig
 
 
@@ -1928,10 +1936,15 @@ def grafico_barras_kpi(df, x, y, titulo, color):
         text=x,
         color_discrete_sequence=[color],
     )
-    fig.update_traces(marker_color=color, textposition=TEXT_OUTSIDE, cliponaxis=False)
-    fig.update_layout(height=max(220, 34 * len(grafico) + 110))
+    fig.update_traces(
+        marker_color=color,
+        textposition=TEXT_OUTSIDE,
+        cliponaxis=False,
+        textfont={"size": 17, "color": UI_PALETTE["text"]},
+    )
+    fig.update_layout(height=max(300, 46 * len(grafico) + 125))
     fig = aplicar_estilo_figura(fig, titulo)
-    fig.update_layout(margin={"l": 145, "r": 58, "t": 46, "b": 34}, showlegend=False)
+    fig.update_layout(margin={"l": 185, "r": 72, "t": 62, "b": 48}, showlegend=False)
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
 
@@ -2334,8 +2347,13 @@ def render_grafico_causas_kpi_incidentes(causas):
                 text=TEXT_CANTIDAD,
                 color_discrete_sequence=[UI_PALETTE[TEXT_PURPLE]],
             )
-            fig.update_traces(marker_color=UI_PALETTE[TEXT_PURPLE], textposition=TEXT_OUTSIDE, cliponaxis=False)
-            fig.update_layout(height=max(320, 48 * len(grafico) + 110), yaxis={"automargin": True})
+            fig.update_traces(
+                marker_color=UI_PALETTE[TEXT_PURPLE],
+                textposition=TEXT_OUTSIDE,
+                cliponaxis=False,
+                textfont={"size": 17, "color": UI_PALETTE["text"]},
+            )
+            fig.update_layout(height=max(340, 54 * len(grafico) + 125), yaxis={"automargin": True})
             st.plotly_chart(aplicar_estilo_figura(fig, titulo), use_container_width=True)
 
 
