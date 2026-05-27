@@ -918,6 +918,12 @@ def aplicar_estilo_figura(fig, titulo=None):
     return fig
 
 
+def limpiar_ejes_kpi(fig):
+    fig.update_xaxes(title_text="", showticklabels=False)
+    fig.update_yaxes(title_text="")
+    return fig
+
+
 def estilos_login():
     st.markdown(
         """
@@ -1950,6 +1956,7 @@ def grafico_barras_kpi(df, x, y, titulo, color):
     fig.update_layout(margin={"l": 185, "r": 72, "t": 62, "b": 48}, showlegend=False)
     fig.update_xaxes(tickfont={"size": 16, "color": UI_PALETTE["text"]}, title_font={"size": 17, "color": UI_PALETTE["text"]})
     fig.update_yaxes(tickfont={"size": 16, "color": UI_PALETTE["text"]}, title_font={"size": 17, "color": UI_PALETTE["text"]})
+    fig = limpiar_ejes_kpi(fig)
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
 
@@ -2368,7 +2375,8 @@ def render_grafico_causas_kpi_incidentes(causas):
                 tickfont={"size": 16, "color": UI_PALETTE["text"]},
                 title_font={"size": 17, "color": UI_PALETTE["text"]},
             )
-            st.plotly_chart(fig, use_container_width=True)
+            fig = limpiar_ejes_kpi(fig)
+            st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
 
 def render_reincidencia_kpi_incidentes(base, metricas):
@@ -3782,7 +3790,10 @@ def render_grafico_atenciones_cliente(resumen_actividad, color_estado=True):
     if not color_estado:
         fig.update_traces(marker_color=UI_PALETTE["mustard"])
     fig.update_traces(textposition=TEXT_OUTSIDE)
-    st.plotly_chart(aplicar_estilo_figura(fig, "Atenciones por cliente clave"), use_container_width=True)
+    fig = aplicar_estilo_figura(fig, "Atenciones por cliente clave")
+    if not color_estado:
+        fig = limpiar_ejes_kpi(fig)
+    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
 
 def actividad_diaria_clientes(casos, incidentes):
