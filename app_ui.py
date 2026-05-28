@@ -1,12 +1,10 @@
 import html
-import json
 import re
 from io import BytesIO
 
 import pandas as pd
 import plotly.express as px
 import streamlit as st
-import streamlit.components.v1 as components
 from PIL import Image, ImageDraw, ImageFont
 
 from app_logic import (
@@ -3012,7 +3010,7 @@ def render_slide_kpi_casos_cliente_externo(base, metricas, mes_dashboard):
         top_n=4,
     )
     derecha = slide_note_html("Lectura", lineas)
-    render_slide_component_kpi(
+    render_slide_frame_kpi(
         "KPI Casos Cliente Externo",
         mes_dashboard,
         tarjetas,
@@ -3030,7 +3028,6 @@ def render_kpi_casos_cliente_externo(df, mes_dashboard=None):
     modo_diapositiva = st.toggle("Formato diapositiva 16:9", key="slide_kpi_casos_cliente_externo")
     if modo_diapositiva:
         render_slide_kpi_casos_cliente_externo(base, metricas, mes_dashboard)
-        st.caption("Usa el boton de descarga para obtener la imagen PNG lista para PowerPoint 16:9.")
         return
 
     if mes_dashboard:
@@ -3464,7 +3461,7 @@ def render_slide_kpi_incidentes(metricas, causas, mes_dashboard):
         "</div>"
     )
     derecha = slide_note_html("Lectura", lineas)
-    render_slide_component_kpi(MENU_KPI_INCIDENTES, mes_dashboard, tarjetas, caption, izquierda, derecha)
+    render_slide_frame_kpi(MENU_KPI_INCIDENTES, mes_dashboard, tarjetas, caption, izquierda, derecha)
 
 
 def render_kpi_incidentes(df, mes_dashboard=None):
@@ -3478,7 +3475,6 @@ def render_kpi_incidentes(df, mes_dashboard=None):
     modo_diapositiva = st.toggle("Formato diapositiva 16:9", key="slide_kpi_incidentes")
     if modo_diapositiva:
         render_slide_kpi_incidentes(metricas, causas, mes_dashboard)
-        st.caption("Usa el boton de descarga para obtener la imagen PNG lista para PowerPoint 16:9.")
         return
 
     if mes_dashboard:
@@ -5218,7 +5214,7 @@ def render_slide_kpi_clientes_clave(metricas, resumen_actividad, mes_dashboard, 
         limite=58,
     )
     derecha = slide_note_html("Lectura", lineas)
-    render_slide_component_kpi(MENU_KPI_CLIENTES_CLAVE, mes_dashboard, tarjetas, caption, izquierda, derecha)
+    render_slide_frame_kpi(MENU_KPI_CLIENTES_CLAVE, mes_dashboard, tarjetas, caption, izquierda, derecha)
 
 
 
@@ -5251,7 +5247,6 @@ def dashboard_kpi_clientes_clave():
     modo_diapositiva = st.toggle("Formato diapositiva 16:9", key="slide_kpi_clientes_clave")
     if modo_diapositiva and not resumen_actividad.empty:
         render_slide_kpi_clientes_clave(metricas, resumen_actividad, mes_dashboard, clientes_seleccionados)
-        st.caption("Usa el boton de descarga para obtener la imagen PNG lista para PowerPoint 16:9.")
         return
 
     render_tarjetas_kpi_clientes_clave(metricas)
