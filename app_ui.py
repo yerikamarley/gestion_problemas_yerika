@@ -4527,13 +4527,17 @@ def render_tabla_problemas_sugeridos(problemas):
     st.dataframe(problemas, use_container_width=True, hide_index=True)
 
 
-def render_detalle_reincidencias(base):
+def render_detalle_reincidencias(base, problemas=None):
     if base.empty or "nivel_reincidencia" not in base.columns:
         st.info("No hay registros asociados para mostrar.")
         return
-    detalle = base[base["nivel_reincidencia"].fillna("").ne("")].copy()
+    if problemas is not None and not problemas.empty and TEXT_CAUSA in problemas.columns:
+        causas_problema = problemas[TEXT_CAUSA].replace("", pd.NA).dropna().unique().tolist()
+        detalle = base[base[TEXT_CAUSA].isin(causas_problema)].copy()
+    else:
+        detalle = base[base["nivel_reincidencia"].fillna("").ne("")].copy()
     if detalle.empty:
-        st.info("No hay casos o incidentes asociados a reincidencias con los filtros seleccionados.")
+        st.info("No hay casos o incidentes asociados con los filtros seleccionados.")
         return
     columnas = [
         "tipo_registro",
@@ -4553,7 +4557,7 @@ def render_detalle_reincidencias(base):
     ]
     columnas = [col for col in columnas if col in detalle.columns]
     st.dataframe(
-        detalle.sort_values(by=["nivel_reincidencia", "fecha_dt"], ascending=[True, False])[columnas],
+        detalle.sort_values(by=["fecha_dt"], ascending=False)[columnas],
         use_container_width=True,
         hide_index=True,
     )
@@ -4586,11 +4590,11 @@ def dashboard_reincidencias_problemas():
         if not reincidencias.empty
         else 0
     )
-    registros_asociados = (
-        int(pd.to_numeric(reincidencias["total_registros"], errors=TEXT_COERCE).sum())
-        if not reincidencias.empty
-        else 0
-    )
+    registros_asociados = 0
+    if not problemas.empty:
+        registros_asociados = int(pd.to_numeric(problemas["total_registros"], errors=TEXT_COERCE).sum())
+    elif not reincidencias.empty:
+        registros_asociados = int(pd.to_numeric(reincidencias["total_registros"], errors=TEXT_COERCE).sum())
     render_tarjetas(
         [
             ("Clientes con reincidencia", clientes_reincidentes),
@@ -4599,19 +4603,19 @@ def dashboard_reincidencias_problemas():
         ]
     )
     st.caption(
-        "Lectura inicial basada en agrupaciones por cliente, servicio/producto, tipificacion y causa. "
+        "Lectura simple: reincidencias de casos/incidentes y posibles problemas cuando una misma causa se repite. "
         "No modifica datos ni crea registros nuevos."
     )
 
     tab_reincidencias, tab_problemas, tab_detalle = st.tabs(
-        ["Reincidencias por cliente", "Problemas sugeridos", "Detalle asociado"]
+        ["Reincidencias casos/incidentes", "Problemas por causa", "Detalle asociado"]
     )
     with tab_reincidencias:
         render_tabla_reincidencias(reincidencias)
     with tab_problemas:
         render_tabla_problemas_sugeridos(problemas)
     with tab_detalle:
-        render_detalle_reincidencias(base)
+        render_detalle_reincidencias(base, problemas)
 
 
 def dashboard_incidentes():

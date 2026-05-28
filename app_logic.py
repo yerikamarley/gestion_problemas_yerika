@@ -2396,6 +2396,7 @@ REINCIDENCIA_BASE_COLUMNS = [
 ]
 
 REINCIDENCIA_CLIENTE_COLUMNS = [
+    "tipo_registro",
     "cliente_analisis",
     "servicio_producto",
     "tipificacion",
@@ -2422,7 +2423,7 @@ PROBLEMAS_SUGERIDOS_COLUMNS = [
     "nivel_prioridad",
 ]
 
-REINCIDENCIA_GROUP_COLUMNS = ["cliente_analisis", "servicio_producto", "tipificacion", "causa"]
+REINCIDENCIA_GROUP_COLUMNS = ["tipo_registro", "cliente_analisis", "servicio_producto", "causa"]
 PROBLEMA_PATTERN_COLUMNS = ["servicio_producto", "tipificacion", "causa"]
 PROBLEMA_DIMENSIONES = [
     ("cliente_analisis", "cliente"),
@@ -2667,6 +2668,7 @@ def resumir_reincidencias_cliente(base):
         base.groupby(REINCIDENCIA_GROUP_COLUMNS, dropna=False)
         .agg(
             total_registros=("numero", "count"),
+            tipificacion=("tipificacion", valor_mas_frecuente_analisis),
             casos_asociados=("numero", lambda serie: resumir_registros(base.loc[serie.index][base.loc[serie.index]["tipo_registro"] == "Caso"]["numero"])),
             incidentes_asociados=("numero", lambda serie: resumir_registros(base.loc[serie.index][base.loc[serie.index]["tipo_registro"] == "Incidente"]["numero"])),
             primer_registro=("fecha_dt", "min"),
@@ -2879,12 +2881,51 @@ def problemas_desde_alertas_incidentes(incidentes_df):
     return problemas
 
 
+def problemas_por_causa_repetida(base):
+    if base.empty or "causa" not in base.columns:
+        return []
+
+    problemas = []
+    for causa, grupo in base.groupby("causa", dropna=False):
+        if len(grupo) < 3 or not es_valor_informativo_analisis(causa):
+            continue
+
+        clientes = clientes_grupo_problema(grupo)
+        casos = int((grupo["tipo_registro"] == "Caso").sum())
+        incidentes = int((grupo["tipo_registro"] == "Incidente").sum())
+        criterio = "Causa raiz repetida"
+        cliente_texto = f"Varios clientes ({len(clientes)})" if len(clientes) > 1 else (clientes[0] if clientes else SIN_CLIENTE_ANALISIS)
+        servicio = valor_mas_frecuente_analisis(group_or_default(grupo, "servicio_producto"), SIN_SERVICIO_PRODUCTO_ANALISIS)
+        tipificacion = valor_mas_frecuente_analisis(group_or_default(grupo, "tipificacion"), SIN_TIPIFICACION_ANALISIS)
+        observacion = (
+            f"La causa '{causa}' aparece {len(grupo)} veces: "
+            f"{casos} casos y {incidentes} incidentes asociados."
+        )
+        if len(clientes) > 1:
+            observacion += " Se observa en varios clientes, por lo que puede tratarse como causa comun."
+        else:
+            observacion += " Se concentra en un cliente, por lo que conviene revisarla como reincidencia."
+
+        problemas.append(
+            {
+                "problema_sugerido": f"Causa recurrente: {causa}",
+                "criterio_detectado": criterio,
+                "cliente_analisis": cliente_texto,
+                "servicio_producto": servicio,
+                "tipificacion": tipificacion,
+                "causa": causa,
+                "total_registros": len(grupo),
+                "registros_asociados": resumir_registros(grupo["numero"], limite=10),
+                "observacion": observacion,
+                "accion_recomendada": "Revisar los cierres asociados, confirmar causa raiz y definir accion correctiva o preventiva.",
+                "nivel_prioridad": nivel_reincidencia(len(grupo)),
+            }
+        )
+    return problemas
+
+
 def construir_problemas_sugeridos(base, incidentes_df):
-    filas = []
-    filas.extend(problemas_por_reincidencia_cliente(base))
-    filas.extend(problemas_transversales(base))
-    filas.extend(problemas_por_dimension(base))
-    filas.extend(problemas_desde_alertas_incidentes(incidentes_df))
+    filas = problemas_por_causa_repetida(base)
     if not filas:
         return pd.DataFrame(columns=PROBLEMAS_SUGERIDOS_COLUMNS)
 
@@ -2922,10 +2963,9 @@ def filtrar_incidentes_por_base(incidentes_df, base):
 
 
 def analizar_reincidencias_y_problemas(casos_df, incidentes_df, filtros=None):
-    base = base_unificada_reincidencias(casos_df, incidentes_df)
+    base = base_unificada_reincidencias(casos_df, incidentes_df, incluir_sla=False)
     base = aplicar_filtros_reincidencias(base, filtros)
     base = agregar_marca_reincidencia_base(base)
     reincidencias_cliente = resumir_reincidencias_cliente(base)
-    incidentes_filtrados = filtrar_incidentes_por_base(incidentes_df, base)
-    problemas_sugeridos = construir_problemas_sugeridos(base, incidentes_filtrados)
+    problemas_sugeridos = construir_problemas_sugeridos(base, None)
     return base, reincidencias_cliente, problemas_sugeridos
