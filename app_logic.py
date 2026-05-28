@@ -2536,7 +2536,7 @@ def fila_base_incidente(row):
     }
 
 
-def base_unificada_reincidencias(casos_df, incidentes_df):
+def base_unificada_reincidencias(casos_df, incidentes_df, incluir_sla=True):
     tablas = []
     casos = casos_df.copy() if casos_df is not None else pd.DataFrame()
     incidentes = incidentes_df.copy() if incidentes_df is not None else pd.DataFrame()
@@ -2547,8 +2547,9 @@ def base_unificada_reincidencias(casos_df, incidentes_df):
             casos["tipificacion"] = casos.apply(tipificar_caso, axis=1)
         tablas.append(pd.DataFrame([fila_base_caso(row) for _, row in casos.iterrows()]))
 
-    if not incidentes.empty:
+    if not incidentes.empty and incluir_sla:
         incidentes = agregar_campos_sla_incidentes(incidentes)
+    if not incidentes.empty:
         tablas.append(pd.DataFrame([fila_base_incidente(row) for _, row in incidentes.iterrows()]))
 
     columnas = REINCIDENCIA_BASE_COLUMNS + [

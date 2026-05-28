@@ -11,6 +11,7 @@ from app_logic import (
     agregar_campos_sla_incidentes,
     analizar_reincidencias_y_problemas,
     autenticar_usuario,
+    base_unificada_reincidencias,
     contar_incidentes,
     eliminar_usuario,
     es_error_db_transitorio,
@@ -4560,19 +4561,22 @@ def render_detalle_reincidencias(base):
 
 def dashboard_reincidencias_problemas():
     st.subheader(MENU_REINCIDENCIAS_PROBLEMAS)
-    casos = load_casos()
-    incidentes = load_incidentes()
+    with st.spinner("Cargando casos e incidentes..."):
+        casos = load_casos()
+        incidentes = load_incidentes()
     if casos.empty and incidentes.empty:
         st.info("No hay casos ni incidentes cargados para analizar.")
         return
 
-    base_opciones, _, _ = analizar_reincidencias_y_problemas(casos, incidentes)
+    with st.spinner("Preparando filtros del analisis..."):
+        base_opciones = base_unificada_reincidencias(casos, incidentes, incluir_sla=False)
     if base_opciones.empty:
         st.info("No hay registros analizables para construir reincidencias.")
         return
 
     filtros = construir_filtros_reincidencias(base_opciones)
-    base, reincidencias, problemas = analizar_reincidencias_y_problemas(casos, incidentes, filtros)
+    with st.spinner("Calculando reincidencias y problemas sugeridos..."):
+        base, reincidencias, problemas = analizar_reincidencias_y_problemas(casos, incidentes, filtros)
     if base.empty:
         st.info("No hay registros que coincidan con los filtros seleccionados.")
         return
