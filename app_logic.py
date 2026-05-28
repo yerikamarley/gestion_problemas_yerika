@@ -2379,3 +2379,552 @@ def construir_alertas_incidentes(df):
     agregar_alerta_volumen_noc(alertas, trabajo)
     agregar_alerta_sla(alertas, incidentes_reales, total)
     return sorted(alertas, key=lambda alerta: alerta["prioridad"], reverse=True)
+
+
+REINCIDENCIA_BASE_COLUMNS = [
+    "tipo_registro",
+    "numero",
+    "cliente_analisis",
+    "servicio_producto",
+    "tipificacion",
+    "causa",
+    "fecha",
+    "estado",
+    "descripcion",
+    "prioridad",
+    "fuente",
+]
+
+REINCIDENCIA_CLIENTE_COLUMNS = [
+    "cliente_analisis",
+    "servicio_producto",
+    "tipificacion",
+    "causa",
+    "total_registros",
+    "casos_asociados",
+    "incidentes_asociados",
+    "primer_registro",
+    "ultimo_registro",
+    "nivel_reincidencia",
+]
+
+PROBLEMAS_SUGERIDOS_COLUMNS = [
+    "problema_sugerido",
+    "criterio_detectado",
+    "cliente_analisis",
+    "servicio_producto",
+    "tipificacion",
+    "causa",
+    "total_registros",
+    "registros_asociados",
+    "observacion",
+    "accion_recomendada",
+    "nivel_prioridad",
+]
+
+REINCIDENCIA_GROUP_COLUMNS = ["cliente_analisis", "servicio_producto", "tipificacion", "causa"]
+PROBLEMA_PATTERN_COLUMNS = ["servicio_producto", "tipificacion", "causa"]
+PROBLEMA_DIMENSIONES = [
+    ("cliente_analisis", "cliente"),
+    ("servicio_producto", "servicio/producto"),
+    ("tipificacion", "tipificacion"),
+    ("causa", "causa"),
+]
+
+SIN_CLIENTE_ANALISIS = "Sin cliente identificado"
+SIN_SERVICIO_PRODUCTO_ANALISIS = "Sin servicio/producto"
+SIN_TIPIFICACION_ANALISIS = "Sin tipificacion"
+SIN_CAUSA_ANALISIS = "Sin causa"
+VALORES_NO_INFORMATIVOS_ANALISIS = {
+    "",
+    SIN_CLIENTE_ANALISIS,
+    SIN_SERVICIO_PRODUCTO_ANALISIS,
+    SIN_TIPIFICACION_ANALISIS,
+    SIN_CAUSA_ANALISIS,
+    SIN_INFERENCIA_TEXT,
+    SIN_SERVICIO_INFORMADO_TEXT,
+}
+
+
+def valor_limpio_analisis(valor, default=""):
+    texto = safe_text(valor)
+    return texto if texto else default
+
+
+def valor_normalizado_analisis(row, columna, default):
+    valor = valor_limpio_analisis(valor_fila(row, columna))
+    return valor if valor else default
+
+
+def primera_columna_con_valor(row, columnas, default=""):
+    for columna in columnas:
+        valor = valor_limpio_analisis(valor_fila(row, columna))
+        if valor:
+            return valor
+    return default
+
+
+def fecha_dt_analisis(valor):
+    fecha = pd.to_datetime(normalizar_fecha(valor), errors="coerce")
+    return fecha
+
+
+def texto_descripcion_incidente(row):
+    return primera_columna_con_valor(row, ["breve_descripcion", "descripcion", "impacto"])
+
+
+def cliente_analisis_caso(row):
+    return primera_columna_con_valor(
+        row,
+        ["cuenta", "contacto", "creado_por"],
+        SIN_CLIENTE_ANALISIS,
+    )
+
+
+def cliente_analisis_incidente(row):
+    return primera_columna_con_valor(
+        row,
+        ["empresa", "solicitante", "creado_por"],
+        SIN_CLIENTE_ANALISIS,
+    )
+
+
+def fila_base_caso(row):
+    fecha = normalizar_fecha(valor_fila(row, "creado"))
+    return {
+        "tipo_registro": "Caso",
+        "numero": safe_text(valor_fila(row, "numero")),
+        "cliente_analisis": cliente_analisis_caso(row),
+        "servicio_producto": valor_normalizado_analisis(row, "producto", SIN_SERVICIO_PRODUCTO_ANALISIS),
+        "tipificacion": valor_normalizado_analisis(row, "tipificacion", SIN_TIPIFICACION_ANALISIS),
+        "causa": valor_normalizado_analisis(row, "causa", SIN_CAUSA_ANALISIS),
+        "fecha": fecha,
+        "fecha_dt": fecha_dt_analisis(fecha),
+        "estado": safe_text(valor_fila(row, "estado")),
+        "descripcion": safe_text(valor_fila(row, "descripcion")),
+        "prioridad": safe_text(valor_fila(row, "prioridad")),
+        "fuente": "cases",
+        "estado_sla": "",
+        "es_alerta": "",
+        "tipo_incidente": "",
+    }
+
+
+def fila_base_incidente(row):
+    fecha = normalizar_fecha(valor_fila(row, "creado"))
+    causa = primera_columna_con_valor(
+        row,
+        ["causa_raiz_auto", "causa_raiz_original", "tipo_falla"],
+        SIN_CAUSA_ANALISIS,
+    )
+    return {
+        "tipo_registro": "Incidente",
+        "numero": safe_text(valor_fila(row, "numero")),
+        "cliente_analisis": cliente_analisis_incidente(row),
+        "servicio_producto": valor_normalizado_analisis(row, "servicio_negocio", SIN_SERVICIO_PRODUCTO_ANALISIS),
+        "tipificacion": valor_normalizado_analisis(row, "tipificacion_auto", SIN_TIPIFICACION_ANALISIS),
+        "causa": causa,
+        "fecha": fecha,
+        "fecha_dt": fecha_dt_analisis(fecha),
+        "estado": safe_text(valor_fila(row, "estado")),
+        "descripcion": texto_descripcion_incidente(row),
+        "prioridad": safe_text(valor_fila(row, "prioridad")),
+        "fuente": "incidents",
+        "estado_sla": safe_text(valor_fila(row, "estado_sla")),
+        "es_alerta": safe_text(valor_fila(row, "es_alerta_auto")),
+        "tipo_incidente": safe_text(valor_fila(row, "tipo_incidente_auto")),
+    }
+
+
+def base_unificada_reincidencias(casos_df, incidentes_df):
+    tablas = []
+    casos = casos_df.copy() if casos_df is not None else pd.DataFrame()
+    incidentes = incidentes_df.copy() if incidentes_df is not None else pd.DataFrame()
+
+    if not casos.empty:
+        casos = casos.copy()
+        if "tipificacion" not in casos.columns:
+            casos["tipificacion"] = casos.apply(tipificar_caso, axis=1)
+        tablas.append(pd.DataFrame([fila_base_caso(row) for _, row in casos.iterrows()]))
+
+    if not incidentes.empty:
+        incidentes = agregar_campos_sla_incidentes(incidentes)
+        tablas.append(pd.DataFrame([fila_base_incidente(row) for _, row in incidentes.iterrows()]))
+
+    columnas = REINCIDENCIA_BASE_COLUMNS + [
+        "fecha_dt",
+        "estado_sla",
+        "es_alerta",
+        "tipo_incidente",
+        "total_grupo_reincidencia",
+        "nivel_reincidencia",
+    ]
+    if not tablas:
+        return pd.DataFrame(columns=columnas)
+
+    base = pd.concat(tablas, ignore_index=True)
+    for columna in columnas:
+        if columna not in base.columns:
+            base[columna] = ""
+    base["fecha_dt"] = pd.to_datetime(base["fecha_dt"], errors="coerce")
+    return base[columnas]
+
+
+def normalizar_lista_filtro(valor):
+    if valor is None:
+        return []
+    if isinstance(valor, str):
+        return [valor] if valor else []
+    try:
+        return [item for item in valor if item not in (None, "")]
+    except TypeError:
+        return [valor]
+
+
+def aplicar_filtros_reincidencias(base, filtros=None):
+    if not filtros or base.empty:
+        return base
+
+    trabajo = base.copy()
+    fecha_inicio = filtros.get("fecha_inicio")
+    fecha_fin = filtros.get("fecha_fin")
+    if fecha_inicio is not None:
+        inicio = pd.Timestamp(fecha_inicio)
+        trabajo = trabajo[trabajo["fecha_dt"].isna() | (trabajo["fecha_dt"] >= inicio)].copy()
+    if fecha_fin is not None:
+        fin = pd.Timestamp(fecha_fin) + pd.Timedelta(days=1) - pd.Timedelta(seconds=1)
+        trabajo = trabajo[trabajo["fecha_dt"].isna() | (trabajo["fecha_dt"] <= fin)].copy()
+
+    for columna in [
+        "cliente_analisis",
+        "servicio_producto",
+        "tipificacion",
+        "causa",
+        "tipo_registro",
+    ]:
+        valores = normalizar_lista_filtro(filtros.get(columna))
+        if valores and columna in trabajo.columns:
+            trabajo = trabajo[trabajo[columna].isin(valores)].copy()
+
+    return trabajo
+
+
+def nivel_reincidencia(total):
+    if total >= 5:
+        return "Alta"
+    if total >= 3:
+        return "Media"
+    if total >= 2:
+        return "Baja"
+    return ""
+
+
+def resumir_registros(serie, limite=8):
+    registros = []
+    for valor in serie.tolist():
+        numero = safe_text(valor)
+        if numero and numero not in registros:
+            registros.append(numero)
+    if len(registros) <= limite:
+        return ", ".join(registros)
+    return f"{', '.join(registros[:limite])} (+{len(registros) - limite})"
+
+
+def formatear_fecha_resumen(valor):
+    if pd.isna(valor):
+        return ""
+    return pd.Timestamp(valor).strftime("%Y-%m-%d")
+
+
+def agregar_marca_reincidencia_base(base):
+    if base.empty:
+        return base
+
+    conteos = (
+        base.groupby(REINCIDENCIA_GROUP_COLUMNS, dropna=False)
+        .size()
+        .reset_index(name="total_grupo_reincidencia")
+    )
+    trabajo = base.merge(conteos, on=REINCIDENCIA_GROUP_COLUMNS, how="left", suffixes=("", "_calc"))
+    if "total_grupo_reincidencia_calc" in trabajo.columns:
+        trabajo["total_grupo_reincidencia"] = trabajo["total_grupo_reincidencia_calc"]
+        trabajo = trabajo.drop(columns=["total_grupo_reincidencia_calc"])
+    trabajo["total_grupo_reincidencia"] = pd.to_numeric(
+        trabajo["total_grupo_reincidencia"],
+        errors="coerce",
+    ).fillna(0).astype(int)
+    trabajo["nivel_reincidencia"] = trabajo["total_grupo_reincidencia"].apply(nivel_reincidencia)
+    trabajo.loc[trabajo["total_grupo_reincidencia"] < 2, "nivel_reincidencia"] = ""
+    return trabajo
+
+
+def resumir_reincidencias_cliente(base):
+    if base.empty:
+        return pd.DataFrame(columns=REINCIDENCIA_CLIENTE_COLUMNS)
+
+    resumen = (
+        base.groupby(REINCIDENCIA_GROUP_COLUMNS, dropna=False)
+        .agg(
+            total_registros=("numero", "count"),
+            casos_asociados=("numero", lambda serie: resumir_registros(base.loc[serie.index][base.loc[serie.index]["tipo_registro"] == "Caso"]["numero"])),
+            incidentes_asociados=("numero", lambda serie: resumir_registros(base.loc[serie.index][base.loc[serie.index]["tipo_registro"] == "Incidente"]["numero"])),
+            primer_registro=("fecha_dt", "min"),
+            ultimo_registro=("fecha_dt", "max"),
+        )
+        .reset_index()
+    )
+    resumen = resumen[resumen["total_registros"] >= 2].copy()
+    if resumen.empty:
+        return pd.DataFrame(columns=REINCIDENCIA_CLIENTE_COLUMNS)
+
+    resumen["nivel_reincidencia"] = resumen["total_registros"].apply(nivel_reincidencia)
+    resumen["primer_registro"] = resumen["primer_registro"].apply(formatear_fecha_resumen)
+    resumen["ultimo_registro"] = resumen["ultimo_registro"].apply(formatear_fecha_resumen)
+    return resumen[REINCIDENCIA_CLIENTE_COLUMNS].sort_values(
+        by=["total_registros", "ultimo_registro"],
+        ascending=[False, False],
+    )
+
+
+def observacion_problema(grupo, criterio):
+    total = len(grupo)
+    incidentes = grupo[grupo["tipo_registro"] == "Incidente"].copy()
+    casos = grupo[grupo["tipo_registro"] == "Caso"].copy()
+    partes = [f"Se detectaron {total} registros relacionados"]
+    if not casos.empty:
+        partes.append(f"{len(casos)} casos")
+    if not incidentes.empty:
+        partes.append(f"{len(incidentes)} incidentes")
+        fuera_sla = int((incidentes["estado_sla"] == "No cumple").sum()) if "estado_sla" in incidentes.columns else 0
+        causas = (
+            incidentes["causa"]
+            .replace("", pd.NA)
+            .dropna()
+            .value_counts()
+            .head(2)
+            .index.tolist()
+        )
+        if fuera_sla:
+            partes.append(f"{fuera_sla} incidentes fuera de SLA")
+        if causas:
+            partes.append("causa raiz observada: " + ", ".join(causas))
+    return "; ".join(partes) + f". Criterio: {criterio}."
+
+
+def accion_recomendada_problema(criterio):
+    if criterio == "Posible causa comun transversal":
+        return "Revisar causa comun, alcance transversal y plan de correccion por servicio o causa."
+    if criterio == "Reincidencia por cliente":
+        return "Priorizar revision con el cliente, validar cierres previos y definir accion preventiva."
+    return "Revisar registros asociados y completar causa raiz para confirmar el problema."
+
+
+def fila_problema_desde_grupo(grupo, criterio, problema_sugerido, cliente_texto):
+    total = len(grupo)
+    servicio = valor_limpio_analisis(valor_mas_frecuente_analisis(grupo["servicio_producto"]), SIN_SERVICIO_PRODUCTO_ANALISIS)
+    tipificacion = valor_limpio_analisis(valor_mas_frecuente_analisis(grupo["tipificacion"]), SIN_TIPIFICACION_ANALISIS)
+    causa = valor_limpio_analisis(valor_mas_frecuente_analisis(grupo["causa"]), SIN_CAUSA_ANALISIS)
+    return {
+        "problema_sugerido": problema_sugerido,
+        "criterio_detectado": criterio,
+        "cliente_analisis": cliente_texto,
+        "servicio_producto": servicio,
+        "tipificacion": tipificacion,
+        "causa": causa,
+        "total_registros": total,
+        "registros_asociados": resumir_registros(grupo["numero"], limite=10),
+        "observacion": observacion_problema(grupo, criterio),
+        "accion_recomendada": accion_recomendada_problema(criterio),
+        "nivel_prioridad": nivel_reincidencia(total),
+    }
+
+
+def valor_mas_frecuente_analisis(serie, default=""):
+    if serie.empty:
+        return default
+    valores = serie.replace("", pd.NA).dropna()
+    if valores.empty:
+        return default
+    return valores.value_counts().idxmax()
+
+
+def problemas_por_reincidencia_cliente(base):
+    problemas = []
+    if base.empty:
+        return problemas
+
+    for _, grupo in base.groupby(REINCIDENCIA_GROUP_COLUMNS, dropna=False):
+        if len(grupo) < 3:
+            continue
+        cliente = valor_mas_frecuente_analisis(grupo["cliente_analisis"], SIN_CLIENTE_ANALISIS)
+        servicio = valor_mas_frecuente_analisis(group_or_default(grupo, "servicio_producto"), SIN_SERVICIO_PRODUCTO_ANALISIS)
+        causa = valor_mas_frecuente_analisis(group_or_default(grupo, "causa"), SIN_CAUSA_ANALISIS)
+        problema = f"Reincidencia de {cliente}"
+        if servicio != SIN_SERVICIO_PRODUCTO_ANALISIS:
+            problema += f" en {servicio}"
+        elif causa != SIN_CAUSA_ANALISIS:
+            problema += f" por {causa}"
+        problemas.append(
+            fila_problema_desde_grupo(
+                grupo,
+                "Reincidencia por cliente",
+                problema,
+                cliente,
+            )
+        )
+    return problemas
+
+
+def group_or_default(grupo, columna):
+    if columna in grupo.columns:
+        return grupo[columna]
+    return pd.Series(dtype="object")
+
+
+def problemas_transversales(base):
+    problemas = []
+    if base.empty:
+        return problemas
+
+    for _, grupo in base.groupby(PROBLEMA_PATTERN_COLUMNS, dropna=False):
+        clientes = grupo["cliente_analisis"].replace("", pd.NA).dropna().unique().tolist()
+        if len(grupo) < 3 or len(clientes) < 2:
+            continue
+
+        servicio = valor_mas_frecuente_analisis(group_or_default(grupo, "servicio_producto"), SIN_SERVICIO_PRODUCTO_ANALISIS)
+        causa = valor_mas_frecuente_analisis(group_or_default(grupo, "causa"), SIN_CAUSA_ANALISIS)
+        base_nombre = servicio if servicio != SIN_SERVICIO_PRODUCTO_ANALISIS else causa
+        if not base_nombre or base_nombre == SIN_CAUSA_ANALISIS:
+            base_nombre = "patron recurrente"
+        problemas.append(
+            fila_problema_desde_grupo(
+                grupo,
+                "Posible causa comun transversal",
+                f"Posible causa comun transversal: {base_nombre}",
+                f"Varios clientes ({len(clientes)})",
+            )
+        )
+    return problemas
+
+
+def es_valor_informativo_analisis(valor):
+    texto = valor_limpio_analisis(valor)
+    return bool(texto) and texto not in VALORES_NO_INFORMATIVOS_ANALISIS
+
+
+def clientes_grupo_problema(grupo):
+    return [
+        cliente
+        for cliente in grupo["cliente_analisis"].replace("", pd.NA).dropna().unique().tolist()
+        if cliente != SIN_CLIENTE_ANALISIS
+    ]
+
+
+def problemas_por_dimension(base):
+    problemas = []
+    if base.empty:
+        return problemas
+
+    for columna, etiqueta in PROBLEMA_DIMENSIONES:
+        if columna not in base.columns:
+            continue
+        for valor, grupo in base.groupby(columna, dropna=False):
+            if len(grupo) < 3 or not es_valor_informativo_analisis(valor):
+                continue
+            clientes = clientes_grupo_problema(grupo)
+            if len(clientes) > 1:
+                criterio = "Posible causa comun transversal"
+                cliente_texto = f"Varios clientes ({len(clientes)})"
+            else:
+                criterio = "Reincidencia por cliente"
+                cliente_texto = clientes[0] if clientes else SIN_CLIENTE_ANALISIS
+            problemas.append(
+                fila_problema_desde_grupo(
+                    grupo,
+                    criterio,
+                    f"{criterio}: {etiqueta} {valor}",
+                    cliente_texto,
+                )
+            )
+    return problemas
+
+
+def problemas_desde_alertas_incidentes(incidentes_df):
+    if incidentes_df is None or incidentes_df.empty:
+        return []
+
+    problemas = []
+    for alerta in construir_alertas_incidentes(incidentes_df):
+        incidentes = alerta.get("incidentes", [])
+        adicionales = int(alerta.get("incidentes_adicionales", 0) or 0)
+        total = len(incidentes) + adicionales
+        if total < 3:
+            continue
+        problemas.append(
+            {
+                "problema_sugerido": alerta.get("titulo", "Alerta de incidentes"),
+                "criterio_detectado": "Alerta existente de incidentes",
+                "cliente_analisis": "No aplica",
+                "servicio_producto": "",
+                "tipificacion": "Incidente",
+                "causa": "",
+                "total_registros": total,
+                "registros_asociados": ", ".join(incidentes),
+                "observacion": alerta.get("detalle", ""),
+                "accion_recomendada": "Revisar alerta operativa y validar si debe convertirse en problema formal.",
+                "nivel_prioridad": nivel_reincidencia(total),
+            }
+        )
+    return problemas
+
+
+def construir_problemas_sugeridos(base, incidentes_df):
+    filas = []
+    filas.extend(problemas_por_reincidencia_cliente(base))
+    filas.extend(problemas_transversales(base))
+    filas.extend(problemas_por_dimension(base))
+    filas.extend(problemas_desde_alertas_incidentes(incidentes_df))
+    if not filas:
+        return pd.DataFrame(columns=PROBLEMAS_SUGERIDOS_COLUMNS)
+
+    problemas = pd.DataFrame(filas)
+    problemas = problemas.drop_duplicates(
+        subset=[
+            "problema_sugerido",
+            "criterio_detectado",
+            "cliente_analisis",
+            "servicio_producto",
+            "tipificacion",
+            "causa",
+        ],
+        keep="first",
+    )
+    return problemas[PROBLEMAS_SUGERIDOS_COLUMNS].sort_values(
+        by=["total_registros", "nivel_prioridad"],
+        ascending=[False, True],
+    )
+
+
+def filtrar_incidentes_por_base(incidentes_df, base):
+    if incidentes_df is None or incidentes_df.empty or base.empty or "numero" not in incidentes_df.columns:
+        return pd.DataFrame()
+
+    numeros = set(
+        base[base["tipo_registro"] == "Incidente"]["numero"]
+        .dropna()
+        .astype(str)
+        .tolist()
+    )
+    if not numeros:
+        return pd.DataFrame()
+    return incidentes_df[incidentes_df["numero"].astype(str).isin(numeros)].copy()
+
+
+def analizar_reincidencias_y_problemas(casos_df, incidentes_df, filtros=None):
+    base = base_unificada_reincidencias(casos_df, incidentes_df)
+    base = aplicar_filtros_reincidencias(base, filtros)
+    base = agregar_marca_reincidencia_base(base)
+    reincidencias_cliente = resumir_reincidencias_cliente(base)
+    incidentes_filtrados = filtrar_incidentes_por_base(incidentes_df, base)
+    problemas_sugeridos = construir_problemas_sugeridos(base, incidentes_filtrados)
+    return base, reincidencias_cliente, problemas_sugeridos

@@ -9,6 +9,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 from app_logic import (
     agregar_campos_sla_incidentes,
+    analizar_reincidencias_y_problemas,
     autenticar_usuario,
     contar_incidentes,
     eliminar_usuario,
@@ -255,6 +256,7 @@ MENU_CLIENTES_CLAVE = "Clientes clave"
 MENU_KPI_CLIENTES_CLAVE = "KPI Clientes Clave"
 MENU_KPI_CASOS_CLIENTE_EXTERNO = "KPI Casos Cliente Externo"
 MENU_KPI_INCIDENTES = "KPI Incidentes"
+MENU_REINCIDENCIAS_PROBLEMAS = "Reincidencias y problemas sugeridos"
 MENU_SEGUIMIENTO_INCIDENTES_VIEWER = "Seguimiento incidentes"
 MENU_SEGUIMIENTO_INCIDENTES_ADMIN = "Seguimiento Incidentes"
 LABEL_CASOS_CLIENTE_EXTERNO = "Casos cliente externo"
@@ -4461,6 +4463,153 @@ def dashboard_kpi_incidentes():
     render_kpi_incidentes(df, mes_dashboard)
 
 
+def opciones_filtro_reincidencias(base, columna):
+    if base.empty or columna not in base.columns:
+        return []
+    return sorted(base[columna].replace("", pd.NA).dropna().astype(str).unique().tolist())
+
+
+def construir_filtros_reincidencias(base):
+    filtros = {}
+    st.caption("Filtros aplicados al calculo de reincidencias y problemas sugeridos.")
+
+    fecha_col, tipo_col = st.columns([1.4, 1])
+    fechas = base.get("fecha_dt", pd.Series(dtype=PANDAS_DATETIME_DTYPE)).dropna()
+    with fecha_col:
+        if fechas.empty:
+            st.caption("No hay fechas validas para filtrar.")
+        else:
+            fecha_min = fechas.min().date()
+            fecha_max = fechas.max().date()
+            rango = st.date_input(
+                "Rango de fechas",
+                value=(fecha_min, fecha_max),
+                min_value=fecha_min,
+                max_value=fecha_max,
+                key="reincidencias_rango_fechas",
+            )
+            if isinstance(rango, tuple) and len(rango) == 2:
+                filtros["fecha_inicio"], filtros["fecha_fin"] = rango
+    with tipo_col:
+        tipos = opciones_filtro_reincidencias(base, "tipo_registro")
+        seleccion = st.multiselect("Tipo de registro", tipos, default=tipos, key="reincidencias_tipo")
+        if seleccion and set(seleccion) != set(tipos):
+            filtros["tipo_registro"] = seleccion
+
+    filtro_col1, filtro_col2, filtro_col3, filtro_col4 = st.columns(4)
+    filtros_config = [
+        (filtro_col1, "Cliente", "cliente_analisis", "reincidencias_cliente"),
+        (filtro_col2, "Servicio/producto", "servicio_producto", "reincidencias_servicio"),
+        (filtro_col3, TEXT_TIPIFICACION, "tipificacion", "reincidencias_tipificacion"),
+        (filtro_col4, "Causa", "causa", "reincidencias_causa"),
+    ]
+    for columna_ui, etiqueta, columna, key in filtros_config:
+        with columna_ui:
+            opciones = opciones_filtro_reincidencias(base, columna)
+            seleccion = st.multiselect(etiqueta, opciones, key=key)
+            if seleccion:
+                filtros[columna] = seleccion
+    return filtros
+
+
+def render_tabla_reincidencias(reincidencias):
+    if reincidencias.empty:
+        st.info("No se identificaron reincidencias con los filtros seleccionados.")
+        return
+    st.dataframe(reincidencias, use_container_width=True, hide_index=True)
+
+
+def render_tabla_problemas_sugeridos(problemas):
+    if problemas.empty:
+        st.info("No se generaron problemas sugeridos con los filtros seleccionados.")
+        return
+    st.dataframe(problemas, use_container_width=True, hide_index=True)
+
+
+def render_detalle_reincidencias(base):
+    if base.empty or "nivel_reincidencia" not in base.columns:
+        st.info("No hay registros asociados para mostrar.")
+        return
+    detalle = base[base["nivel_reincidencia"].fillna("").ne("")].copy()
+    if detalle.empty:
+        st.info("No hay casos o incidentes asociados a reincidencias con los filtros seleccionados.")
+        return
+    columnas = [
+        "tipo_registro",
+        TEXT_NUMERO,
+        "cliente_analisis",
+        "servicio_producto",
+        TEXT_TIPIFICACION_2,
+        TEXT_CAUSA,
+        "nivel_reincidencia",
+        "fecha",
+        TEXT_ESTADO,
+        TEXT_PRIORIDAD,
+        TEXT_DESCRIPCION_2,
+        TEXT_ESTADO_SLA,
+        "es_alerta",
+        "tipo_incidente",
+    ]
+    columnas = [col for col in columnas if col in detalle.columns]
+    st.dataframe(
+        detalle.sort_values(by=["nivel_reincidencia", "fecha_dt"], ascending=[True, False])[columnas],
+        use_container_width=True,
+        hide_index=True,
+    )
+
+
+def dashboard_reincidencias_problemas():
+    st.subheader(MENU_REINCIDENCIAS_PROBLEMAS)
+    casos = load_casos()
+    incidentes = load_incidentes()
+    if casos.empty and incidentes.empty:
+        st.info("No hay casos ni incidentes cargados para analizar.")
+        return
+
+    base_opciones, _, _ = analizar_reincidencias_y_problemas(casos, incidentes)
+    if base_opciones.empty:
+        st.info("No hay registros analizables para construir reincidencias.")
+        return
+
+    filtros = construir_filtros_reincidencias(base_opciones)
+    base, reincidencias, problemas = analizar_reincidencias_y_problemas(casos, incidentes, filtros)
+    if base.empty:
+        st.info("No hay registros que coincidan con los filtros seleccionados.")
+        return
+
+    clientes_reincidentes = (
+        reincidencias["cliente_analisis"].replace("", pd.NA).dropna().nunique()
+        if not reincidencias.empty
+        else 0
+    )
+    registros_asociados = (
+        int(pd.to_numeric(reincidencias["total_registros"], errors=TEXT_COERCE).sum())
+        if not reincidencias.empty
+        else 0
+    )
+    render_tarjetas(
+        [
+            ("Clientes con reincidencia", clientes_reincidentes),
+            ("Problemas sugeridos", len(problemas)),
+            ("Registros asociados", registros_asociados),
+        ]
+    )
+    st.caption(
+        "Lectura inicial basada en agrupaciones por cliente, servicio/producto, tipificacion y causa. "
+        "No modifica datos ni crea registros nuevos."
+    )
+
+    tab_reincidencias, tab_problemas, tab_detalle = st.tabs(
+        ["Reincidencias por cliente", "Problemas sugeridos", "Detalle asociado"]
+    )
+    with tab_reincidencias:
+        render_tabla_reincidencias(reincidencias)
+    with tab_problemas:
+        render_tabla_problemas_sugeridos(problemas)
+    with tab_detalle:
+        render_detalle_reincidencias(base)
+
+
 def dashboard_incidentes():
     df = load_incidentes()
     if df.empty:
@@ -5664,6 +5813,7 @@ ADMIN_MENU_OPTIONS = [
     TEXT_INCIDENTES,
     "Dashboard Incidentes",
     MENU_KPI_INCIDENTES,
+    MENU_REINCIDENCIAS_PROBLEMAS,
     MENU_SEGUIMIENTO_INCIDENTES_ADMIN,
     MENU_KPI_CLIENTES_CLAVE,
     "Clientes Clave",
@@ -5675,6 +5825,7 @@ VIEWER_MENU_OPTIONS = [
     MENU_KPI_CASOS_CLIENTE_EXTERNO,
     TEXT_INCIDENTES,
     MENU_KPI_INCIDENTES,
+    MENU_REINCIDENCIAS_PROBLEMAS,
     MENU_SEGUIMIENTO_INCIDENTES_VIEWER,
     MENU_KPI_CLIENTES_CLAVE,
     MENU_CLIENTES_CLAVE,
@@ -5689,6 +5840,7 @@ ADMIN_VIEWS = {
     TEXT_INCIDENTES: vista_incidentes,
     "Dashboard Incidentes": dashboard_incidentes,
     MENU_KPI_INCIDENTES: dashboard_kpi_incidentes,
+    MENU_REINCIDENCIAS_PROBLEMAS: dashboard_reincidencias_problemas,
     MENU_SEGUIMIENTO_INCIDENTES_ADMIN: vista_seguimiento_incidentes,
     MENU_KPI_CLIENTES_CLAVE: dashboard_kpi_clientes_clave,
     "Clientes Clave": dashboard_clientes_clave,
@@ -5700,6 +5852,7 @@ VIEWER_VIEWS = {
     MENU_KPI_CASOS_CLIENTE_EXTERNO: dashboard_kpi_casos_cliente_externo,
     TEXT_INCIDENTES: dashboard_incidentes,
     MENU_KPI_INCIDENTES: dashboard_kpi_incidentes,
+    MENU_REINCIDENCIAS_PROBLEMAS: dashboard_reincidencias_problemas,
     MENU_SEGUIMIENTO_INCIDENTES_VIEWER: vista_seguimiento_incidentes,
     MENU_KPI_CLIENTES_CLAVE: dashboard_kpi_clientes_clave,
     MENU_CLIENTES_CLAVE: dashboard_clientes_clave,
