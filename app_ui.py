@@ -3246,13 +3246,19 @@ def preparar_kpi_incidentes(df):
     cumplen = int((cerrados_sla[TEXT_ESTADO_SLA] == ESTADO_SLA_CUMPLE).sum())
     no_cumplen = int((cerrados_sla[TEXT_ESTADO_SLA] == ESTADO_SLA_NO_CUMPLE).sum())
     reincidentes = int(trabajo[TEXT_REINCIDENTE].sum())
+    externos_mask = trabajo[TEXT_SEGMENTO] == "Cliente externo"
+    internos_mask = trabajo[TEXT_SEGMENTO] == "Cliente interno"
 
     metricas = {
         "total": len(trabajo),
-        "externos": int((trabajo[TEXT_SEGMENTO] == "Cliente externo").sum()),
-        "internos": int((trabajo[TEXT_SEGMENTO] == "Cliente interno").sum()),
+        "externos": int(externos_mask.sum()),
+        "internos": int(internos_mask.sum()),
         "abiertos": int(trabajo[TEXT_ABIERTO].sum()),
         "cerrados": int(trabajo[TEXT_CERRADO_2].sum()),
+        "abiertos_externos": int((externos_mask & trabajo[TEXT_ABIERTO]).sum()),
+        "abiertos_internos": int((internos_mask & trabajo[TEXT_ABIERTO]).sum()),
+        "cerrados_externos": int((externos_mask & trabajo[TEXT_CERRADO_2]).sum()),
+        "cerrados_internos": int((internos_mask & trabajo[TEXT_CERRADO_2]).sum()),
         "reincidentes": reincidentes,
         "tasa_reincidencia": porcentaje(reincidentes, len(trabajo)),
         "cumplimiento_sla": porcentaje(cumplen, cumplen + no_cumplen),
@@ -3447,16 +3453,17 @@ def ranking_causas_segmento_kpi(causas, segmento):
 
 def render_slide_kpi_incidentes(metricas, causas, mes_dashboard):
     tarjetas = [
-        ("Incidentes reales", metricas["total"]),
-        ("Cliente externo", metricas["externos"]),
-        ("Cliente interno", metricas["internos"]),
-        ("Abiertos", metricas["abiertos"]),
+        ("Incidentes cliente externo", metricas["externos"]),
+        ("Incidentes cliente interno", metricas["internos"]),
+        ("Abiertos cliente externo", metricas["abiertos_externos"]),
+        ("Abiertos cliente interno", metricas["abiertos_internos"]),
         ("Reincidencia", f"{metricas['tasa_reincidencia']}%"),
         ("SLA incidentes", f"{metricas['cumplimiento_sla']}%"),
     ]
     caption = (
-        "Base KPI: cliente externo + cliente interno | "
-        f"Cerrados: {metricas['cerrados']} | Reincidentes: {metricas['reincidentes']} | "
+        f"Cerrados cliente externo: {metricas['cerrados_externos']} | "
+        f"Cerrados cliente interno: {metricas['cerrados_internos']} | "
+        f"Reincidentes: {metricas['reincidentes']} | "
         f"Promedio: {metricas['promedio']} h | "
         f"Cumplen SLA: {metricas['cumple_sla']} | No cumplen: {metricas['no_cumple_sla']}"
     )
@@ -3490,21 +3497,23 @@ def render_kpi_incidentes(df, mes_dashboard=None):
         st.caption(f"{TEXT_PERIODO}{mes_dashboard}")
     st.subheader(MENU_KPI_INCIDENTES)
     st.caption(
-        "Base KPI: solo incidentes cliente externo e interno. "
+        "Base KPI: solo incidentes reales cliente externo e incidentes reales cliente interno. "
         "No incluye Alertas y Consultas NOC ni Casos cliente externo."
     )
     render_tarjetas(
         [
-            ("Incidentes reales", metricas["total"]),
-            ("Cliente externo", metricas["externos"]),
-            ("Cliente interno", metricas["internos"]),
-            ("Abiertos", metricas["abiertos"]),
+            ("Incidentes cliente externo", metricas["externos"]),
+            ("Incidentes cliente interno", metricas["internos"]),
+            ("Abiertos cliente externo", metricas["abiertos_externos"]),
+            ("Abiertos cliente interno", metricas["abiertos_internos"]),
             ("Reincidencia", f"{metricas['tasa_reincidencia']}%"),
             ("SLA incidentes", f"{metricas['cumplimiento_sla']}%"),
         ]
     )
     st.caption(
-        f"Cerrados: {metricas['cerrados']} | Reincidentes: {metricas['reincidentes']} | "
+        f"Cerrados cliente externo: {metricas['cerrados_externos']} | "
+        f"Cerrados cliente interno: {metricas['cerrados_internos']} | "
+        f"Reincidentes: {metricas['reincidentes']} | "
         f"Promedio: {metricas['promedio']} h | "
         f"Cumplen SLA: {metricas['cumple_sla']} | No cumplen: {metricas['no_cumple_sla']}"
     )
