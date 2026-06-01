@@ -2887,13 +2887,13 @@ def problemas_por_causa_repetida(base):
 
     problemas = []
     for causa, grupo in base.groupby("causa", dropna=False):
-        if len(grupo) < 3 or not es_valor_informativo_analisis(causa):
+        if len(grupo) < 2 or not es_valor_informativo_analisis(causa):
             continue
 
         clientes = clientes_grupo_problema(grupo)
         casos = int((grupo["tipo_registro"] == "Caso").sum())
         incidentes = int((grupo["tipo_registro"] == "Incidente").sum())
-        criterio = "Causa raiz repetida"
+        criterio = "Reincidencia por causa raiz"
         cliente_texto = f"Varios clientes ({len(clientes)})" if len(clientes) > 1 else (clientes[0] if clientes else SIN_CLIENTE_ANALISIS)
         servicio = valor_mas_frecuente_analisis(group_or_default(grupo, "servicio_producto"), SIN_SERVICIO_PRODUCTO_ANALISIS)
         tipificacion = valor_mas_frecuente_analisis(group_or_default(grupo, "tipificacion"), SIN_TIPIFICACION_ANALISIS)
@@ -2908,7 +2908,7 @@ def problemas_por_causa_repetida(base):
 
         problemas.append(
             {
-                "problema_sugerido": f"Causa recurrente: {causa}",
+                "problema_sugerido": f"Problema por causa raiz repetida: {causa}",
                 "criterio_detectado": criterio,
                 "cliente_analisis": cliente_texto,
                 "servicio_producto": servicio,
@@ -2917,7 +2917,7 @@ def problemas_por_causa_repetida(base):
                 "total_registros": len(grupo),
                 "registros_asociados": resumir_registros(grupo["numero"], limite=10),
                 "observacion": observacion,
-                "accion_recomendada": "Revisar los cierres asociados, confirmar causa raiz y definir accion correctiva o preventiva.",
+                "accion_recomendada": "Crear o actualizar el problema asociado, revisar los cierres relacionados y definir accion correctiva o preventiva.",
                 "nivel_prioridad": nivel_reincidencia(len(grupo)),
             }
         )

@@ -11,7 +11,6 @@ from app_logic import (
     agregar_campos_sla_incidentes,
     analizar_reincidencias_y_problemas,
     autenticar_usuario,
-    base_unificada_reincidencias,
     contar_incidentes,
     eliminar_usuario,
     es_error_db_transitorio,
@@ -294,13 +293,19 @@ def meses_disponibles(df, columna_dt=TEXT_CREADO_DT_DASHBOARD):
     return meses
 
 
-def selector_mes_dashboard(df, key, columna_dt=TEXT_CREADO_DT_DASHBOARD):
+def selector_mes_dashboard(
+    df,
+    key,
+    columna_dt=TEXT_CREADO_DT_DASHBOARD,
+    label="Mes del dashboard",
+    incluir_todos=True,
+):
     meses = meses_disponibles(df, columna_dt)
     if not meses:
         st.caption("No hay fechas validas para filtrar por mes.")
         return TEXT_TODOS
-    opciones = [TEXT_TODOS] + meses
-    return st.selectbox("Mes del dashboard", opciones, index=len(opciones) - 1, key=key)
+    opciones = ([TEXT_TODOS] if incluir_todos else []) + meses
+    return st.selectbox(label, opciones, index=len(opciones) - 1, key=key)
 
 
 def serie_servicio_filtro(df, columna_servicio):
@@ -3442,7 +3447,7 @@ def ranking_causas_segmento_kpi(causas, segmento):
 
 def render_slide_kpi_incidentes(metricas, causas, mes_dashboard):
     tarjetas = [
-        ("Incidentes", metricas["total"]),
+        ("Incidentes reales", metricas["total"]),
         ("Cliente externo", metricas["externos"]),
         ("Cliente interno", metricas["internos"]),
         ("Abiertos", metricas["abiertos"]),
@@ -3485,7 +3490,7 @@ def render_kpi_incidentes(df, mes_dashboard=None):
     st.subheader(MENU_KPI_INCIDENTES)
     render_tarjetas(
         [
-            ("Incidentes", metricas["total"]),
+            ("Incidentes reales", metricas["total"]),
             ("Cliente externo", metricas["externos"]),
             ("Cliente interno", metricas["internos"]),
             ("Abiertos", metricas["abiertos"]),
@@ -4563,6 +4568,50 @@ def render_detalle_reincidencias(base, problemas=None):
     )
 
 
+def preparar_fechas_reincidencias(df):
+    if df.empty:
+        return df
+    if TEXT_CREADO not in df.columns:
+        trabajo = df.copy()
+        trabajo[TEXT_CREADO_DT_DASHBOARD] = pd.NaT
+        return trabajo
+    return preparar_fechas_dashboard(df)
+
+
+def seleccionar_meses_reincidencias(casos, incidentes):
+    casos = preparar_fechas_reincidencias(casos)
+    incidentes = preparar_fechas_reincidencias(incidentes)
+
+    st.caption("Selecciona el mes antes de calcular. La vista solo analiza ese corte para mantenerla rapida.")
+    col_casos, col_incidentes = st.columns(2)
+    with col_casos:
+        if casos.empty:
+            mes_casos = TEXT_TODOS
+            st.caption("No hay casos cargados.")
+        else:
+            mes_casos = selector_mes_dashboard(
+                casos,
+                "reincidencias_mes_casos",
+                label="Mes casos",
+                incluir_todos=False,
+            )
+    with col_incidentes:
+        if incidentes.empty:
+            mes_incidentes = TEXT_TODOS
+            st.caption("No hay incidentes cargados.")
+        else:
+            mes_incidentes = selector_mes_dashboard(
+                incidentes,
+                "reincidencias_mes_incidentes",
+                label="Mes incidentes",
+                incluir_todos=False,
+            )
+
+    casos = filtrar_mes_dashboard(casos, mes_casos)
+    incidentes = filtrar_mes_dashboard(incidentes, mes_incidentes)
+    return casos, incidentes, mes_casos, mes_incidentes
+
+
 def dashboard_reincidencias_problemas():
     st.subheader(MENU_REINCIDENCIAS_PROBLEMAS)
     with st.spinner("Cargando casos e incidentes..."):
@@ -4572,17 +4621,15 @@ def dashboard_reincidencias_problemas():
         st.info("No hay casos ni incidentes cargados para analizar.")
         return
 
-    with st.spinner("Preparando filtros del analisis..."):
-        base_opciones = base_unificada_reincidencias(casos, incidentes, incluir_sla=False)
-    if base_opciones.empty:
-        st.info("No hay registros analizables para construir reincidencias.")
+    casos, incidentes, mes_casos, mes_incidentes = seleccionar_meses_reincidencias(casos, incidentes)
+    if casos.empty and incidentes.empty:
+        st.info("No hay casos ni incidentes para los meses seleccionados.")
         return
 
-    filtros = construir_filtros_reincidencias(base_opciones)
     with st.spinner("Calculando reincidencias y problemas sugeridos..."):
-        base, reincidencias, problemas = analizar_reincidencias_y_problemas(casos, incidentes, filtros)
+        base, reincidencias, problemas = analizar_reincidencias_y_problemas(casos, incidentes)
     if base.empty:
-        st.info("No hay registros que coincidan con los filtros seleccionados.")
+        st.info("No hay registros analizables para construir reincidencias.")
         return
 
     clientes_reincidentes = (
@@ -4603,7 +4650,8 @@ def dashboard_reincidencias_problemas():
         ]
     )
     st.caption(
-        "Lectura simple: reincidencias de casos/incidentes y posibles problemas cuando una misma causa se repite. "
+        f"Periodo analizado: casos {mes_casos} | incidentes {mes_incidentes}. "
+        "Lectura simple: reincidencias de casos/incidentes y posibles problemas cuando una misma causa raiz se repite. "
         "No modifica datos ni crea registros nuevos."
     )
 
@@ -4632,16 +4680,16 @@ def dashboard_incidentes():
         return
     df = agregar_campos_sla_incidentes(df)
 
-    total = len(df)
-    cerrados_mask = mascara_cerrados(df)
-    cerrados = len(df[cerrados_mask])
-    abiertos = total - cerrados
-
+    total_atenciones = len(df)
     incidentes_reales = df[df[TEXT_APLICA_SLA_INCIDENTE]].copy()
     atenciones_noc = df[df[TEXT_TIPIFICACION_AUTO].fillna("") == NOC_TIPIFICATION].copy()
     incidentes_externos = df[df[TEXT_TIPIFICACION_AUTO].fillna("") == TIPIFICACION_INCIDENTE_CLIENTE_EXTERNO].copy()
     incidentes_internos = df[df[TEXT_TIPIFICACION_AUTO].fillna("") == TIPIFICACION_INCIDENTE_INTERNO].copy()
     casos_cliente_externo = df[df[TEXT_TIPIFICACION_AUTO].fillna("") == TIPIFICACION_CASO_CLIENTE_EXTERNO].copy()
+
+    incidentes_cerrados_mask = mascara_cerrados(incidentes_reales)
+    incidentes_cerrados = len(incidentes_reales[incidentes_cerrados_mask])
+    incidentes_abiertos = len(incidentes_reales) - incidentes_cerrados
 
     duraciones = pd.to_numeric(incidentes_reales[TEXT_DURACION_SLA_HORAS], errors=TEXT_COERCE).dropna()
     promedio = round(duraciones.mean(), 2) if len(duraciones) > 0 else 0
@@ -4668,7 +4716,7 @@ def dashboard_incidentes():
 
     render_tarjetas(
         [
-            (TEXT_ATENCIONES, total),
+            ("Atenciones totales", total_atenciones),
             ("Incidentes reales", len(incidentes_reales)),
             ("Alertas y Consultas NOC", len(atenciones_noc)),
             (LABEL_CASOS_CLIENTE_EXTERNO, len(casos_cliente_externo)),
@@ -4676,10 +4724,10 @@ def dashboard_incidentes():
         ]
     )
     st.caption(
-        f"{TEXT_PERIODO}{mes_dashboard} | Cerrados: {cerrados} | Abiertos: {abiertos} | "
+        f"{TEXT_PERIODO}{mes_dashboard} | KPI sobre {len(incidentes_reales)} incidentes reales | "
+        f"Cerrados: {incidentes_cerrados} | Abiertos: {incidentes_abiertos} | "
         f"Promedio incidentes: {promedio}h | Cumplen: {cumplen}{TEXT_NO_CUMPLEN}{incumplen} | "
-        f"Externos: {len(incidentes_externos)} | Internos: {len(incidentes_internos)} | "
-        f"SLA casos cliente externo: {casos_sla}%"
+        f"Externos: {len(incidentes_externos)} | Internos: {len(incidentes_internos)}"
     )
 
     st.divider()
