@@ -3455,6 +3455,7 @@ def render_slide_kpi_incidentes(metricas, causas, mes_dashboard):
         ("SLA incidentes", f"{metricas['cumplimiento_sla']}%"),
     ]
     caption = (
+        "Base KPI: cliente externo + cliente interno | "
         f"Cerrados: {metricas['cerrados']} | Reincidentes: {metricas['reincidentes']} | "
         f"Promedio: {metricas['promedio']} h | "
         f"Cumplen SLA: {metricas['cumple_sla']} | No cumplen: {metricas['no_cumple_sla']}"
@@ -3488,6 +3489,10 @@ def render_kpi_incidentes(df, mes_dashboard=None):
     if mes_dashboard:
         st.caption(f"{TEXT_PERIODO}{mes_dashboard}")
     st.subheader(MENU_KPI_INCIDENTES)
+    st.caption(
+        "Base KPI: solo incidentes cliente externo e interno. "
+        "No incluye Alertas y Consultas NOC ni Casos cliente externo."
+    )
     render_tarjetas(
         [
             ("Incidentes reales", metricas["total"]),
@@ -4680,16 +4685,16 @@ def dashboard_incidentes():
         return
     df = agregar_campos_sla_incidentes(df)
 
-    total_atenciones = len(df)
+    total = len(df)
+    cerrados_mask = mascara_cerrados(df)
+    cerrados = len(df[cerrados_mask])
+    abiertos = total - cerrados
+
     incidentes_reales = df[df[TEXT_APLICA_SLA_INCIDENTE]].copy()
     atenciones_noc = df[df[TEXT_TIPIFICACION_AUTO].fillna("") == NOC_TIPIFICATION].copy()
     incidentes_externos = df[df[TEXT_TIPIFICACION_AUTO].fillna("") == TIPIFICACION_INCIDENTE_CLIENTE_EXTERNO].copy()
     incidentes_internos = df[df[TEXT_TIPIFICACION_AUTO].fillna("") == TIPIFICACION_INCIDENTE_INTERNO].copy()
     casos_cliente_externo = df[df[TEXT_TIPIFICACION_AUTO].fillna("") == TIPIFICACION_CASO_CLIENTE_EXTERNO].copy()
-
-    incidentes_cerrados_mask = mascara_cerrados(incidentes_reales)
-    incidentes_cerrados = len(incidentes_reales[incidentes_cerrados_mask])
-    incidentes_abiertos = len(incidentes_reales) - incidentes_cerrados
 
     duraciones = pd.to_numeric(incidentes_reales[TEXT_DURACION_SLA_HORAS], errors=TEXT_COERCE).dropna()
     promedio = round(duraciones.mean(), 2) if len(duraciones) > 0 else 0
@@ -4716,7 +4721,7 @@ def dashboard_incidentes():
 
     render_tarjetas(
         [
-            ("Atenciones totales", total_atenciones),
+            (TEXT_ATENCIONES, total),
             ("Incidentes reales", len(incidentes_reales)),
             ("Alertas y Consultas NOC", len(atenciones_noc)),
             (LABEL_CASOS_CLIENTE_EXTERNO, len(casos_cliente_externo)),
@@ -4724,10 +4729,10 @@ def dashboard_incidentes():
         ]
     )
     st.caption(
-        f"{TEXT_PERIODO}{mes_dashboard} | KPI sobre {len(incidentes_reales)} incidentes reales | "
-        f"Cerrados: {incidentes_cerrados} | Abiertos: {incidentes_abiertos} | "
+        f"{TEXT_PERIODO}{mes_dashboard} | Cerrados: {cerrados} | Abiertos: {abiertos} | "
         f"Promedio incidentes: {promedio}h | Cumplen: {cumplen}{TEXT_NO_CUMPLEN}{incumplen} | "
-        f"Externos: {len(incidentes_externos)} | Internos: {len(incidentes_internos)}"
+        f"Externos: {len(incidentes_externos)} | Internos: {len(incidentes_internos)} | "
+        f"SLA casos cliente externo: {casos_sla}%"
     )
 
     st.divider()
