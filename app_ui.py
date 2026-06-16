@@ -256,6 +256,7 @@ MENU_CLIENTES_CLAVE = "Clientes clave"
 MENU_KPI_CLIENTES_CLAVE = "KPI Clientes Clave"
 MENU_KPI_CASOS_CLIENTE_EXTERNO = "KPI Casos Cliente Externo"
 MENU_KPI_INCIDENTES = "KPI Incidentes"
+MENU_KPI_COMPARATIVO_ANUAL = "KPI 2025 vs 2026"
 MENU_REINCIDENCIAS_PROBLEMAS = "Reincidencias y problemas sugeridos"
 MENU_SEGUIMIENTO_INCIDENTES_VIEWER = "Seguimiento incidentes"
 MENU_SEGUIMIENTO_INCIDENTES_ADMIN = "Seguimiento Incidentes"
@@ -4603,6 +4604,305 @@ def dashboard_kpi_incidentes():
     render_kpi_incidentes(df, mes_dashboard)
 
 
+def filtrar_anio_dashboard(df, anio, columna_dt=TEXT_CREADO_DT_DASHBOARD):
+    if df.empty or columna_dt not in df.columns:
+        return df.copy()
+    return df[df[columna_dt].dt.year == int(anio)].copy()
+
+
+def anios_disponibles_kpi_comparativo(*tablas):
+    anios = {2025, 2026}
+    for tabla in tablas:
+        if tabla.empty or TEXT_CREADO_DT_DASHBOARD not in tabla.columns:
+            continue
+        anios.update(tabla[TEXT_CREADO_DT_DASHBOARD].dropna().dt.year.astype(int).tolist())
+    return sorted(anios)
+
+
+def preparar_bases_kpi_comparativo(casos, incidentes):
+    casos = normalizar_tipificaciones_casos_df(casos)
+    casos = preparar_fechas_dashboard(casos) if not casos.empty else casos
+    casos = casos.dropna(subset=[TEXT_CREADO_DT_DASHBOARD]) if TEXT_CREADO_DT_DASHBOARD in casos.columns else casos
+    base_casos, _ = preparar_kpi_casos_cliente_externo(casos)
+
+    incidentes = preparar_fechas_dashboard(incidentes) if not incidentes.empty else incidentes
+    incidentes = (
+        incidentes.dropna(subset=[TEXT_CREADO_DT_DASHBOARD])
+        if TEXT_CREADO_DT_DASHBOARD in incidentes.columns
+        else incidentes
+    )
+    base_incidentes, _ = preparar_kpi_incidentes(incidentes)
+    return base_casos, base_incidentes
+
+
+def metricas_casos_comparativo(base, anio):
+    datos = filtrar_anio_dashboard(base, anio)
+    if datos.empty:
+        return {
+            "Registro": TEXT_CASOS,
+            "Anio": anio,
+            TEXT_TOTAL: 0,
+            TEXT_CERRADOS: 0,
+            TEXT_ABIERTOS: 0,
+            "SLA %": 0,
+            "Cumple SLA": 0,
+            "No cumple SLA": 0,
+            COL_PROM_HORAS: 0,
+        }
+    cerrados = int(datos[TEXT_CERRADO_2].sum()) if TEXT_CERRADO_2 in datos.columns else 0
+    cumple = int((datos.get("Cumple SLA <=36h", pd.Series(dtype=TEXT_OBJECT)) == "Si").sum())
+    tiempos = pd.to_numeric(datos.get("_tiempo_eval_sla_h", pd.Series(dtype=TEXT_FLOAT)), errors=TEXT_COERCE).dropna()
+    return {
+        "Registro": TEXT_CASOS,
+        "Anio": anio,
+        TEXT_TOTAL: len(datos),
+        TEXT_CERRADOS: cerrados,
+        TEXT_ABIERTOS: len(datos) - cerrados,
+        "SLA %": porcentaje(cumple, len(datos)),
+        "Cumple SLA": cumple,
+        "No cumple SLA": len(datos) - cumple,
+        COL_PROM_HORAS: round(tiempos.mean(), 2) if not tiempos.empty else 0,
+    }
+
+
+def metricas_incidentes_comparativo(base, anio):
+    datos = filtrar_anio_dashboard(base, anio)
+    if datos.empty:
+        return {
+            "Registro": TEXT_INCIDENTES,
+            "Anio": anio,
+            TEXT_TOTAL: 0,
+            TEXT_CERRADOS: 0,
+            TEXT_ABIERTOS: 0,
+            "SLA %": 0,
+            "Cumple SLA": 0,
+            "No cumple SLA": 0,
+            COL_PROM_HORAS: 0,
+            "Reincidentes": 0,
+        }
+    cerrados = int(datos[TEXT_CERRADO_2].sum()) if TEXT_CERRADO_2 in datos.columns else 0
+    cerrados_sla = datos[
+        datos.get(TEXT_CERRADO_2, pd.Series(False, index=datos.index))
+        & datos[TEXT_ESTADO_SLA].isin([ESTADO_SLA_CUMPLE, ESTADO_SLA_NO_CUMPLE])
+    ]
+    cumple = int((cerrados_sla[TEXT_ESTADO_SLA] == ESTADO_SLA_CUMPLE).sum())
+    no_cumple = int((cerrados_sla[TEXT_ESTADO_SLA] == ESTADO_SLA_NO_CUMPLE).sum())
+    tiempos = pd.to_numeric(datos.get(TEXT_DURACION_HORAS_NUM, pd.Series(dtype=TEXT_FLOAT)), errors=TEXT_COERCE).dropna()
+    reincidentes = int(datos.get(TEXT_REINCIDENTE, pd.Series(False, index=datos.index)).sum())
+    return {
+        "Registro": TEXT_INCIDENTES,
+        "Anio": anio,
+        TEXT_TOTAL: len(datos),
+        TEXT_CERRADOS: cerrados,
+        TEXT_ABIERTOS: len(datos) - cerrados,
+        "SLA %": porcentaje(cumple, cumple + no_cumple),
+        "Cumple SLA": cumple,
+        "No cumple SLA": no_cumple,
+        COL_PROM_HORAS: round(tiempos.mean(), 2) if not tiempos.empty else 0,
+        "Reincidentes": reincidentes,
+    }
+
+
+def tabla_metricas_kpi_comparativo(base_casos, base_incidentes, anios):
+    filas = []
+    for anio in anios:
+        filas.append(metricas_casos_comparativo(base_casos, anio))
+        filas.append(metricas_incidentes_comparativo(base_incidentes, anio))
+    return pd.DataFrame(filas)
+
+
+def variacion_porcentual(actual, base):
+    if not base:
+        return None
+    return round(((actual - base) / base) * 100, 2)
+
+
+def texto_variacion(actual, base):
+    if not base and actual:
+        return "Sin base anterior"
+    if actual > base:
+        return "Aumento"
+    if actual < base:
+        return "Disminucion"
+    return "Sin cambio"
+
+
+def tabla_comparativo_anios(metricas, anio_base, anio_comparado):
+    filas = []
+    for registro in [TEXT_CASOS, TEXT_INCIDENTES]:
+        base = metricas[(metricas["Registro"] == registro) & (metricas["Anio"] == anio_base)]
+        actual = metricas[(metricas["Registro"] == registro) & (metricas["Anio"] == anio_comparado)]
+        if base.empty or actual.empty:
+            continue
+        base = base.iloc[0]
+        actual = actual.iloc[0]
+        filas.append(
+            {
+                "Registro": registro,
+                f"Total {anio_base}": int(base[TEXT_TOTAL]),
+                f"Total {anio_comparado}": int(actual[TEXT_TOTAL]),
+                "Diferencia total": int(actual[TEXT_TOTAL] - base[TEXT_TOTAL]),
+                "Variacion total %": variacion_porcentual(actual[TEXT_TOTAL], base[TEXT_TOTAL]),
+                f"SLA {anio_base} %": base["SLA %"],
+                f"SLA {anio_comparado} %": actual["SLA %"],
+                "Diferencia SLA p.p.": round(actual["SLA %"] - base["SLA %"], 2),
+                f"Abiertos {anio_base}": int(base[TEXT_ABIERTOS]),
+                f"Abiertos {anio_comparado}": int(actual[TEXT_ABIERTOS]),
+                "Lectura": texto_variacion(actual[TEXT_TOTAL], base[TEXT_TOTAL]),
+            }
+        )
+    return pd.DataFrame(filas)
+
+
+def tendencia_mensual_kpi(base, tipo, anios):
+    columnas = ["Anio", "Mes", "Tipo", TEXT_CANTIDAD]
+    if base.empty or TEXT_CREADO_DT_DASHBOARD not in base.columns:
+        return pd.DataFrame(columns=columnas)
+    trabajo = base[base[TEXT_CREADO_DT_DASHBOARD].dt.year.isin(anios)].copy()
+    if trabajo.empty:
+        return pd.DataFrame(columns=columnas)
+    trabajo["Anio"] = trabajo[TEXT_CREADO_DT_DASHBOARD].dt.year.astype(str)
+    trabajo["Mes"] = trabajo[TEXT_CREADO_DT_DASHBOARD].dt.month
+    resumen = trabajo.groupby(["Anio", "Mes"]).size().reset_index(name=TEXT_CANTIDAD)
+    resumen["Tipo"] = tipo
+    return resumen[columnas]
+
+
+def render_tarjetas_kpi_comparativo(comparativo, anio_base, anio_comparado):
+    def valor_registro(registro, columna):
+        filas = comparativo[comparativo["Registro"] == registro]
+        return filas.iloc[0][columna] if not filas.empty else 0
+
+    render_tarjetas(
+        [
+            (f"Casos {anio_base}", valor_registro(TEXT_CASOS, f"Total {anio_base}")),
+            (f"Casos {anio_comparado}", valor_registro(TEXT_CASOS, f"Total {anio_comparado}")),
+            ("Var casos", f"{valor_registro(TEXT_CASOS, 'Diferencia total'):+g}"),
+            (f"Incidentes {anio_base}", valor_registro(TEXT_INCIDENTES, f"Total {anio_base}")),
+            (f"Incidentes {anio_comparado}", valor_registro(TEXT_INCIDENTES, f"Total {anio_comparado}")),
+            ("Var incidentes", f"{valor_registro(TEXT_INCIDENTES, 'Diferencia total'):+g}"),
+        ]
+    )
+
+
+def render_graficas_kpi_comparativo(metricas, tendencia, anios):
+    col_totales, col_sla = st.columns(2)
+    with col_totales:
+        if metricas.empty:
+            st.info("No hay metricas para graficar.")
+        else:
+            fig = px.bar(
+                metricas,
+                x="Registro",
+                y=TEXT_TOTAL,
+                color="Anio",
+                barmode="group",
+                text=TEXT_TOTAL,
+                color_discrete_sequence=[UI_PALETTE[TEXT_PRIMARY], UI_PALETTE[TEXT_LAVENDER]],
+            )
+            fig.update_traces(textposition=TEXT_OUTSIDE)
+            st.plotly_chart(aplicar_estilo_figura(fig, "Total por anio"), use_container_width=True)
+
+    with col_sla:
+        if metricas.empty:
+            st.info("No hay SLA para graficar.")
+        else:
+            fig = px.bar(
+                metricas,
+                x="Registro",
+                y="SLA %",
+                color="Anio",
+                barmode="group",
+                text="SLA %",
+                color_discrete_sequence=[UI_PALETTE[TEXT_PRIMARY], UI_PALETTE[TEXT_LAVENDER]],
+            )
+            fig.update_traces(textposition=TEXT_OUTSIDE)
+            fig.update_yaxes(range=[0, 100])
+            st.plotly_chart(aplicar_estilo_figura(fig, "Cumplimiento SLA"), use_container_width=True)
+
+    st.divider()
+    st.subheader("Tendencia mensual")
+    if tendencia.empty:
+        st.info("No hay registros mensuales para los anios seleccionados.")
+        return
+    for tipo in [TEXT_CASOS, TEXT_INCIDENTES]:
+        datos_tipo = tendencia[tendencia["Tipo"] == tipo].copy()
+        if datos_tipo.empty:
+            st.info(f"No hay datos mensuales de {tipo.lower()}.")
+            continue
+        fig = px.line(
+            datos_tipo,
+            x="Mes",
+            y=TEXT_CANTIDAD,
+            color="Anio",
+            markers=True,
+            color_discrete_sequence=[UI_PALETTE[TEXT_PRIMARY], UI_PALETTE[TEXT_LAVENDER]],
+        )
+        fig.update_xaxes(tickmode="array", tickvals=list(range(1, 13)))
+        st.plotly_chart(aplicar_estilo_figura(fig, f"{tipo} por mes"), use_container_width=True)
+
+
+def dashboard_kpi_comparativo_anual():
+    st.subheader(MENU_KPI_COMPARATIVO_ANUAL)
+    with st.spinner("Cargando casos e incidentes..."):
+        casos = load_casos()
+        incidentes = load_incidentes()
+
+    if casos.empty and incidentes.empty:
+        st.info("No hay casos ni incidentes cargados para comparar.")
+        return
+
+    base_casos, base_incidentes = preparar_bases_kpi_comparativo(casos, incidentes)
+    anios_disponibles = anios_disponibles_kpi_comparativo(base_casos, base_incidentes)
+    col_base, col_comparado = st.columns(2)
+    with col_base:
+        anio_base = st.selectbox(
+            "Anio base",
+            anios_disponibles,
+            index=anios_disponibles.index(2025) if 2025 in anios_disponibles else 0,
+            key="kpi_comp_anio_base",
+        )
+    with col_comparado:
+        anio_comparado = st.selectbox(
+            "Anio comparado",
+            anios_disponibles,
+            index=anios_disponibles.index(2026) if 2026 in anios_disponibles else len(anios_disponibles) - 1,
+            key="kpi_comp_anio_comparado",
+        )
+
+    if anio_base == anio_comparado:
+        st.warning("Selecciona dos anios diferentes para comparar.")
+        return
+
+    anios = [anio_base, anio_comparado]
+    metricas = tabla_metricas_kpi_comparativo(base_casos, base_incidentes, anios)
+    comparativo = tabla_comparativo_anios(metricas, anio_base, anio_comparado)
+    tendencia = pd.concat(
+        [
+            tendencia_mensual_kpi(base_casos, TEXT_CASOS, anios),
+            tendencia_mensual_kpi(base_incidentes, TEXT_INCIDENTES, anios),
+        ],
+        ignore_index=True,
+    )
+
+    render_tarjetas_kpi_comparativo(comparativo, anio_base, anio_comparado)
+    st.caption(
+        "Casos: KPI con SLA <=36h. Incidentes: solo incidentes reales cliente externo e interno, "
+        "igual que el KPI de incidentes."
+    )
+
+    tab_resumen, tab_graficas, tab_detalle = st.tabs(["Resumen", "Graficas", "Detalle KPI"])
+    with tab_resumen:
+        if comparativo.empty:
+            st.info("No hay datos para construir el comparativo anual.")
+        else:
+            st.dataframe(comparativo, use_container_width=True, hide_index=True)
+    with tab_graficas:
+        render_graficas_kpi_comparativo(metricas, tendencia, anios)
+    with tab_detalle:
+        st.dataframe(metricas, use_container_width=True, hide_index=True)
+
+
 def opciones_filtro_reincidencias(base, columna):
     if base.empty or columna not in base.columns:
         return []
@@ -6435,6 +6735,7 @@ ADMIN_MENU_OPTIONS = [
     TEXT_INCIDENTES,
     "Dashboard Incidentes",
     MENU_KPI_INCIDENTES,
+    MENU_KPI_COMPARATIVO_ANUAL,
     MENU_REINCIDENCIAS_PROBLEMAS,
     MENU_SEGUIMIENTO_RPOST,
     MENU_SEGUIMIENTO_INCIDENTES_ADMIN,
@@ -6448,6 +6749,7 @@ VIEWER_MENU_OPTIONS = [
     MENU_KPI_CASOS_CLIENTE_EXTERNO,
     TEXT_INCIDENTES,
     MENU_KPI_INCIDENTES,
+    MENU_KPI_COMPARATIVO_ANUAL,
     MENU_REINCIDENCIAS_PROBLEMAS,
     MENU_SEGUIMIENTO_RPOST,
     MENU_SEGUIMIENTO_INCIDENTES_VIEWER,
@@ -6464,6 +6766,7 @@ ADMIN_VIEWS = {
     TEXT_INCIDENTES: vista_incidentes,
     "Dashboard Incidentes": dashboard_incidentes,
     MENU_KPI_INCIDENTES: dashboard_kpi_incidentes,
+    MENU_KPI_COMPARATIVO_ANUAL: dashboard_kpi_comparativo_anual,
     MENU_REINCIDENCIAS_PROBLEMAS: dashboard_reincidencias_problemas,
     MENU_SEGUIMIENTO_RPOST: dashboard_seguimiento_rpost,
     MENU_SEGUIMIENTO_INCIDENTES_ADMIN: vista_seguimiento_incidentes,
@@ -6477,6 +6780,7 @@ VIEWER_VIEWS = {
     MENU_KPI_CASOS_CLIENTE_EXTERNO: dashboard_kpi_casos_cliente_externo,
     TEXT_INCIDENTES: dashboard_incidentes,
     MENU_KPI_INCIDENTES: dashboard_kpi_incidentes,
+    MENU_KPI_COMPARATIVO_ANUAL: dashboard_kpi_comparativo_anual,
     MENU_REINCIDENCIAS_PROBLEMAS: dashboard_reincidencias_problemas,
     MENU_SEGUIMIENTO_RPOST: dashboard_seguimiento_rpost,
     MENU_SEGUIMIENTO_INCIDENTES_VIEWER: vista_seguimiento_incidentes,
