@@ -4703,17 +4703,22 @@ def metricas_casos_comparativo(base, anio):
             COL_PROM_HORAS: 0,
         }
     cerrados = int(datos[TEXT_CERRADO_2].sum()) if TEXT_CERRADO_2 in datos.columns else 0
-    cumple = int((datos.get("Cumple SLA <=36h", pd.Series(dtype=TEXT_OBJECT)) == "Si").sum())
-    tiempos = pd.to_numeric(datos.get("_tiempo_eval_sla_h", pd.Series(dtype=TEXT_FLOAT)), errors=TEXT_COERCE).dropna()
+    cerrados_sla = datos[datos[TEXT_CERRADO_2]].copy() if TEXT_CERRADO_2 in datos.columns else pd.DataFrame()
+    tiempos = pd.to_numeric(
+        cerrados_sla.get("_tiempo_eval_sla_h", pd.Series(dtype=TEXT_FLOAT)),
+        errors=TEXT_COERCE,
+    ).dropna()
+    cumple = int((tiempos <= SLA_CASOS_HORAS).sum())
+    no_cumple = len(tiempos) - cumple
     return {
         "Registro": TEXT_CASOS,
         "Anio": anio,
         TEXT_TOTAL: len(datos),
         TEXT_CERRADOS: cerrados,
         TEXT_ABIERTOS: len(datos) - cerrados,
-        "SLA %": porcentaje(cumple, len(datos)),
+        "SLA %": porcentaje(cumple, len(tiempos)),
         "Cumple SLA": cumple,
-        "No cumple SLA": len(datos) - cumple,
+        "No cumple SLA": no_cumple,
         COL_PROM_HORAS: round(tiempos.mean(), 2) if not tiempos.empty else 0,
     }
 
@@ -4910,14 +4915,12 @@ def tarjetas_estado_anual_html(metricas, anios):
             cerrados = valor_metrica_anual(metricas, registro, anio, TEXT_CERRADOS)
             total = valor_metrica_anual(metricas, registro, anio, TEXT_TOTAL)
             tarjetas.append(
-                f"""
-                <div class="kpi-card">
-                    <div class="kpi-title">{html.escape(registro)} {anio}</div>
-                    <div class="kpi-value">{total}</div>
-                    <div class="executive-note-line"><strong>Abiertos:</strong> {abiertos}</div>
-                    <div class="executive-note-line"><strong>Cerrados:</strong> {cerrados}</div>
-                </div>
-                """
+                '<div class="kpi-card">'
+                f'<div class="kpi-title">{html.escape(registro)} {anio}</div>'
+                f'<div class="kpi-value">{total}</div>'
+                f'<div class="executive-note-line"><strong>Abiertos:</strong> {abiertos}</div>'
+                f'<div class="executive-note-line"><strong>Cerrados:</strong> {cerrados}</div>'
+                "</div>"
             )
     return '<div class="kpi-grid">' + "".join(tarjetas) + "</div>"
 
@@ -4929,12 +4932,10 @@ def tarjetas_sla_anual_html(metricas, anios):
             filas = metricas[(metricas["Registro"] == registro) & (metricas["Anio"] == anio)]
             sla = filas.iloc[0].get("SLA %", 0) if not filas.empty else 0
             tarjetas.append(
-                f"""
-                <div class="kpi-card">
-                    <div class="kpi-title">SLA {html.escape(registro)} {anio}</div>
-                    <div class="kpi-value">{sla}%</div>
-                </div>
-                """
+                '<div class="kpi-card">'
+                f'<div class="kpi-title">SLA {html.escape(registro)} {anio}</div>'
+                f'<div class="kpi-value">{sla}%</div>'
+                "</div>"
             )
     return '<div class="kpi-grid">' + "".join(tarjetas) + "</div>"
 
