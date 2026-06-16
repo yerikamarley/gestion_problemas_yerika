@@ -301,8 +301,14 @@ INCIDENT_FIELDS_SEGUIMIENTO_RPOST = [
 
 PATRONES_NO_RECIBIO_ACUSE = [
     r"\bno\s+(?:se\s+)?(?:ha\s+|han\s+)?recib(?:io|ido|ieron|e|en|imos)\s+(?:el\s+|los\s+|la\s+|las\s+)?acuses?(?:\s+de\s+recibo)?\b",
+    r"\bno\s+(?:se\s+)?(?:esta|estan|estamos)\s+recibiendo\s+(?:el\s+|los\s+|la\s+|las\s+)?acuses?(?:\s+de\s+recibo)?\b",
     r"\bno\s+(?:le\s+|les\s+)?(?:llego|llegaron|llega|llegan)\s+(?:el\s+|los\s+|la\s+|las\s+)?acuses?(?:\s+de\s+recibo)?\b",
     r"\b(?:cliente|usuario|solicitante)\s+no\s+(?:ha\s+)?recib(?:io|ido|e)\s+(?:el\s+|los\s+)?acuses?(?:\s+de\s+recibo)?\b",
+]
+
+CASE_RPOST_RELATION_RULES = [
+    ("RPost", ["rpost"]),
+    ("Certimail / Certicmal", ["certimail", "certi mail", "certicmal", "certimall"]),
 ]
 
 def normalizar_tipificaciones_casos_df(df):
@@ -580,7 +586,7 @@ CLIENTES_CLAVE_ALIASES = {
     CLIENTE_BANCO_CAJA_SOCIAL: [CLIENTE_BANCO_CAJA_SOCIAL, "CAJA SOCIAL"],
     CLIENTE_AV_VILLAS: [CLIENTE_AV_VILLAS, "BANCO AV VILLAS"],
     CLIENTE_FALLABELLA: [CLIENTE_FALLABELLA, "FALABELLA"],
-    CLIENTE_COLPENSIONES: [CLIENTE_COLPENSIONES],
+    CLIENTE_COLPENSIONES: [CLIENTE_COLPENSIONES, "COLPENSIONES", "COLPEN"],
     CLIENTE_CLARO: [CLIENTE_CLARO, "COMCEL"],
     "Coopcentral": ["COOPCENTRAL", "BANCO COOPCENTRAL"],
 }
@@ -4964,6 +4970,15 @@ def contiene_no_recibio_acuse(texto):
     return any(re.search(patron, texto) for patron in PATRONES_NO_RECIBIO_ACUSE)
 
 
+def motivo_caso_seguimiento_rpost(texto):
+    if contiene_no_recibio_acuse(texto):
+        return "No recibio acuse"
+    for motivo, palabras in CASE_RPOST_RELATION_RULES:
+        if any(palabra in texto for palabra in palabras):
+            return motivo
+    return ""
+
+
 def preparar_fechas_seguimiento_rpost(df):
     trabajo = df.copy()
     if trabajo.empty or TEXT_CREADO not in trabajo.columns:
@@ -4974,12 +4989,15 @@ def preparar_fechas_seguimiento_rpost(df):
 
 def cliente_caso_seguimiento_rpost(row):
     cuenta = valor_limpio(row.get(TEXT_CUENTA))
+    texto_cliente = " ".join(
+        [cuenta] + [valor_limpio(row.get(campo)) for campo in CASE_FIELDS_SEGUIMIENTO_RPOST]
+    )
+    cliente_detectado = detectar_cliente_clave(texto_cliente)
+    if cliente_detectado:
+        return cliente_detectado
     if cuenta:
         return cuenta
-    cliente_detectado = detectar_cliente_clave(
-        " ".join(valor_limpio(row.get(campo)) for campo in CASE_FIELDS_SEGUIMIENTO_RPOST)
-    )
-    return cliente_detectado or SIN_DATO
+    return SIN_DATO
 
 
 def cliente_incidente_seguimiento_rpost(row):
@@ -5004,7 +5022,8 @@ def filtrar_casos_no_recibio_acuse(casos):
         lambda row: texto_normalizado_campos(row, CASE_FIELDS_SEGUIMIENTO_RPOST),
         axis=1,
     )
-    trabajo = trabajo[trabajo["_texto_seguimiento_rpost"].apply(contiene_no_recibio_acuse)].copy()
+    trabajo["Relacion RPost"] = trabajo["_texto_seguimiento_rpost"].apply(motivo_caso_seguimiento_rpost)
+    trabajo = trabajo[trabajo["Relacion RPost"] != ""].copy()
     if trabajo.empty:
         trabajo[TEXT_CLIENTE] = pd.Series(dtype=TEXT_OBJECT)
         return trabajo
@@ -5085,7 +5104,7 @@ def base_eventos_seguimiento_rpost(casos, incidentes):
     tablas = []
     if not casos.empty:
         casos_eventos = casos[[TEXT_CREADO_DT_DASHBOARD, TEXT_CLIENTE, TEXT_NUMERO]].copy()
-        casos_eventos["Tipo"] = "Caso no recibio acuse"
+        casos_eventos["Tipo"] = "Caso RPost / acuses"
         tablas.append(casos_eventos)
     if not incidentes.empty:
         incidentes_eventos = incidentes[[TEXT_CREADO_DT_DASHBOARD, TEXT_CLIENTE, TEXT_NUMERO]].copy()
@@ -5120,7 +5139,7 @@ def resumen_clientes_seguimiento_rpost(casos, incidentes):
         filas.append(
             {
                 TEXT_CLIENTE: cliente,
-                "Casos no recibio acuse": total_casos,
+                "Casos RPost/acuses": total_casos,
                 "Incidentes RPost": total_incidentes,
                 TEXT_TOTAL: total_casos + total_incidentes,
                 "Numeros casos": lista_numeros_resumida(casos_cliente.get(TEXT_NUMERO, pd.Series(dtype=TEXT_OBJECT))),
@@ -5180,13 +5199,14 @@ def render_graficas_seguimiento_rpost(casos, incidentes):
 
 
 def render_detalle_casos_seguimiento_rpost(casos):
-    st.subheader("Casos que indican no recibio acuse")
+    st.subheader("Casos relacionados con RPost y acuses")
     if casos.empty:
-        st.info("No hay casos con el texto 'no recibio acuse/acuses' para los filtros seleccionados.")
+        st.info("No hay casos RPost/acuses para los filtros seleccionados.")
         return
     columnas = [
         TEXT_NUMERO,
         TEXT_CLIENTE,
+        "Relacion RPost",
         TEXT_ESTADO,
         TEXT_PRIORIDAD,
         TEXT_CREADO,
@@ -5252,7 +5272,7 @@ def dashboard_seguimiento_rpost():
         incidentes = filtrar_incidentes_rpost(load_incidentes())
 
     if casos.empty and incidentes.empty:
-        st.info("No hay casos con 'no recibio acuse/acuses' ni incidentes RPost cargados.")
+        st.info("No hay casos relacionados con RPost/acuses ni incidentes RPost cargados.")
         return
 
     fechas = fechas_seguimiento_rpost(casos, incidentes)
@@ -5291,7 +5311,7 @@ def dashboard_seguimiento_rpost():
     total_clientes = len(clientes_seguimiento_rpost(casos, incidentes))
     render_tarjetas(
         [
-            ("Casos no recibio acuse", len(casos)),
+            ("Casos RPost/acuses", len(casos)),
             ("Clientes en casos", casos[TEXT_CLIENTE].nunique() if not casos.empty else 0),
             ("Incidentes RPost", len(incidentes)),
             ("Clientes en incidentes", incidentes[TEXT_CLIENTE].nunique() if not incidentes.empty else 0),
@@ -5299,7 +5319,7 @@ def dashboard_seguimiento_rpost():
         ]
     )
     st.caption(
-        f"{TEXT_PERIODO}{mes_dashboard} | Casos: texto indica 'no recibio acuse/acuses' | "
+        f"{TEXT_PERIODO}{mes_dashboard} | Casos: no recibio acuse o Certimail/Certicmal | "
         "Incidentes: cualquier registro que mencione RPost."
     )
 
