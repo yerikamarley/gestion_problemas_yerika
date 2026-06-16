@@ -259,6 +259,7 @@ MENU_KPI_INCIDENTES = "KPI Incidentes"
 MENU_REINCIDENCIAS_PROBLEMAS = "Reincidencias y problemas sugeridos"
 MENU_SEGUIMIENTO_INCIDENTES_VIEWER = "Seguimiento incidentes"
 MENU_SEGUIMIENTO_INCIDENTES_ADMIN = "Seguimiento Incidentes"
+MENU_SEGUIMIENTO_RPOST = "Seguimiento de RPost"
 LABEL_CASOS_CLIENTE_EXTERNO = "Casos cliente externo"
 CASE_TIPIFICATION_RENAMES = {
     "8 - Instalaciones": TIPIFICACION_REDIRECCIONAMIENTO_AGENDA,
@@ -268,6 +269,41 @@ CASE_TIPIFICATION_RENAMES = {
     "9 - Agenda sin evidencia": TIPIFICACION_CLIENTE_NO_ASISTIO,
     "10 - Agenda sin evidencia": TIPIFICACION_CLIENTE_NO_ASISTIO,
 }
+
+CASE_FIELDS_SEGUIMIENTO_RPOST = [
+    TEXT_DESCRIPCION_2,
+    TEXT_CAUSA,
+    TEXT_CODIGO_RESOLUCION,
+    "notas_resolucion",
+    TEXT_OBSERVACIONES_ADICIONALES,
+    TEXT_OBSERVACIONES_TRABAJO,
+    TEXT_PRODUCTO,
+    TEXT_CUENTA,
+]
+
+INCIDENT_FIELDS_SEGUIMIENTO_RPOST = [
+    TEXT_EMPRESA,
+    TEXT_SOLICITANTE,
+    TEXT_BREVE_DESCRIPCION,
+    "categoria",
+    TEXT_DESCRIPCION_2,
+    TEXT_OBSERVACIONES_TRABAJO,
+    TEXT_OBSERVACIONES_ADICIONALES,
+    "actualizaciones",
+    "impacto",
+    "lista_notas_trabajo",
+    TEXT_SERVICIO_NEGOCIO,
+    TEXT_TIPO_FALLA,
+    TEXT_CAUSA_RAIZ_AUTO,
+    TEXT_TIPO_INCIDENTE_AUTO,
+    TEXT_TIPIFICACION_AUTO,
+]
+
+PATRONES_NO_RECIBIO_ACUSE = [
+    r"\bno\s+(?:se\s+)?(?:ha\s+|han\s+)?recib(?:io|ido|ieron|e|en|imos)\s+(?:el\s+|los\s+|la\s+|las\s+)?acuses?(?:\s+de\s+recibo)?\b",
+    r"\bno\s+(?:le\s+|les\s+)?(?:llego|llegaron|llega|llegan)\s+(?:el\s+|los\s+|la\s+|las\s+)?acuses?(?:\s+de\s+recibo)?\b",
+    r"\b(?:cliente|usuario|solicitante)\s+no\s+(?:ha\s+)?recib(?:io|ido|e)\s+(?:el\s+|los\s+)?acuses?(?:\s+de\s+recibo)?\b",
+]
 
 def normalizar_tipificaciones_casos_df(df):
     if df.empty or TEXT_TIPIFICACION_2 not in df.columns:
@@ -4918,6 +4954,373 @@ def dashboard_incidentes():
         st.dataframe(motivos, use_container_width=True, hide_index=True)
 
 
+def texto_normalizado_campos(row, campos):
+    return " ".join(normalizar_texto(row.get(campo)) for campo in campos).strip()
+
+
+def contiene_no_recibio_acuse(texto):
+    if not texto:
+        return False
+    return any(re.search(patron, texto) for patron in PATRONES_NO_RECIBIO_ACUSE)
+
+
+def preparar_fechas_seguimiento_rpost(df):
+    trabajo = df.copy()
+    if trabajo.empty or TEXT_CREADO not in trabajo.columns:
+        trabajo[TEXT_CREADO_DT_DASHBOARD] = pd.Series(dtype=PANDAS_DATETIME_DTYPE)
+        return trabajo
+    return preparar_fechas_dashboard(trabajo)
+
+
+def cliente_caso_seguimiento_rpost(row):
+    cuenta = valor_limpio(row.get(TEXT_CUENTA))
+    if cuenta:
+        return cuenta
+    cliente_detectado = detectar_cliente_clave(
+        " ".join(valor_limpio(row.get(campo)) for campo in CASE_FIELDS_SEGUIMIENTO_RPOST)
+    )
+    return cliente_detectado or SIN_DATO
+
+
+def cliente_incidente_seguimiento_rpost(row):
+    texto_cliente = " ".join(valor_limpio(row.get(campo)) for campo in INCIDENT_FIELDS_SEGUIMIENTO_RPOST)
+    cliente_detectado = detectar_cliente_clave(texto_cliente)
+    if cliente_detectado:
+        return cliente_detectado
+    empresa = valor_limpio(row.get(TEXT_EMPRESA))
+    if empresa:
+        return empresa
+    solicitante = valor_limpio(row.get(TEXT_SOLICITANTE))
+    return solicitante or SIN_DATO
+
+
+def filtrar_casos_no_recibio_acuse(casos):
+    trabajo = preparar_fechas_seguimiento_rpost(normalizar_tipificaciones_casos_df(casos))
+    if trabajo.empty:
+        trabajo[TEXT_CLIENTE] = pd.Series(dtype=TEXT_OBJECT)
+        return trabajo
+
+    trabajo["_texto_seguimiento_rpost"] = trabajo.apply(
+        lambda row: texto_normalizado_campos(row, CASE_FIELDS_SEGUIMIENTO_RPOST),
+        axis=1,
+    )
+    trabajo = trabajo[trabajo["_texto_seguimiento_rpost"].apply(contiene_no_recibio_acuse)].copy()
+    if trabajo.empty:
+        trabajo[TEXT_CLIENTE] = pd.Series(dtype=TEXT_OBJECT)
+        return trabajo
+    trabajo[TEXT_CLIENTE] = trabajo.apply(cliente_caso_seguimiento_rpost, axis=1)
+    return trabajo
+
+
+def filtrar_incidentes_rpost(incidentes):
+    trabajo = preparar_fechas_seguimiento_rpost(incidentes)
+    if trabajo.empty:
+        trabajo[TEXT_CLIENTE] = pd.Series(dtype=TEXT_OBJECT)
+        return trabajo
+
+    trabajo["_texto_seguimiento_rpost"] = trabajo.apply(
+        lambda row: texto_normalizado_campos(row, INCIDENT_FIELDS_SEGUIMIENTO_RPOST),
+        axis=1,
+    )
+    trabajo = trabajo[
+        trabajo["_texto_seguimiento_rpost"].str.contains(
+            r"(?<![a-z0-9])rpost(?![a-z0-9])",
+            regex=True,
+            na=False,
+        )
+    ].copy()
+    if trabajo.empty:
+        trabajo[TEXT_CLIENTE] = pd.Series(dtype=TEXT_OBJECT)
+        return trabajo
+    trabajo[TEXT_CLIENTE] = trabajo.apply(cliente_incidente_seguimiento_rpost, axis=1)
+    return trabajo
+
+
+def fechas_seguimiento_rpost(casos, incidentes):
+    fechas = []
+    for df in [casos, incidentes]:
+        if not df.empty and TEXT_CREADO_DT_DASHBOARD in df.columns:
+            fechas.append(df[TEXT_CREADO_DT_DASHBOARD])
+    return pd.concat(fechas).dropna() if fechas else pd.Series(dtype=PANDAS_DATETIME_DTYPE)
+
+
+def clientes_seguimiento_rpost(casos, incidentes):
+    clientes = []
+    for df in [casos, incidentes]:
+        if not df.empty and TEXT_CLIENTE in df.columns:
+            clientes.extend(df[TEXT_CLIENTE].replace("", pd.NA).dropna().astype(str).tolist())
+    return sorted(set(clientes))
+
+
+def filtrar_busqueda_seguimiento_rpost(df, busqueda, campos):
+    if df.empty or not busqueda:
+        return df
+    texto_busqueda = normalizar_texto(busqueda)
+    campos_busqueda = [TEXT_NUMERO, TEXT_CLIENTE] + campos
+    mascara = df.apply(
+        lambda row: texto_busqueda in texto_normalizado_campos(row, campos_busqueda),
+        axis=1,
+    )
+    return df[mascara].copy()
+
+
+def aplicar_filtros_seguimiento_rpost(casos, incidentes, mes_dashboard, cliente, busqueda):
+    casos = filtrar_mes_dashboard(casos, mes_dashboard)
+    incidentes = filtrar_mes_dashboard(incidentes, mes_dashboard)
+
+    if cliente != TEXT_TODOS:
+        casos = casos[casos[TEXT_CLIENTE] == cliente].copy()
+        incidentes = incidentes[incidentes[TEXT_CLIENTE] == cliente].copy()
+    if busqueda:
+        casos = filtrar_busqueda_seguimiento_rpost(casos, busqueda, CASE_FIELDS_SEGUIMIENTO_RPOST)
+        incidentes = filtrar_busqueda_seguimiento_rpost(
+            incidentes,
+            busqueda,
+            INCIDENT_FIELDS_SEGUIMIENTO_RPOST,
+        )
+    return casos, incidentes
+
+
+def base_eventos_seguimiento_rpost(casos, incidentes):
+    tablas = []
+    if not casos.empty:
+        casos_eventos = casos[[TEXT_CREADO_DT_DASHBOARD, TEXT_CLIENTE, TEXT_NUMERO]].copy()
+        casos_eventos["Tipo"] = "Caso no recibio acuse"
+        tablas.append(casos_eventos)
+    if not incidentes.empty:
+        incidentes_eventos = incidentes[[TEXT_CREADO_DT_DASHBOARD, TEXT_CLIENTE, TEXT_NUMERO]].copy()
+        incidentes_eventos["Tipo"] = "Incidente RPost"
+        tablas.append(incidentes_eventos)
+    if not tablas:
+        return pd.DataFrame(columns=[TEXT_CREADO_DT_DASHBOARD, TEXT_CLIENTE, TEXT_NUMERO, "Tipo"])
+    return pd.concat(tablas, ignore_index=True)
+
+
+def lista_numeros_resumida(serie, limite=18):
+    numeros = []
+    for valor in serie.tolist():
+        numero = valor_limpio(valor)
+        if numero and numero not in numeros:
+            numeros.append(numero)
+    if len(numeros) > limite:
+        return ", ".join(numeros[:limite]) + f" +{len(numeros) - limite} mas"
+    return ", ".join(numeros)
+
+
+def resumen_clientes_seguimiento_rpost(casos, incidentes):
+    filas = []
+    clientes = clientes_seguimiento_rpost(casos, incidentes)
+    for cliente in clientes:
+        casos_cliente = casos[casos[TEXT_CLIENTE] == cliente] if not casos.empty else pd.DataFrame()
+        incidentes_cliente = (
+            incidentes[incidentes[TEXT_CLIENTE] == cliente] if not incidentes.empty else pd.DataFrame()
+        )
+        total_casos = len(casos_cliente)
+        total_incidentes = len(incidentes_cliente)
+        filas.append(
+            {
+                TEXT_CLIENTE: cliente,
+                "Casos no recibio acuse": total_casos,
+                "Incidentes RPost": total_incidentes,
+                TEXT_TOTAL: total_casos + total_incidentes,
+                "Numeros casos": lista_numeros_resumida(casos_cliente.get(TEXT_NUMERO, pd.Series(dtype=TEXT_OBJECT))),
+                "Numeros incidentes": lista_numeros_resumida(
+                    incidentes_cliente.get(TEXT_NUMERO, pd.Series(dtype=TEXT_OBJECT))
+                ),
+            }
+        )
+    if not filas:
+        return pd.DataFrame()
+    return pd.DataFrame(filas).sort_values(by=[TEXT_TOTAL, TEXT_CLIENTE], ascending=[False, True])
+
+
+def render_graficas_seguimiento_rpost(casos, incidentes):
+    eventos = base_eventos_seguimiento_rpost(casos, incidentes)
+    if eventos.empty:
+        st.info("No hay informacion para graficar con los filtros seleccionados.")
+        return
+
+    col_clientes, col_fechas = st.columns(2)
+    with col_clientes:
+        resumen_cliente = (
+            eventos.groupby([TEXT_CLIENTE, "Tipo"])
+            .size()
+            .reset_index(name=TEXT_CANTIDAD)
+            .sort_values(by=TEXT_CANTIDAD, ascending=True)
+        )
+        fig = px.bar(
+            resumen_cliente,
+            x=TEXT_CANTIDAD,
+            y=TEXT_CLIENTE,
+            color="Tipo",
+            orientation="h",
+            text=TEXT_CANTIDAD,
+            barmode="group",
+            color_discrete_sequence=[UI_PALETTE[TEXT_PRIMARY], UI_PALETTE[TEXT_LAVENDER]],
+        )
+        fig.update_traces(textposition=TEXT_OUTSIDE)
+        st.plotly_chart(aplicar_estilo_figura(fig, "Volumen por cliente"), use_container_width=True)
+
+    with col_fechas:
+        eventos_fecha = eventos.dropna(subset=[TEXT_CREADO_DT_DASHBOARD]).copy()
+        if eventos_fecha.empty:
+            st.info("No hay fechas validas para graficar la tendencia.")
+        else:
+            eventos_fecha[TEXT_FECHA] = eventos_fecha[TEXT_CREADO_DT_DASHBOARD].dt.date
+            resumen_fecha = eventos_fecha.groupby([TEXT_FECHA, "Tipo"]).size().reset_index(name=TEXT_CANTIDAD)
+            fig = px.bar(
+                resumen_fecha,
+                x=TEXT_FECHA,
+                y=TEXT_CANTIDAD,
+                color="Tipo",
+                barmode="group",
+                color_discrete_sequence=[UI_PALETTE[TEXT_PRIMARY], UI_PALETTE[TEXT_LAVENDER]],
+            )
+            st.plotly_chart(aplicar_estilo_figura(fig, "Actividad por fecha"), use_container_width=True)
+
+
+def render_detalle_casos_seguimiento_rpost(casos):
+    st.subheader("Casos que indican no recibio acuse")
+    if casos.empty:
+        st.info("No hay casos con el texto 'no recibio acuse/acuses' para los filtros seleccionados.")
+        return
+    columnas = [
+        TEXT_NUMERO,
+        TEXT_CLIENTE,
+        TEXT_ESTADO,
+        TEXT_PRIORIDAD,
+        TEXT_CREADO,
+        TEXT_CERRADO,
+        TEXT_CUENTA,
+        TEXT_PRODUCTO,
+        TEXT_TIPIFICACION_2,
+        TEXT_DESCRIPCION_2,
+        "notas_resolucion",
+        TEXT_OBSERVACIONES_TRABAJO,
+    ]
+    visibles = [col for col in columnas if col in casos.columns]
+    tabla = casos.sort_values(by=TEXT_CREADO_DT_DASHBOARD, ascending=False)[visibles].rename(
+        columns={
+            TEXT_NUMERO: "Numero caso",
+            TEXT_CUENTA: "Cuenta",
+            TEXT_PRODUCTO: "Producto",
+            TEXT_TIPIFICACION_2: TEXT_TIPIFICACION,
+        }
+    )
+    st.dataframe(tabla, use_container_width=True, hide_index=True)
+
+
+def render_detalle_incidentes_seguimiento_rpost(incidentes):
+    st.subheader("Incidentes RPost")
+    if incidentes.empty:
+        st.info("No hay incidentes RPost para los filtros seleccionados.")
+        return
+    columnas = [
+        TEXT_NUMERO,
+        TEXT_CLIENTE,
+        TEXT_ESTADO,
+        TEXT_PRIORIDAD,
+        TEXT_CREADO,
+        TEXT_CERRADO,
+        TEXT_EMPRESA,
+        TEXT_SOLICITANTE,
+        TEXT_SERVICIO_NEGOCIO,
+        TEXT_TIPIFICACION_AUTO,
+        TEXT_TIPO_INCIDENTE_AUTO,
+        TEXT_CAUSA_RAIZ_AUTO,
+        TEXT_BREVE_DESCRIPCION,
+        TEXT_DESCRIPCION_2,
+    ]
+    visibles = [col for col in columnas if col in incidentes.columns]
+    tabla = incidentes.sort_values(by=TEXT_CREADO_DT_DASHBOARD, ascending=False)[visibles].rename(
+        columns={
+            TEXT_NUMERO: "Numero incidente",
+            TEXT_SERVICIO_NEGOCIO: "Servicio",
+            TEXT_TIPIFICACION_AUTO: TEXT_TIPIFICACION,
+            TEXT_TIPO_INCIDENTE_AUTO: "Tipo incidente",
+            TEXT_CAUSA_RAIZ_AUTO: COL_CAUSA_RAIZ,
+            TEXT_BREVE_DESCRIPCION: "Breve descripcion",
+        }
+    )
+    st.dataframe(tabla, use_container_width=True, hide_index=True)
+
+
+def dashboard_seguimiento_rpost():
+    st.subheader(MENU_SEGUIMIENTO_RPOST)
+    with st.spinner("Cargando seguimiento de RPost..."):
+        casos = filtrar_casos_no_recibio_acuse(load_casos())
+        incidentes = filtrar_incidentes_rpost(load_incidentes())
+
+    if casos.empty and incidentes.empty:
+        st.info("No hay casos con 'no recibio acuse/acuses' ni incidentes RPost cargados.")
+        return
+
+    fechas = fechas_seguimiento_rpost(casos, incidentes)
+    filtros_col1, filtros_col2, filtros_col3 = st.columns([1, 1.4, 1.4])
+    with filtros_col1:
+        if fechas.empty:
+            mes_dashboard = TEXT_TODOS
+            st.caption("No hay fechas validas para filtrar por mes.")
+        else:
+            mes_dashboard = selector_mes_dashboard(
+                pd.DataFrame({TEXT_CREADO_DT_DASHBOARD: fechas}),
+                "seguimiento_rpost_mes",
+                label="Mes",
+            )
+
+    casos_mes = filtrar_mes_dashboard(casos, mes_dashboard)
+    incidentes_mes = filtrar_mes_dashboard(incidentes, mes_dashboard)
+    clientes = clientes_seguimiento_rpost(casos_mes, incidentes_mes)
+    with filtros_col2:
+        cliente = st.selectbox("Cliente", [TEXT_TODOS] + clientes, key="seguimiento_rpost_cliente")
+    with filtros_col3:
+        busqueda = st.text_input("Buscar numero o texto", key="seguimiento_rpost_busqueda")
+
+    casos, incidentes = aplicar_filtros_seguimiento_rpost(
+        casos,
+        incidentes,
+        mes_dashboard,
+        cliente,
+        busqueda,
+    )
+
+    if casos.empty and incidentes.empty:
+        st.info("No hay registros para los filtros seleccionados.")
+        return
+
+    total_clientes = len(clientes_seguimiento_rpost(casos, incidentes))
+    render_tarjetas(
+        [
+            ("Casos no recibio acuse", len(casos)),
+            ("Clientes en casos", casos[TEXT_CLIENTE].nunique() if not casos.empty else 0),
+            ("Incidentes RPost", len(incidentes)),
+            ("Clientes en incidentes", incidentes[TEXT_CLIENTE].nunique() if not incidentes.empty else 0),
+            ("Clientes total", total_clientes),
+        ]
+    )
+    st.caption(
+        f"{TEXT_PERIODO}{mes_dashboard} | Casos: texto indica 'no recibio acuse/acuses' | "
+        "Incidentes: cualquier registro que mencione RPost."
+    )
+
+    st.divider()
+    st.subheader("Resumen por cliente")
+    resumen = resumen_clientes_seguimiento_rpost(casos, incidentes)
+    if resumen.empty:
+        st.info("No hay clientes para resumir.")
+    else:
+        st.dataframe(resumen, use_container_width=True, hide_index=True)
+
+    st.divider()
+    render_graficas_seguimiento_rpost(casos, incidentes)
+
+    st.divider()
+    render_detalle_casos_seguimiento_rpost(casos)
+
+    st.divider()
+    render_detalle_incidentes_seguimiento_rpost(incidentes)
+
+
 def fechas_clientes_clave(casos, incidentes):
     fechas = []
     if not casos.empty:
@@ -5884,6 +6287,7 @@ ADMIN_MENU_OPTIONS = [
     "Dashboard Incidentes",
     MENU_KPI_INCIDENTES,
     MENU_REINCIDENCIAS_PROBLEMAS,
+    MENU_SEGUIMIENTO_RPOST,
     MENU_SEGUIMIENTO_INCIDENTES_ADMIN,
     MENU_KPI_CLIENTES_CLAVE,
     "Clientes Clave",
@@ -5896,6 +6300,7 @@ VIEWER_MENU_OPTIONS = [
     TEXT_INCIDENTES,
     MENU_KPI_INCIDENTES,
     MENU_REINCIDENCIAS_PROBLEMAS,
+    MENU_SEGUIMIENTO_RPOST,
     MENU_SEGUIMIENTO_INCIDENTES_VIEWER,
     MENU_KPI_CLIENTES_CLAVE,
     MENU_CLIENTES_CLAVE,
@@ -5911,6 +6316,7 @@ ADMIN_VIEWS = {
     "Dashboard Incidentes": dashboard_incidentes,
     MENU_KPI_INCIDENTES: dashboard_kpi_incidentes,
     MENU_REINCIDENCIAS_PROBLEMAS: dashboard_reincidencias_problemas,
+    MENU_SEGUIMIENTO_RPOST: dashboard_seguimiento_rpost,
     MENU_SEGUIMIENTO_INCIDENTES_ADMIN: vista_seguimiento_incidentes,
     MENU_KPI_CLIENTES_CLAVE: dashboard_kpi_clientes_clave,
     "Clientes Clave": dashboard_clientes_clave,
@@ -5923,6 +6329,7 @@ VIEWER_VIEWS = {
     TEXT_INCIDENTES: dashboard_incidentes,
     MENU_KPI_INCIDENTES: dashboard_kpi_incidentes,
     MENU_REINCIDENCIAS_PROBLEMAS: dashboard_reincidencias_problemas,
+    MENU_SEGUIMIENTO_RPOST: dashboard_seguimiento_rpost,
     MENU_SEGUIMIENTO_INCIDENTES_VIEWER: vista_seguimiento_incidentes,
     MENU_KPI_CLIENTES_CLAVE: dashboard_kpi_clientes_clave,
     MENU_CLIENTES_CLAVE: dashboard_clientes_clave,
