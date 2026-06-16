@@ -4895,6 +4895,78 @@ def render_graficas_kpi_comparativo(metricas, tendencia, anios):
         st.plotly_chart(aplicar_estilo_figura(fig, f"{tipo} por mes"), use_container_width=True)
 
 
+def valor_metrica_anual(metricas, registro, anio, columna):
+    filas = metricas[(metricas["Registro"] == registro) & (metricas["Anio"] == anio)]
+    if filas.empty:
+        return 0
+    return int(filas.iloc[0].get(columna, 0) or 0)
+
+
+def tarjetas_estado_anual_html(metricas, anios):
+    tarjetas = []
+    for registro in [TEXT_CASOS, TEXT_INCIDENTES]:
+        for anio in anios:
+            abiertos = valor_metrica_anual(metricas, registro, anio, TEXT_ABIERTOS)
+            cerrados = valor_metrica_anual(metricas, registro, anio, TEXT_CERRADOS)
+            total = valor_metrica_anual(metricas, registro, anio, TEXT_TOTAL)
+            tarjetas.append(
+                f"""
+                <div class="kpi-card">
+                    <div class="kpi-title">{html.escape(registro)} {anio}</div>
+                    <div class="kpi-value">{total}</div>
+                    <div class="executive-note-line"><strong>Abiertos:</strong> {abiertos}</div>
+                    <div class="executive-note-line"><strong>Cerrados:</strong> {cerrados}</div>
+                </div>
+                """
+            )
+    return '<div class="kpi-grid">' + "".join(tarjetas) + "</div>"
+
+
+def tarjetas_sla_anual_html(metricas, anios):
+    tarjetas = []
+    for registro in [TEXT_CASOS, TEXT_INCIDENTES]:
+        for anio in anios:
+            filas = metricas[(metricas["Registro"] == registro) & (metricas["Anio"] == anio)]
+            sla = filas.iloc[0].get("SLA %", 0) if not filas.empty else 0
+            tarjetas.append(
+                f"""
+                <div class="kpi-card">
+                    <div class="kpi-title">SLA {html.escape(registro)} {anio}</div>
+                    <div class="kpi-value">{sla}%</div>
+                </div>
+                """
+            )
+    return '<div class="kpi-grid">' + "".join(tarjetas) + "</div>"
+
+
+def datos_estado_anual_grafico(metricas, registro, anios):
+    filas = []
+    for anio in anios:
+        filas.append({"Anio": str(anio), TEXT_ESTADO_2: TEXT_ABIERTOS, TEXT_CANTIDAD: valor_metrica_anual(metricas, registro, anio, TEXT_ABIERTOS)})
+        filas.append({"Anio": str(anio), TEXT_ESTADO_2: TEXT_CERRADOS, TEXT_CANTIDAD: valor_metrica_anual(metricas, registro, anio, TEXT_CERRADOS)})
+    return pd.DataFrame(filas)
+
+
+def render_grafico_estado_anual(metricas, registro, anios):
+    datos = datos_estado_anual_grafico(metricas, registro, anios)
+    fig = px.bar(
+        datos,
+        x="Anio",
+        y=TEXT_CANTIDAD,
+        color=TEXT_ESTADO_2,
+        text=TEXT_CANTIDAD,
+        barmode="stack",
+        labels={"Anio": "Año"},
+        color_discrete_map={
+            TEXT_ABIERTOS: UI_PALETTE[TEXT_PRIMARY],
+            TEXT_CERRADOS: UI_PALETTE[TEXT_LAVENDER],
+        },
+    )
+    fig.update_traces(textposition="inside")
+    fig.update_layout(showlegend=True, height=390)
+    st.plotly_chart(aplicar_estilo_figura(fig, registro), use_container_width=True)
+
+
 def dashboard_kpi_comparativo_anual():
     st.subheader(MENU_KPI_COMPARATIVO_ANUAL)
     anio_actual = pd.Timestamp.now().year
@@ -4902,21 +4974,21 @@ def dashboard_kpi_comparativo_anual():
     col_base, col_comparado = st.columns(2)
     with col_base:
         anio_base = st.selectbox(
-            "Anio base",
+            "Año base",
             anios_disponibles,
             index=anios_disponibles.index(2025) if 2025 in anios_disponibles else 0,
             key="kpi_comp_anio_base",
         )
     with col_comparado:
         anio_comparado = st.selectbox(
-            "Anio comparado",
+            "Año comparado",
             anios_disponibles,
             index=anios_disponibles.index(2026) if 2026 in anios_disponibles else len(anios_disponibles) - 1,
             key="kpi_comp_anio_comparado",
         )
 
     if anio_base == anio_comparado:
-        st.warning("Selecciona dos anios diferentes para comparar.")
+        st.warning("Selecciona dos años diferentes para comparar.")
         return
 
     anios = [anio_base, anio_comparado]
@@ -4925,37 +4997,26 @@ def dashboard_kpi_comparativo_anual():
         incidentes = load_incidentes_anios(anios)
 
     if casos.empty and incidentes.empty:
-        st.info("No hay casos ni incidentes cargados para los anios seleccionados.")
+        st.info("No hay casos ni incidentes cargados para los años seleccionados.")
         return
 
-    with st.spinner("Calculando KPI comparativo liviano..."):
+    with st.spinner("Preparando resumen anual..."):
         base_casos, base_incidentes = preparar_bases_kpi_comparativo(casos, incidentes)
     metricas = tabla_metricas_kpi_comparativo(base_casos, base_incidentes, anios)
-    comparativo = tabla_comparativo_anios(metricas, anio_base, anio_comparado)
-    tendencia = pd.concat(
-        [
-            tendencia_mensual_kpi(base_casos, TEXT_CASOS, anios),
-            tendencia_mensual_kpi(base_incidentes, TEXT_INCIDENTES, anios),
-        ],
-        ignore_index=True,
-    )
 
-    render_tarjetas_kpi_comparativo(comparativo, anio_base, anio_comparado)
-    st.caption(
-        "Casos: KPI con SLA <=36h. Incidentes: solo incidentes reales cliente externo e interno, "
-        "igual que el KPI de incidentes."
-    )
+    st.markdown(tarjetas_estado_anual_html(metricas, anios), unsafe_allow_html=True)
+    st.markdown(tarjetas_sla_anual_html(metricas, anios), unsafe_allow_html=True)
 
-    tab_resumen, tab_graficas, tab_detalle = st.tabs(["Resumen", "Graficas", "Detalle KPI"])
-    with tab_resumen:
-        if comparativo.empty:
-            st.info("No hay datos para construir el comparativo anual.")
-        else:
-            st.dataframe(comparativo, use_container_width=True, hide_index=True)
-    with tab_graficas:
-        render_graficas_kpi_comparativo(metricas, tendencia, anios)
-    with tab_detalle:
-        st.dataframe(metricas, use_container_width=True, hide_index=True)
+    graf_col1, graf_col2 = st.columns(2)
+    with graf_col1:
+        render_grafico_estado_anual(metricas, TEXT_CASOS, anios)
+    with graf_col2:
+        render_grafico_estado_anual(metricas, TEXT_INCIDENTES, anios)
+
+    with st.expander("Ver tabla resumen"):
+        columnas = ["Anio", "Registro", TEXT_TOTAL, TEXT_ABIERTOS, TEXT_CERRADOS]
+        tabla = metricas[[col for col in columnas if col in metricas.columns]].rename(columns={"Anio": "Año"})
+        st.dataframe(tabla, use_container_width=True, hide_index=True)
 
 
 def opciones_filtro_reincidencias(base, columna):
