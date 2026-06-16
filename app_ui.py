@@ -1522,6 +1522,72 @@ def mascara_prioridad_alta(df):
     )
 
 
+def resumen_carga_agentes(df, columna_agente):
+    columnas = [
+        TEXT_RESPONSABLE,
+        TEXT_CERRADOS,
+        TEXT_ABIERTOS,
+        "Total asignado",
+        "% periodo",
+        "% carga abierta",
+    ]
+    if df.empty or columna_agente not in df.columns:
+        return pd.DataFrame(columns=columnas)
+
+    trabajo = df.copy()
+    trabajo[TEXT_RESPONSABLE] = trabajo[columna_agente].apply(valor_limpio).replace("", "Sin agente")
+    trabajo[TEXT_CERRADO_2] = mascara_cerrados(trabajo)
+    trabajo[TEXT_ABIERTO] = ~trabajo[TEXT_CERRADO_2]
+
+    total_periodo = len(trabajo)
+    total_abiertos = int(trabajo[TEXT_ABIERTO].sum())
+    resumen = (
+        trabajo.groupby(TEXT_RESPONSABLE, dropna=False)
+        .agg(
+            Cerrados=(TEXT_CERRADO_2, "sum"),
+            Abiertos=(TEXT_ABIERTO, "sum"),
+            Total_asignado=(TEXT_NUMERO, TEXT_COUNT),
+        )
+        .reset_index()
+    )
+    resumen[TEXT_CERRADOS] = resumen["Cerrados"].astype(int)
+    resumen[TEXT_ABIERTOS] = resumen["Abiertos"].astype(int)
+    resumen["Total asignado"] = resumen["Total_asignado"].astype(int)
+    resumen["% periodo"] = resumen["Total asignado"].apply(lambda valor: porcentaje(valor, total_periodo))
+    resumen["% carga abierta"] = resumen[TEXT_ABIERTOS].apply(lambda valor: porcentaje(valor, total_abiertos))
+    return resumen[columnas].sort_values(
+        by=[TEXT_ABIERTOS, "Total asignado", TEXT_RESPONSABLE],
+        ascending=[False, False, True],
+    )
+
+
+def render_carga_agentes(df, columna_agente, titulo, etiqueta_registro):
+    st.subheader(titulo)
+    resumen = resumen_carga_agentes(df, columna_agente)
+    if resumen.empty:
+        st.info(f"No hay responsables asignados para calcular carga de {etiqueta_registro.lower()}.")
+        return
+
+    total_abiertos = int(resumen[TEXT_ABIERTOS].sum())
+    st.caption(
+        f"El % de carga abierta compara los pendientes de cada agente contra el 100% de "
+        f"{etiqueta_registro.lower()} abiertos del periodo seleccionado."
+    )
+    grafico = resumen.sort_values(by="% carga abierta" if total_abiertos else "Total asignado", ascending=True)
+    eje_x = "% carga abierta" if total_abiertos else "Total asignado"
+    fig = px.bar(
+        grafico,
+        x=eje_x,
+        y=TEXT_RESPONSABLE,
+        orientation="h",
+        text=eje_x,
+        color_discrete_sequence=[UI_PALETTE[TEXT_PRIMARY]],
+    )
+    fig.update_traces(textposition=TEXT_OUTSIDE)
+    st.plotly_chart(aplicar_estilo_figura(fig, titulo), use_container_width=True)
+    st.dataframe(resumen, use_container_width=True, hide_index=True)
+
+
 def preparar_seguimiento_operativo_incidentes(df, horas_proximas=24):
     trabajo = agregar_campos_sla_incidentes(df)
     if trabajo.empty:
@@ -4456,6 +4522,9 @@ def dashboard_casos():
     st.caption(f"{TEXT_PERIODO}{mes_dashboard} | Cumplen: {cumplen}{TEXT_NO_CUMPLEN}{incumplen}")
 
     st.divider()
+    render_carga_agentes(df, TEXT_ASIGNADO, "Carga por agente - casos", TEXT_CASOS)
+
+    st.divider()
     col1, col2 = st.columns(2)
 
     with col1:
@@ -4785,6 +4854,9 @@ def dashboard_incidentes():
         f"Externos: {len(incidentes_externos)} | Internos: {len(incidentes_internos)} | "
         f"SLA casos cliente externo: {casos_sla}%"
     )
+
+    st.divider()
+    render_carga_agentes(df, TEXT_ASIGNADO_A, "Carga por agente - incidentes", TEXT_INCIDENTES)
 
     st.divider()
     st.subheader("Clasificacion de atenciones")
