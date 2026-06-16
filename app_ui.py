@@ -275,6 +275,9 @@ SOPORTE_TOKEN_FISICO = "Soporte Token Fisico"
 SOPORTE_TOKEN_VIRTUAL = "Soporte Token Virtual"
 SOPORTE_CERTIFICADO_FIRMA_ACUSES = "Soporte Certificado, Firma y Acuses"
 SOPORTE_PLATAFORMA_ACCESOS_SEGURIDAD = "Soporte Plataforma, Accesos y Seguridad"
+KEY_CLIENT_CASE_YEAR_BASE = 2025
+KEY_CLIENT_CASE_YEAR_FOCUS = 2026
+KEY_CLIENT_CASE_MONTHS_FOCUS = [3, 4, 6]
 ANS_INCIDENT_YEAR_BASE = 2025
 ANS_INCIDENT_YEAR_FOCUS = 2026
 ANS_INCIDENT_MONTHS_FOCUS = [3, 4, 5]
@@ -6536,6 +6539,217 @@ def calcular_sla_casos_clientes(casos):
     return porcentaje(len(tiempos_casos[tiempos_casos < SLA_CASOS_HORAS]), len(tiempos_casos))
 
 
+def preparar_casos_clientes_clave_comparativo(casos):
+    trabajo = preparar_casos_clientes_clave(casos)
+    if trabajo.empty:
+        return trabajo
+    trabajo[TEXT_CERRADO_2] = mascara_cerrados(trabajo)
+    trabajo[TEXT_ABIERTO] = ~trabajo[TEXT_CERRADO_2]
+    trabajo["_tiempo_eval_sla_h"] = pd.to_numeric(trabajo.get(TEXT_TIEMPO_RESPUESTA_H), errors=TEXT_COERCE)
+    trabajo["Cumple SLA"] = trabajo["_tiempo_eval_sla_h"].apply(
+        lambda valor: "Si" if pd.notna(valor) and valor < SLA_CASOS_HORAS else "No"
+    )
+    return trabajo
+
+
+def resumen_casos_clientes_clave_periodo(casos, periodo):
+    columnas = [
+        "Periodo",
+        TEXT_CLIENTE,
+        TEXT_CASOS,
+        TEXT_CERRADOS,
+        TEXT_ABIERTOS,
+        COL_CUMPLE_SLA,
+        COL_NO_CUMPLE_SLA,
+        "SLA %",
+    ]
+    if casos.empty:
+        return pd.DataFrame(columns=columnas)
+
+    filas = []
+    for cliente in CLIENTES_CLAVE:
+        datos = casos[casos[TEXT_CLIENTE_CLAVE] == cliente].copy()
+        if datos.empty:
+            continue
+        cerrados = datos[datos[TEXT_CERRADO_2]].copy()
+        tiempos = pd.to_numeric(cerrados.get("_tiempo_eval_sla_h", pd.Series(dtype=TEXT_FLOAT)), errors=TEXT_COERCE).dropna()
+        cumple = int((tiempos < SLA_CASOS_HORAS).sum())
+        no_cumple = int(len(tiempos) - cumple)
+        filas.append(
+            {
+                "Periodo": periodo,
+                TEXT_CLIENTE: cliente,
+                TEXT_CASOS: int(len(datos)),
+                TEXT_CERRADOS: int(len(cerrados)),
+                TEXT_ABIERTOS: int(len(datos) - len(cerrados)),
+                COL_CUMPLE_SLA: cumple,
+                COL_NO_CUMPLE_SLA: no_cumple,
+                "SLA %": formato_porcentaje_presentacion(porcentaje(cumple, len(tiempos)) if len(tiempos) else None),
+            }
+        )
+    if not filas:
+        return pd.DataFrame(columns=columnas)
+    return pd.DataFrame(filas, columns=columnas).sort_values(by=[TEXT_CASOS, TEXT_CLIENTE], ascending=[False, True])
+
+
+def resumen_total_casos_clientes_clave(tabla, periodo):
+    if tabla.empty:
+        return {
+            "Periodo": periodo,
+            TEXT_CASOS: 0,
+            TEXT_CERRADOS: 0,
+            TEXT_ABIERTOS: 0,
+            COL_CUMPLE_SLA: 0,
+            COL_NO_CUMPLE_SLA: 0,
+            "SLA valor": None,
+            "SLA %": "Sin dato",
+        }
+    casos = int(tabla[TEXT_CASOS].sum())
+    cerrados = int(tabla[TEXT_CERRADOS].sum())
+    abiertos = int(tabla[TEXT_ABIERTOS].sum())
+    cumple = int(tabla[COL_CUMPLE_SLA].sum())
+    no_cumple = int(tabla[COL_NO_CUMPLE_SLA].sum())
+    evaluados = cumple + no_cumple
+    sla_valor = porcentaje(cumple, evaluados) if evaluados else None
+    return {
+        "Periodo": periodo,
+        TEXT_CASOS: casos,
+        TEXT_CERRADOS: cerrados,
+        TEXT_ABIERTOS: abiertos,
+        COL_CUMPLE_SLA: cumple,
+        COL_NO_CUMPLE_SLA: no_cumple,
+        "SLA valor": sla_valor,
+        "SLA %": formato_porcentaje_presentacion(sla_valor),
+    }
+
+
+def tabla_casos_clientes_clave_2026(base):
+    tablas = []
+    for mes in KEY_CLIENT_CASE_MONTHS_FOCUS:
+        etiqueta = f"{MONTH_NAMES_ES.get(mes, mes)} {KEY_CLIENT_CASE_YEAR_FOCUS}"
+        datos_mes = filtrar_anio_mes_dashboard(base, KEY_CLIENT_CASE_YEAR_FOCUS, mes, TEXT_CREADO_DT)
+        tabla_mes = resumen_casos_clientes_clave_periodo(datos_mes, etiqueta)
+        if not tabla_mes.empty:
+            tablas.append(tabla_mes)
+    if not tablas:
+        return pd.DataFrame()
+    return pd.concat(tablas, ignore_index=True)
+
+
+def tarjetas_casos_clientes_clave_html(resumen_2025, resumen_2026):
+    items = [
+        ("Casos 2025", resumen_2025[TEXT_CASOS]),
+        ("Abiertos 2025", resumen_2025[TEXT_ABIERTOS]),
+        ("SLA 2025", resumen_2025["SLA %"]),
+        ("Casos marzo-abril-junio 2026", resumen_2026[TEXT_CASOS]),
+        ("Abiertos 2026", resumen_2026[TEXT_ABIERTOS]),
+        ("SLA 2026", resumen_2026["SLA %"]),
+    ]
+    tarjetas = [
+        '<div class="ans-card">'
+        f'<div class="ans-card-label">{html.escape(str(titulo))}</div>'
+        f'<div class="ans-card-value">{html.escape(str(valor))}</div>'
+        "</div>"
+        for titulo, valor in items
+    ]
+    return '<div class="ans-card-grid">' + "".join(tarjetas) + "</div>"
+
+
+def tabla_casos_clientes_html(titulo, subtitulo, tabla):
+    columnas = [
+        "Periodo",
+        TEXT_CLIENTE,
+        TEXT_CASOS,
+        TEXT_CERRADOS,
+        TEXT_ABIERTOS,
+        COL_CUMPLE_SLA,
+        COL_NO_CUMPLE_SLA,
+        "SLA %",
+    ]
+    encabezado = "".join(f"<th>{html.escape(columna)}</th>" for columna in columnas)
+    filas = []
+    for _, row in tabla.iterrows():
+        celdas = []
+        for columna in columnas:
+            valor = row.get(columna, "")
+            if columna in ["Periodo", TEXT_CLIENTE]:
+                celdas.append(f'<td class="ans-period">{html.escape(str(valor))}</td>')
+            elif columna == "SLA %":
+                celdas.append(f'<td><span class="ans-pill">{html.escape(str(valor))}</span></td>')
+            else:
+                celdas.append(f"<td>{html.escape(str(valor))}</td>")
+        filas.append("<tr>" + "".join(celdas) + "</tr>")
+    cuerpo = "".join(filas) if filas else f'<tr><td colspan="{len(columnas)}">Sin datos</td></tr>'
+    return (
+        '<div class="ans-panel">'
+        f'<div class="ans-panel-title">{html.escape(titulo)}</div>'
+        f'<div class="ans-panel-subtitle">{html.escape(subtitulo)}</div>'
+        '<table class="ans-table">'
+        f"<thead><tr>{encabezado}</tr></thead>"
+        f"<tbody>{cuerpo}</tbody>"
+        "</table>"
+        "</div>"
+    )
+
+
+def dashboard_casos_clientes_clave_comparativo():
+    st.subheader("Casos clientes clave 2025 vs 2026")
+    st.caption(
+        "Reporte ejecutivo solo con casos de clientes clave. Para 2026 se muestran marzo, abril y junio."
+    )
+
+    with st.spinner("Cargando casos de clientes clave para el comparativo..."):
+        casos = load_casos_anios([KEY_CLIENT_CASE_YEAR_BASE, KEY_CLIENT_CASE_YEAR_FOCUS])
+
+    if casos.empty:
+        st.info("No hay casos cargados para 2025 o 2026.")
+        return
+
+    faltantes = set(casos.attrs.get("missing_columns", []))
+    requeridas = {TEXT_CUENTA, TEXT_CREADO, TEXT_ESTADO, TEXT_TIEMPO_RESPUESTA}
+    faltantes_visibles = sorted(requeridas.intersection(faltantes))
+    if faltantes_visibles:
+        st.warning(
+            "Faltan campos para calcular el reporte completo: "
+            + ", ".join(faltantes_visibles)
+            + ". Se mostraran los datos disponibles sin inventar valores."
+        )
+
+    base = preparar_casos_clientes_clave_comparativo(casos)
+    if base.empty:
+        st.info("No hay casos asociados a la lista de clientes clave para los periodos indicados.")
+        return
+
+    tabla_2025 = resumen_casos_clientes_clave_periodo(
+        filtrar_anio_dashboard(base, KEY_CLIENT_CASE_YEAR_BASE, TEXT_CREADO_DT),
+        str(KEY_CLIENT_CASE_YEAR_BASE),
+    )
+    tabla_2026 = tabla_casos_clientes_clave_2026(base)
+    resumen_2025 = resumen_total_casos_clientes_clave(tabla_2025, str(KEY_CLIENT_CASE_YEAR_BASE))
+    resumen_2026 = resumen_total_casos_clientes_clave(tabla_2026, "Marzo, abril y junio 2026")
+
+    st.markdown(tarjetas_casos_clientes_clave_html(resumen_2025, resumen_2026), unsafe_allow_html=True)
+    st.markdown(
+        tabla_casos_clientes_html(
+            "Referencia 2025",
+            "Casos anuales por cliente clave.",
+            tabla_2025,
+        ),
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        tabla_casos_clientes_html(
+            "Detalle 2026",
+            "Solo marzo, abril y junio de 2026.",
+            tabla_2026,
+        ),
+        unsafe_allow_html=True,
+    )
+
+    with st.expander("Lista de clientes clave"):
+        st.dataframe(pd.DataFrame({TEXT_CLIENTE: CLIENTES_CLAVE}), use_container_width=True, hide_index=True)
+
+
 def calcular_sla_incidentes_clientes(incidentes):
     incidentes_cerrados = incidentes[mascara_cerrados(incidentes)] if not incidentes.empty else pd.DataFrame()
     if not incidentes_cerrados.empty and TEXT_APLICA_SLA_INCIDENTE in incidentes_cerrados.columns:
@@ -6974,9 +7188,19 @@ def render_slide_kpi_clientes_clave(metricas, resumen_actividad, mes_dashboard, 
 
 
 def dashboard_kpi_clientes_clave():
+    st.subheader(MENU_KPI_CLIENTES_CLAVE)
+    vista = st.radio(
+        "Vista",
+        ["Dashboard actual", "Comparativo casos clientes clave"],
+        horizontal=True,
+        key="kpi_clientes_clave_vista",
+    )
+    if vista == "Comparativo casos clientes clave":
+        dashboard_casos_clientes_clave_comparativo()
+        return
+
     casos = preparar_casos_clientes_clave(load_casos())
     incidentes = preparar_incidentes_clientes_clave(load_incidentes())
-    st.subheader(MENU_KPI_CLIENTES_CLAVE)
 
     fechas = fechas_clientes_clave(casos, incidentes)
     clientes_seleccionados, mes_dashboard, rango_fechas = seleccionar_filtros_clientes_clave(

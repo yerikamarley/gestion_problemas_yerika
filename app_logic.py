@@ -1262,6 +1262,15 @@ def load_casos_anios(years):
             "creado",
             "cerrado",
             "tiempo_respuesta",
+            "cuenta",
+            "contacto",
+            "descripcion",
+            "producto",
+            "prioridad",
+            "asignado",
+            "tipificacion",
+            "causa",
+            "codigo_resolucion",
         ],
     )
 
