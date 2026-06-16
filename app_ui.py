@@ -248,6 +248,7 @@ COL_PROM_DIAS = "Prom. dias"
 COL_CAUSA_RAIZ = "Causa raiz"
 COL_MOTIVO_CASO = "Motivo del caso"
 COL_PRINCIPAL_TIPIFICACION = "Principal tipificacion"
+COL_PRINCIPAL_SOPORTE = "Principal soporte"
 COL_PRINCIPAL_CAUSA_COMUN = "Principal causa comun"
 COL_SLA_OBJETIVO = "SLA objetivo"
 COL_SLA_OBJETIVO_H = "SLA objetivo h"
@@ -269,6 +270,11 @@ MENU_SEGUIMIENTO_INCIDENTES_VIEWER = "Seguimiento incidentes"
 MENU_SEGUIMIENTO_INCIDENTES_ADMIN = "Seguimiento Incidentes"
 MENU_SEGUIMIENTO_RPOST = "Seguimiento de RPost"
 LABEL_CASOS_CLIENTE_EXTERNO = "Casos cliente externo"
+TEXT_TIPOLOGIA_SOPORTE = "Tipologia soporte"
+SOPORTE_TOKEN_FISICO = "Soporte Token Fisico"
+SOPORTE_TOKEN_VIRTUAL = "Soporte Token Virtual"
+SOPORTE_CERTIFICADO_FIRMA_ACUSES = "Soporte Certificado, Firma y Acuses"
+SOPORTE_PLATAFORMA_ACCESOS_SEGURIDAD = "Soporte Plataforma, Accesos y Seguridad"
 ANS_INCIDENT_YEAR_BASE = 2025
 ANS_INCIDENT_YEAR_FOCUS = 2026
 ANS_INCIDENT_MONTHS_FOCUS = [3, 4, 5]
@@ -335,6 +341,132 @@ PATRONES_NO_RECIBIO_ACUSE = [
 CASE_RPOST_RELATION_RULES = [
     ("RPost", ["rpost"]),
     ("Certimail / Certicmal", ["certimail", "certi mail", "certicmal", "certimall"]),
+]
+
+CASE_SUPPORT_TYPOLOGY_GUIDE = [
+    {
+        TEXT_TIPOLOGIA_SOPORTE: SOPORTE_TOKEN_FISICO,
+        TEXT_DESCRIPCION: (
+            "ePass, Safenet, token USB, dispositivo fisico, token no reconocido, drivers, bloqueo "
+            "o problemas al conectar y usar el token fisico."
+        ),
+    },
+    {
+        TEXT_TIPOLOGIA_SOPORTE: SOPORTE_TOKEN_VIRTUAL,
+        TEXT_DESCRIPCION: (
+            "Certitoken o token virtual: activacion, descarga, configuracion, bloqueo, recuperacion, "
+            "uso del token virtual y errores al generar o validar codigos."
+        ),
+    },
+    {
+        TEXT_TIPOLOGIA_SOPORTE: SOPORTE_CERTIFICADO_FIRMA_ACUSES,
+        TEXT_DESCRIPCION: (
+            "Certificado digital, descarga, instalacion, renovacion, activacion, certificado vencido, "
+            "firma digital, validacion, errores al firmar, Certimail y acuses de recibo."
+        ),
+    },
+    {
+        TEXT_TIPOLOGIA_SOPORTE: SOPORTE_PLATAFORMA_ACCESOS_SEGURIDAD,
+        TEXT_DESCRIPCION: (
+            "Portal, usuarios, contrasenas, permisos, bloqueos, autenticacion, errores generales, "
+            "lentitud, indisponibilidad, configuracion, phishing y reportes de seguridad."
+        ),
+    },
+]
+
+CASE_SUPPORT_TYPOLOGY_ORDER = [item[TEXT_TIPOLOGIA_SOPORTE] for item in CASE_SUPPORT_TYPOLOGY_GUIDE]
+
+CASE_SUPPORT_TOKEN_VIRTUAL_TERMS = [
+    "certitoken",
+    "certi token",
+    "token virtual",
+    "token movil",
+    "token digital",
+    "app token",
+    "codigo token",
+    "codigo de token",
+    "codigo otp",
+    "otp",
+]
+
+CASE_SUPPORT_TOKEN_FISICO_TERMS = [
+    "token",
+    "token fisico",
+    "epass",
+    "e pass",
+    "safenet",
+    "safe net",
+    "token usb",
+    "usb token",
+    "dispositivo fisico",
+    "driver",
+    "drivers",
+    "no reconoce token",
+    "token no reconocido",
+    "no detecta token",
+    "token no detectado",
+]
+
+CASE_SUPPORT_SECURITY_TERMS = [
+    "phishing",
+    "pishing",
+    "correo sospechoso",
+    "suplantacion",
+    "fraude",
+    "seguridad",
+    "malicioso",
+    "spam",
+]
+
+CASE_SUPPORT_CERT_FIRMA_ACUSES_TERMS = [
+    "certificado",
+    "certificados",
+    "firma",
+    "firmar",
+    "certifirma",
+    "validacion de firma",
+    "validar firma",
+    "firma invalida",
+    "error al firmar",
+    "no firma",
+    "renovacion",
+    "activar certificado",
+    "activacion certificado",
+    "descarga certificado",
+    "descargar certificado",
+    "certimail",
+    "certi mail",
+    "certicmal",
+    "rpost",
+    "acuse",
+    "acuses",
+    "acuse de recibo",
+    "trazabilidad de envio",
+    "trazabilidad de envios",
+]
+
+CASE_SUPPORT_PLATFORM_ACCESS_TERMS = [
+    "portal",
+    "usuario",
+    "contrasena",
+    "password",
+    "clave",
+    "permiso",
+    "permisos",
+    "bloqueo",
+    "bloqueado",
+    "autenticacion",
+    "login",
+    "acceso",
+    "navegador",
+    "configuracion",
+    "java",
+    "autofirma",
+    "adobe",
+    "lentitud",
+    "indisponibilidad",
+    "error",
+    "falla",
 ]
 
 def normalizar_tipificaciones_casos_df(df):
@@ -2336,6 +2468,65 @@ def texto_caso_para_causa_comun(row):
     return " ".join(normalizar_texto(row.get(campo)) for campo in campos).strip()
 
 
+def texto_caso_para_tipologia_soporte(row):
+    campos = [
+        TEXT_DESCRIPCION_2,
+        TEXT_CAUSA,
+        TEXT_CODIGO_RESOLUCION,
+        "notas_resolucion",
+        TEXT_OBSERVACIONES_ADICIONALES,
+        TEXT_OBSERVACIONES_TRABAJO,
+        TEXT_PRODUCTO,
+        TEXT_CUENTA,
+        TEXT_TIPIFICACION_2,
+        TEXT_CANAL,
+    ]
+    return " ".join(normalizar_texto(row.get(campo)) for campo in campos).strip()
+
+
+def texto_contiene_alguno(texto, palabras):
+    return any(palabra in texto for palabra in palabras)
+
+
+def clasificar_tipologia_soporte_caso(row):
+    texto = texto_caso_para_tipologia_soporte(row)
+    if texto_contiene_alguno(texto, CASE_SUPPORT_TOKEN_VIRTUAL_TERMS):
+        return SOPORTE_TOKEN_VIRTUAL
+    if texto_contiene_alguno(texto, CASE_SUPPORT_TOKEN_FISICO_TERMS):
+        return SOPORTE_TOKEN_FISICO
+    if texto_contiene_alguno(texto, CASE_SUPPORT_SECURITY_TERMS):
+        return SOPORTE_PLATAFORMA_ACCESOS_SEGURIDAD
+    if texto_contiene_alguno(texto, CASE_SUPPORT_CERT_FIRMA_ACUSES_TERMS):
+        return SOPORTE_CERTIFICADO_FIRMA_ACUSES
+    if texto_contiene_alguno(texto, CASE_SUPPORT_PLATFORM_ACCESS_TERMS):
+        return SOPORTE_PLATAFORMA_ACCESOS_SEGURIDAD
+    return SOPORTE_PLATAFORMA_ACCESOS_SEGURIDAD
+
+
+def resumen_tipologias_soporte_casos(base):
+    columnas = [TEXT_TIPOLOGIA_SOPORTE, TEXT_CANTIDAD, "% casos", TEXT_DESCRIPCION]
+    if base.empty or TEXT_TIPOLOGIA_SOPORTE not in base.columns:
+        return pd.DataFrame(columns=columnas)
+    conteo = base[TEXT_TIPOLOGIA_SOPORTE].value_counts()
+    total = int(conteo.sum())
+    filas = []
+    descripciones = {
+        item[TEXT_TIPOLOGIA_SOPORTE]: item[TEXT_DESCRIPCION]
+        for item in CASE_SUPPORT_TYPOLOGY_GUIDE
+    }
+    for tipologia in CASE_SUPPORT_TYPOLOGY_ORDER:
+        cantidad = int(conteo.get(tipologia, 0))
+        filas.append(
+            {
+                TEXT_TIPOLOGIA_SOPORTE: tipologia,
+                TEXT_CANTIDAD: cantidad,
+                "% casos": porcentaje(cantidad, total),
+                TEXT_DESCRIPCION: descripciones.get(tipologia, ""),
+            }
+        )
+    return pd.DataFrame(filas, columns=columnas)
+
+
 def inferir_causa_comun_caso(row):
     causa_existente = valor_limpio(row.get(TEXT_CAUSA_COMUN))
     if causa_existente:
@@ -2414,6 +2605,7 @@ def preparar_kpi_casos_cliente_externo(df):
         return trabajo, {}
 
     trabajo[TEXT_CAUSA_COMUN] = trabajo.apply(inferir_causa_comun_caso, axis=1)
+    trabajo[TEXT_TIPOLOGIA_SOPORTE] = trabajo.apply(clasificar_tipologia_soporte_caso, axis=1)
     trabajo["_tipificacion_kpi"] = serie_categorica_limpia(trabajo, TEXT_TIPIFICACION_2, "Sin tipificacion")
     trabajo[TEXT_CERRADO_2] = mascara_cerrados(trabajo)
     trabajo[TEXT_ABIERTO] = ~trabajo[TEXT_CERRADO_2]
@@ -2447,6 +2639,7 @@ def preparar_kpi_casos_cliente_externo(df):
         "cumple_sla": cumple_sla,
         "no_cumple_sla": no_cumple_sla,
         COL_PRINCIPAL_TIPIFICACION: valor_mas_frecuente(trabajo["_tipificacion_kpi"]),
+        COL_PRINCIPAL_SOPORTE: valor_mas_frecuente(trabajo[TEXT_TIPOLOGIA_SOPORTE]),
         COL_PRINCIPAL_CAUSA_COMUN: valor_mas_frecuente(trabajo[TEXT_CAUSA_COMUN]),
     }
     return trabajo, metricas
@@ -3200,6 +3393,34 @@ def grafico_barras_kpi(df, x, y, titulo, color):
     render_ranking_kpi(df, y, x, titulo)
 
 
+def grafico_porcentaje_tipologias_soporte(resumen):
+    if resumen.empty or resumen[TEXT_CANTIDAD].sum() <= 0:
+        st.info("No hay datos para graficar las tipologias de soporte.")
+        return
+
+    datos = resumen.copy()
+    datos["Etiqueta %"] = datos["% casos"].apply(lambda valor: f"{valor:g}%")
+    fig = px.bar(
+        datos,
+        x="% casos",
+        y=TEXT_TIPOLOGIA_SOPORTE,
+        text="Etiqueta %",
+        orientation="h",
+        hover_data={TEXT_CANTIDAD: True, "% casos": ":.2f", TEXT_DESCRIPCION: True},
+        color=TEXT_TIPOLOGIA_SOPORTE,
+        color_discrete_sequence=[
+            UI_PALETTE[TEXT_PRIMARY],
+            UI_PALETTE[TEXT_YELLOW],
+            UI_PALETTE[TEXT_LAVENDER],
+            UI_PALETTE[TEXT_PURPLE],
+        ],
+    )
+    fig.update_traces(textposition=TEXT_OUTSIDE, cliponaxis=False)
+    fig.update_xaxes(range=[0, max(100, float(datos["% casos"].max()) + 8)], ticksuffix="%")
+    fig.update_layout(showlegend=False, height=390)
+    st.plotly_chart(aplicar_estilo_figura(fig, "Distribucion porcentual por soporte"), use_container_width=True)
+
+
 def resumen_otras_tipificaciones(base, top_n=3):
     conteo = base["_tipificacion_kpi"].value_counts(dropna=False)
     otras = conteo.iloc[top_n:]
@@ -3211,17 +3432,32 @@ def resumen_otras_tipificaciones(base, top_n=3):
     return f"Otras categorias agrupan {total_otras} casos fuera del top 3: {principales_otras}."
 
 
+def resumen_tipologia_soporte_principal(base):
+    if base.empty or TEXT_TIPOLOGIA_SOPORTE not in base.columns:
+        return "No hay tipologia de soporte suficiente para resumir."
+    conteo = base[TEXT_TIPOLOGIA_SOPORTE].value_counts()
+    if conteo.empty:
+        return "No hay tipologia de soporte suficiente para resumir."
+    principal = conteo.index[0]
+    cantidad = int(conteo.iloc[0])
+    return f"{principal} concentra {cantidad} casos ({porcentaje(cantidad, len(base))}%)."
+
+
 def lineas_lectura_kpi_casos(metricas, base):
     causa_principal = metricas[COL_PRINCIPAL_CAUSA_COMUN]
     detalle_causa = resumen_detalle_causa_principal(base, causa_principal)
     return [
         (
-            "Principal tipificacion: "
-            f"<strong>{html.escape(str(metricas[COL_PRINCIPAL_TIPIFICACION]))}</strong>"
+            "Principal soporte: "
+            f"<strong>{html.escape(str(metricas[COL_PRINCIPAL_SOPORTE]))}</strong>"
         ),
+        f'<div class="slide-note-muted">{html.escape(resumen_tipologia_soporte_principal(base))}</div>',
         f"Causa comun: <strong>{html.escape(str(causa_principal))}</strong>",
         f'<div class="slide-note-muted">{html.escape(detalle_causa)}</div>',
-        f'<div class="slide-note-muted">{html.escape(resumen_otras_tipificaciones(base))}</div>',
+        (
+            "Tipificacion original dominante: "
+            f"<strong>{html.escape(str(metricas[COL_PRINCIPAL_TIPIFICACION]))}</strong>"
+        ),
     ]
 
 
@@ -3231,9 +3467,10 @@ def render_lectura_kpi(metricas, base):
     <div class="executive-note">
         <div class="executive-note-title">Lectura</div>
         <div class="executive-note-line">{lineas[0]}</div>
-        <div class="executive-note-line">{lineas[1]}</div>
-        <div class="executive-note-detail">{lineas[2]}</div>
-        <div class="executive-note-conclusion">{lineas[3]}</div>
+        <div class="executive-note-detail">{lineas[1]}</div>
+        <div class="executive-note-line">{lineas[2]}</div>
+        <div class="executive-note-detail">{lineas[3]}</div>
+        <div class="executive-note-conclusion">{lineas[4]}</div>
     </div>
     """
     st.markdown(contenido, unsafe_allow_html=True)
@@ -3250,13 +3487,13 @@ def render_slide_kpi_casos_cliente_externo(base, metricas, mes_dashboard):
         f"Tiempo promedio: {metricas['promedio']} h | "
         f"Cumplen SLA: {metricas['cumple_sla']} | No cumplen: {metricas['no_cumple_sla']}"
     )
-    tipificaciones = conteo_top_con_otras(base["_tipificacion_kpi"], top_n=3)
+    tipificaciones = resumen_tipologias_soporte_casos(base)
     lineas = lineas_lectura_kpi_casos(metricas, base)
     izquierda = slide_ranking_html(
         tipificaciones,
-        TEXT_TIPOLOGIA,
+        TEXT_TIPOLOGIA_SOPORTE,
         TEXT_CANTIDAD,
-        "Top 3 tipificaciones + otras",
+        "Tipologias de soporte",
         top_n=4,
     )
     derecha = slide_note_html("Lectura", lineas)
@@ -3299,16 +3536,17 @@ def render_kpi_casos_cliente_externo(df, mes_dashboard=None):
 
     col_grafico, col_lectura = st.columns([2.15, 1])
     with col_grafico:
-        tipificaciones = conteo_top_con_otras(base["_tipificacion_kpi"], top_n=3)
-        grafico_barras_kpi(
-            tipificaciones,
-            TEXT_CANTIDAD,
-            TEXT_TIPOLOGIA,
-            "Top 3 tipificaciones + otras",
-            UI_PALETTE["mustard"],
-        )
+        tipificaciones = resumen_tipologias_soporte_casos(base)
+        grafico_porcentaje_tipologias_soporte(tipificaciones)
     with col_lectura:
         render_lectura_kpi(metricas, base)
+
+    with st.expander("Descripcion de las 4 tipologias de soporte"):
+        st.dataframe(
+            pd.DataFrame(CASE_SUPPORT_TYPOLOGY_GUIDE),
+            use_container_width=True,
+            hide_index=True,
+        )
 
     with st.expander("Detalle completo de casos usados en el calculo"):
         columnas = [
@@ -3316,6 +3554,7 @@ def render_kpi_casos_cliente_externo(df, mes_dashboard=None):
             TEXT_ESTADO,
             TEXT_CUENTA,
             TEXT_DESCRIPCION_2,
+            TEXT_TIPOLOGIA_SOPORTE,
             TEXT_TIPIFICACION_2,
             TEXT_CAUSA_COMUN,
             TEXT_PRODUCTO,
