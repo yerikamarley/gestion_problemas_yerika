@@ -1210,7 +1210,30 @@ def read_table_years(table_name, years, columns=None):
     if not years:
         return pd.DataFrame()
     conn = get_conn()
-    column_sql = ", ".join(columns) if columns else "*"
+    missing_columns = []
+    requested_columns = columns
+    selected_columns = columns
+    if columns:
+        existing_columns = {
+            row[0]
+            for row in db_execute(
+                conn,
+                """
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_schema = 'public' AND table_name = ?
+                """,
+                (table_name,),
+            ).fetchall()
+        }
+        selected_columns = [column for column in columns if column in existing_columns]
+        missing_columns = [column for column in columns if column not in existing_columns]
+        if "creado" not in selected_columns:
+            conn.close()
+            df = pd.DataFrame(columns=columns)
+            df.attrs["missing_columns"] = missing_columns
+            return df
+    column_sql = ", ".join(selected_columns) if selected_columns else "*"
     placeholders = db_placeholders(len(years))
     cursor = db_execute(
         conn,
@@ -1220,7 +1243,13 @@ def read_table_years(table_name, years, columns=None):
     rows = cursor.fetchall()
     columns = [column[0] for column in cursor.description]
     conn.close()
-    return pd.DataFrame(rows, columns=columns)
+    df = pd.DataFrame(rows, columns=columns)
+    if requested_columns:
+        for column in missing_columns:
+            df[column] = pd.NA
+        df = df[requested_columns]
+    df.attrs["missing_columns"] = missing_columns
+    return df
 
 
 def load_casos_anios(years):

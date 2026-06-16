@@ -269,6 +269,24 @@ MENU_SEGUIMIENTO_INCIDENTES_VIEWER = "Seguimiento incidentes"
 MENU_SEGUIMIENTO_INCIDENTES_ADMIN = "Seguimiento Incidentes"
 MENU_SEGUIMIENTO_RPOST = "Seguimiento de RPost"
 LABEL_CASOS_CLIENTE_EXTERNO = "Casos cliente externo"
+ANS_INCIDENT_YEAR_BASE = 2025
+ANS_INCIDENT_YEAR_FOCUS = 2026
+ANS_INCIDENT_MONTHS_FOCUS = [3, 4, 5]
+ANS_INCIDENT_REAL_TYPES = [TIPIFICACION_INCIDENTE_CLIENTE_EXTERNO, TIPIFICACION_INCIDENTE_INTERNO]
+MONTH_NAMES_ES = {
+    1: "Enero",
+    2: "Febrero",
+    3: "Marzo",
+    4: "Abril",
+    5: "Mayo",
+    6: "Junio",
+    7: "Julio",
+    8: "Agosto",
+    9: "Septiembre",
+    10: "Octubre",
+    11: "Noviembre",
+    12: "Diciembre",
+}
 CASE_TIPIFICATION_RENAMES = {
     "8 - Instalaciones": TIPIFICACION_REDIRECCIONAMIENTO_AGENDA,
     "8 - Agenda Instalaciones IVR": TIPIFICACION_REDIRECCIONAMIENTO_AGENDA,
@@ -858,6 +876,103 @@ def aplicar_tema_visual():
             margin-top: 0.9rem;
             padding-top: 0.8rem;
             font-size: 1.04rem;
+        }}
+
+        .ans-panel {{
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 22px;
+            margin: 0.8rem 0 1rem;
+            box-shadow: 0 10px 24px rgba(20, 20, 20, 0.05);
+        }}
+
+        .ans-panel-title {{
+            color: var(--text);
+            font-size: 1.28rem;
+            font-weight: 900;
+            line-height: 1.25;
+            margin-bottom: 0.3rem;
+        }}
+
+        .ans-panel-subtitle {{
+            color: var(--muted);
+            font-size: 1.02rem;
+            margin-bottom: 1rem;
+        }}
+
+        .ans-table {{
+            width: 100%;
+            border-collapse: collapse;
+            table-layout: fixed;
+            font-size: 1.02rem;
+        }}
+
+        .ans-table th {{
+            background: rgba(20, 20, 20, 0.04);
+            color: var(--text);
+            font-weight: 900;
+            padding: 12px 10px;
+            text-align: center;
+            border-bottom: 1px solid var(--border);
+        }}
+
+        .ans-table td {{
+            color: var(--text);
+            padding: 14px 10px;
+            text-align: center;
+            border-bottom: 1px solid var(--border);
+            font-variant-numeric: tabular-nums;
+        }}
+
+        .ans-table tr:last-child td {{
+            border-bottom: none;
+        }}
+
+        .ans-period {{
+            font-weight: 900;
+            text-align: left !important;
+        }}
+
+        .ans-pill {{
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 76px;
+            padding: 0.28rem 0.55rem;
+            border-radius: 999px;
+            background: rgba(243, 91, 4, 0.10);
+            color: var(--primary);
+            font-weight: 900;
+        }}
+
+        .ans-card-grid {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+            gap: 0.85rem;
+            margin: 0.7rem 0 0.3rem;
+        }}
+
+        .ans-card {{
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 16px 14px;
+            background: rgba(255, 250, 250, 0.92);
+        }}
+
+        .ans-card-label {{
+            color: var(--muted);
+            font-size: 0.95rem;
+            font-weight: 800;
+            margin-bottom: 0.4rem;
+        }}
+
+        .ans-card-value {{
+            color: var(--primary);
+            font-size: 2rem;
+            font-weight: 900;
+            line-height: 1.05;
+            font-variant-numeric: tabular-nums;
         }}
 
         .kpi-ranking {{
@@ -1515,14 +1630,16 @@ def clasificar_rango_resolucion(horas):
 
 
 def mascara_cerrados(df):
-    if df.empty or TEXT_ESTADO not in df.columns:
+    if df.empty:
         return pd.Series(False, index=df.index)
-    estado = df[TEXT_ESTADO].apply(normalizar_texto)
-    cerrado_por_estado = estado.str.contains(
-        r"(?<![a-z0-9])(?:cerrado|closed|resuelto|resolved|solucionado|finalizado|completado)(?![a-z0-9])",
-        regex=True,
-        na=False,
-    )
+    cerrado_por_estado = pd.Series(False, index=df.index)
+    if TEXT_ESTADO in df.columns:
+        estado = df[TEXT_ESTADO].apply(normalizar_texto)
+        cerrado_por_estado = estado.str.contains(
+            r"(?<![a-z0-9])(?:cerrado|closed|resuelto|resolved|solucionado|finalizado|completado)(?![a-z0-9])",
+            regex=True,
+            na=False,
+        )
     if TEXT_CERRADO in df.columns:
         cerrado_por_fecha = df[TEXT_CERRADO].apply(valor_limpio).ne("")
         return cerrado_por_estado | cerrado_por_fecha
@@ -4968,7 +5085,183 @@ def render_grafico_estado_anual(metricas, registro, anios):
     st.plotly_chart(aplicar_estilo_figura(fig, registro), use_container_width=True)
 
 
-def dashboard_kpi_comparativo_anual():
+def formato_porcentaje_presentacion(valor):
+    if valor is None or pd.isna(valor):
+        return "Sin dato"
+    try:
+        numero = float(valor)
+    except (TypeError, ValueError):
+        return "Sin dato"
+    if numero.is_integer():
+        return f"{int(numero)}%"
+    return f"{numero:.2f}%"
+
+
+def filtrar_anio_mes_dashboard(df, anio, mes, columna_dt=TEXT_CREADO_DT_DASHBOARD):
+    if df.empty or columna_dt not in df.columns:
+        return df.copy()
+    fechas = df[columna_dt]
+    return df[(fechas.dt.year == int(anio)) & (fechas.dt.month == int(mes))].copy()
+
+
+def filtrar_incidentes_reales_ans(df):
+    if df.empty:
+        return df.copy()
+    if TEXT_TIPIFICACION_AUTO not in df.columns:
+        return df.iloc[0:0].copy()
+    tipificacion = df[TEXT_TIPIFICACION_AUTO].fillna("").astype(str)
+    return df[tipificacion.isin(ANS_INCIDENT_REAL_TYPES)].copy()
+
+
+def preparar_incidentes_ans_ejecutivo(incidentes):
+    if incidentes.empty:
+        return incidentes.copy()
+    trabajo = preparar_incidentes_kpi_comparativo_ligero(incidentes)
+    return filtrar_incidentes_reales_ans(trabajo)
+
+
+def columnas_faltantes_ans_incidentes(df):
+    missing = set(df.attrs.get("missing_columns", []))
+    faltantes = []
+    columnas_requeridas = [
+        (TEXT_TIPIFICACION_AUTO, "tipificacion del incidente"),
+        (TEXT_PRIORIDAD, "prioridad"),
+        (TEXT_CREADO, "fecha de creacion"),
+    ]
+    for columna, etiqueta in columnas_requeridas:
+        if columna not in df.columns or columna in missing:
+            faltantes.append(etiqueta)
+    estado_faltante = TEXT_ESTADO not in df.columns or TEXT_ESTADO in missing
+    cierre_faltante = TEXT_CERRADO not in df.columns or TEXT_CERRADO in missing
+    if estado_faltante and cierre_faltante:
+        faltantes.append("estado o fecha de cierre")
+    fuentes_duracion = [TEXT_DURACION_HORAS, "duracion_segundos", TEXT_CERRADO]
+    if all(columna not in df.columns or columna in missing for columna in fuentes_duracion):
+        faltantes.append("duracion_horas, duracion_segundos o fecha de cierre")
+    return faltantes
+
+
+def resumen_ans_incidentes_periodo(datos, periodo):
+    if datos.empty:
+        return {
+            "Periodo": periodo,
+            "Total incidentes": 0,
+            "Cerrados/resueltos": 0,
+            "Cumplen ANS": 0,
+            "No cumplen ANS": 0,
+            "Sin dato ANS": 0,
+            "ANS valor": None,
+            "ANS %": "Sin dato",
+        }
+
+    cerrados_mask = datos.get(TEXT_CERRADO_2, mascara_cerrados(datos))
+    cerrados = datos[cerrados_mask].copy()
+    if TEXT_ESTADO_SLA not in cerrados.columns:
+        evaluados = cerrados.iloc[0:0].copy()
+    else:
+        evaluados = cerrados[cerrados[TEXT_ESTADO_SLA].isin([ESTADO_SLA_CUMPLE, ESTADO_SLA_NO_CUMPLE])].copy()
+    cumple = int((evaluados.get(TEXT_ESTADO_SLA, pd.Series(dtype=TEXT_OBJECT)) == ESTADO_SLA_CUMPLE).sum())
+    no_cumple = int((evaluados.get(TEXT_ESTADO_SLA, pd.Series(dtype=TEXT_OBJECT)) == ESTADO_SLA_NO_CUMPLE).sum())
+    total_evaluado = cumple + no_cumple
+    ans_valor = porcentaje(cumple, total_evaluado) if total_evaluado else None
+    return {
+        "Periodo": periodo,
+        "Total incidentes": int(len(datos)),
+        "Cerrados/resueltos": int(len(cerrados)),
+        "Cumplen ANS": cumple,
+        "No cumplen ANS": no_cumple,
+        "Sin dato ANS": max(int(len(cerrados) - total_evaluado), 0),
+        "ANS valor": ans_valor,
+        "ANS %": formato_porcentaje_presentacion(ans_valor),
+    }
+
+
+def resumen_ans_incidentes_desde_filas(tabla, periodo):
+    if tabla.empty:
+        return resumen_ans_incidentes_periodo(pd.DataFrame(), periodo)
+    total = int(tabla["Total incidentes"].sum())
+    cerrados = int(tabla["Cerrados/resueltos"].sum())
+    cumple = int(tabla["Cumplen ANS"].sum())
+    no_cumple = int(tabla["No cumplen ANS"].sum())
+    sin_dato = int(tabla["Sin dato ANS"].sum())
+    total_evaluado = cumple + no_cumple
+    ans_valor = porcentaje(cumple, total_evaluado) if total_evaluado else None
+    return {
+        "Periodo": periodo,
+        "Total incidentes": total,
+        "Cerrados/resueltos": cerrados,
+        "Cumplen ANS": cumple,
+        "No cumplen ANS": no_cumple,
+        "Sin dato ANS": sin_dato,
+        "ANS valor": ans_valor,
+        "ANS %": formato_porcentaje_presentacion(ans_valor),
+    }
+
+
+def tabla_ans_incidentes_2026(base):
+    filas = []
+    for mes in ANS_INCIDENT_MONTHS_FOCUS:
+        etiqueta = f"{MONTH_NAMES_ES.get(mes, mes)} {ANS_INCIDENT_YEAR_FOCUS}"
+        datos_mes = filtrar_anio_mes_dashboard(base, ANS_INCIDENT_YEAR_FOCUS, mes)
+        filas.append(resumen_ans_incidentes_periodo(datos_mes, etiqueta))
+    return pd.DataFrame(filas)
+
+
+def tarjetas_ans_incidentes_html(resumen_2025, resumen_2026):
+    items = [
+        ("Incidentes 2025", resumen_2025["Total incidentes"]),
+        ("ANS 2025", resumen_2025["ANS %"]),
+        ("Incidentes marzo-mayo 2026", resumen_2026["Total incidentes"]),
+        ("ANS marzo-mayo 2026", resumen_2026["ANS %"]),
+    ]
+    tarjetas = [
+        '<div class="ans-card">'
+        f'<div class="ans-card-label">{html.escape(str(titulo))}</div>'
+        f'<div class="ans-card-value">{html.escape(str(valor))}</div>'
+        "</div>"
+        for titulo, valor in items
+    ]
+    return '<div class="ans-card-grid">' + "".join(tarjetas) + "</div>"
+
+
+def tabla_ans_html(titulo, subtitulo, tabla):
+    columnas = [
+        "Periodo",
+        "Total incidentes",
+        "Cerrados/resueltos",
+        "Cumplen ANS",
+        "No cumplen ANS",
+        "ANS %",
+    ]
+    if not tabla.empty and int(tabla.get("Sin dato ANS", pd.Series(dtype=TEXT_FLOAT)).sum()) > 0:
+        columnas.append("Sin dato ANS")
+    encabezado = "".join(f"<th>{html.escape(columna)}</th>" for columna in columnas)
+    filas = []
+    for _, row in tabla.iterrows():
+        celdas = []
+        for columna in columnas:
+            valor = row.get(columna, "")
+            if columna == "Periodo":
+                celdas.append(f'<td class="ans-period">{html.escape(str(valor))}</td>')
+            elif columna == "ANS %":
+                celdas.append(f'<td><span class="ans-pill">{html.escape(str(valor))}</span></td>')
+            else:
+                celdas.append(f"<td>{html.escape(str(valor))}</td>")
+        filas.append("<tr>" + "".join(celdas) + "</tr>")
+    cuerpo = "".join(filas) if filas else f'<tr><td colspan="{len(columnas)}">Sin datos</td></tr>'
+    return (
+        '<div class="ans-panel">'
+        f'<div class="ans-panel-title">{html.escape(titulo)}</div>'
+        f'<div class="ans-panel-subtitle">{html.escape(subtitulo)}</div>'
+        '<table class="ans-table">'
+        f"<thead><tr>{encabezado}</tr></thead>"
+        f"<tbody>{cuerpo}</tbody>"
+        "</table>"
+        "</div>"
+    )
+
+
+def dashboard_kpi_comparativo_anual_legacy():
     st.subheader(MENU_KPI_COMPARATIVO_ANUAL)
     anio_actual = pd.Timestamp.now().year
     anios_disponibles = list(range(2024, max(2026, anio_actual) + 1))
@@ -5018,6 +5311,69 @@ def dashboard_kpi_comparativo_anual():
         columnas = ["Anio", "Registro", TEXT_TOTAL, TEXT_ABIERTOS, TEXT_CERRADOS]
         tabla = metricas[[col for col in columnas if col in metricas.columns]].rename(columns={"Anio": "Año"})
         st.dataframe(tabla, use_container_width=True, hide_index=True)
+
+
+def dashboard_kpi_comparativo_anual():
+    st.subheader("ANS de incidentes 2025 vs 2026")
+    st.caption(
+        "Reporte ejecutivo solo con incidentes reales. Para 2026 se muestran exclusivamente marzo, abril y mayo."
+    )
+
+    anios = [ANS_INCIDENT_YEAR_BASE, ANS_INCIDENT_YEAR_FOCUS]
+    with st.spinner("Cargando incidentes para el reporte ANS..."):
+        incidentes = load_incidentes_anios(anios)
+
+    if incidentes.empty:
+        st.info("No hay incidentes cargados para 2025 o 2026.")
+        return
+
+    faltantes = columnas_faltantes_ans_incidentes(incidentes)
+    if faltantes:
+        st.warning(
+            "Faltan campos para calcular el ANS completo: "
+            + ", ".join(sorted(set(faltantes)))
+            + ". Se mostraran los datos disponibles sin inventar valores."
+        )
+
+    with st.spinner("Preparando ANS solo de incidentes reales..."):
+        base_incidentes = preparar_incidentes_ans_ejecutivo(incidentes)
+
+    if base_incidentes.empty:
+        st.info(
+            "No hay registros clasificados como Incidente Cliente Externo o Incidente Interno para este reporte."
+        )
+        return
+
+    base_2025 = filtrar_anio_dashboard(base_incidentes, ANS_INCIDENT_YEAR_BASE)
+    resumen_2025 = resumen_ans_incidentes_periodo(base_2025, str(ANS_INCIDENT_YEAR_BASE))
+    tabla_2025 = pd.DataFrame([resumen_2025])
+    tabla_2026 = tabla_ans_incidentes_2026(base_incidentes)
+    resumen_2026 = resumen_ans_incidentes_desde_filas(tabla_2026, "Marzo a mayo 2026")
+
+    st.markdown(tarjetas_ans_incidentes_html(resumen_2025, resumen_2026), unsafe_allow_html=True)
+    st.markdown(
+        tabla_ans_html(
+            "Referencia 2025",
+            "Bloque anual conservado solo con incidentes reales.",
+            tabla_2025,
+        ),
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        tabla_ans_html(
+            "Detalle 2026",
+            "Solo marzo, abril y mayo de 2026.",
+            tabla_2026,
+        ),
+        unsafe_allow_html=True,
+    )
+
+    sin_dato_ans = int(tabla_2025["Sin dato ANS"].sum() + tabla_2026["Sin dato ANS"].sum())
+    if sin_dato_ans:
+        st.info(
+            f"{sin_dato_ans} incidentes cerrados/resueltos no tienen datos suficientes para evaluar ANS "
+            "y no se incluyen en el porcentaje."
+        )
 
 
 def opciones_filtro_reincidencias(base, columna):
