@@ -61,6 +61,8 @@ DB_TRANSIENT_SQLSTATES = {"40P01", "40001"}
 DB_MAX_REINTENTOS = 3
 DB_REINTENTO_ESPERA_SEGUNDOS = 0.35
 DB_BLOQUEO_CARGA_CASOS = "gestion_problemas_yerika:carga_casos"
+DB_BATCH_SIZE = 1000
+DB_LOOKUP_BATCH_SIZE = 5000
 
 # Literales reutilizados para evitar duplicidad y facilitar mantenimiento.
 NUMERO_DE_CASO_TEXT = "numero de caso"
@@ -1116,6 +1118,40 @@ def db_execute(conn, sql, params=()):
     return conn.execute(db_sql(sql), params)
 
 
+def db_executemany(conn, sql, rows):
+    if not rows:
+        return
+    with conn.cursor() as cursor:
+        cursor.executemany(db_sql(sql), rows)
+
+
+def lotes(valores, tamano):
+    for inicio in range(0, len(valores), tamano):
+        yield valores[inicio : inicio + tamano]
+
+
+def numeros_existentes(conn, tabla, numeros):
+    existentes = set()
+    numeros = [numero for numero in numeros if numero]
+    for lote in lotes(numeros, DB_LOOKUP_BATCH_SIZE):
+        placeholders = db_placeholders(len(lote))
+        existentes.update(
+            fila[0]
+            for fila in db_execute(
+                conn,
+                f"SELECT numero FROM {tabla} WHERE numero IN ({placeholders})",
+                lote,
+            ).fetchall()
+        )
+    return existentes
+
+
+def ejecutar_upserts_lote(conn, tabla, columnas, columna_conflicto, filas):
+    sql = upsert_sql(tabla, columnas, columna_conflicto)
+    for lote in lotes(filas, DB_BATCH_SIZE):
+        db_executemany(conn, sql, lote)
+
+
 def es_error_db_transitorio(error):
     sqlstate = getattr(error, "sqlstate", None) or getattr(error, "pgcode", None)
     return sqlstate in DB_TRANSIENT_SQLSTATES
@@ -1663,47 +1699,40 @@ def _guardar_casos_preparados(df, reemplazar_meses, duplicados_archivo):
             ).rowcount
 
         numeros = [safe_text(valor_fila(row, "numero")) for _, row in df.iterrows()]
-        existentes = set()
-        if numeros:
-            placeholders = db_placeholders(len(numeros))
-            existentes = {
-                fila[0]
-                for fila in db_execute(
-                    conn,
-                    f"SELECT numero FROM cases WHERE numero IN ({placeholders})",
-                    numeros,
-                ).fetchall()
-            }
+        existentes = numeros_existentes(conn, "cases", numeros)
         reemplazados = len(existentes)
 
+        filas_upsert = []
         for _, row in df.iterrows():
             numero = safe_text(valor_fila(row, "numero"))
             creado = normalizar_fecha(valor_fila(row, "creado"))
             cerrado = normalizar_fecha(valor_fila(row, "cerrado"))
-            data = (
-                numero,
-                safe_text(valor_fila(row, "descripcion")),
-                safe_text(valor_fila(row, "contacto")),
-                safe_text(valor_fila(row, "cuenta")),
-                safe_text(valor_fila(row, "codigo_resolucion")),
-                safe_text(valor_fila(row, "canal")),
-                safe_text(valor_fila(row, "estado")),
-                safe_text(valor_fila(row, "prioridad")),
-                safe_text(valor_fila(row, "asignado")),
-                normalizar_fecha(valor_fila(row, "actualizado")),
-                safe_text(valor_fila(row, "creado_por")),
-                creado,
-                safe_text(valor_fila(row, "producto")),
-                cerrado,
-                safe_text(valor_fila(row, "causa")),
-                safe_text(valor_fila(row, "notas_resolucion")),
-                safe_text(valor_fila(row, "observaciones_adicionales")),
-                safe_text(valor_fila(row, "observaciones_trabajo")),
-                tipificar_caso(row),
-                tiempo(creado, cerrado),
+            filas_upsert.append(
+                (
+                    numero,
+                    safe_text(valor_fila(row, "descripcion")),
+                    safe_text(valor_fila(row, "contacto")),
+                    safe_text(valor_fila(row, "cuenta")),
+                    safe_text(valor_fila(row, "codigo_resolucion")),
+                    safe_text(valor_fila(row, "canal")),
+                    safe_text(valor_fila(row, "estado")),
+                    safe_text(valor_fila(row, "prioridad")),
+                    safe_text(valor_fila(row, "asignado")),
+                    normalizar_fecha(valor_fila(row, "actualizado")),
+                    safe_text(valor_fila(row, "creado_por")),
+                    creado,
+                    safe_text(valor_fila(row, "producto")),
+                    cerrado,
+                    safe_text(valor_fila(row, "causa")),
+                    safe_text(valor_fila(row, "notas_resolucion")),
+                    safe_text(valor_fila(row, "observaciones_adicionales")),
+                    safe_text(valor_fila(row, "observaciones_trabajo")),
+                    tipificar_caso(row),
+                    tiempo(creado, cerrado),
+                )
             )
-            db_execute(conn, upsert_sql("cases", CASE_DB_COLUMNS, "numero"), data)
-            cargados += 1
+        ejecutar_upserts_lote(conn, "cases", CASE_DB_COLUMNS, "numero", filas_upsert)
+        cargados = len(filas_upsert)
         conn.commit()
         return cargados, reemplazados, eliminados, meses_reemplazados, duplicados_archivo
     except Exception:
@@ -2124,62 +2153,55 @@ def guardar_incidentes(df):
         return 0, 0
 
     numeros = [safe_text(valor_fila(row, "numero")) for _, row in df.iterrows()]
-    existentes = set()
-    if numeros:
-        placeholders = db_placeholders(len(numeros))
-        existentes = {
-            fila[0]
-            for fila in db_execute(
-                conn,
-                f"SELECT numero FROM incidents WHERE numero IN ({placeholders})",
-                numeros,
-            ).fetchall()
-        }
+    existentes = numeros_existentes(conn, "incidents", numeros)
     reemplazados = len(existentes)
 
+    filas_upsert = []
     for _, row in df.iterrows():
         numero = safe_text(valor_fila(row, "numero"))
         clasificacion = clasificacion_incidente_detallada(row)
         duracion_segundos = safe_float(valor_fila(row, "duracion_segundos"))
         duracion_horas = segundos_a_horas(duracion_segundos)
-        data = (
-            numero,
-            safe_text(valor_fila(row, "solicitante")),
-            safe_text(valor_fila(row, "breve_descripcion")),
-            safe_text(valor_fila(row, "categoria")),
-            safe_text(valor_fila(row, "prioridad")),
-            safe_text(valor_fila(row, "estado")),
-            safe_text(valor_fila(row, "grupo_asignacion")),
-            safe_text(valor_fila(row, "asignado_a")),
-            safe_text(valor_fila(row, "descripcion")),
-            safe_text(valor_fila(row, "despues_aprobacion")),
-            safe_text(valor_fila(row, "despues_rechazo")),
-            duracion_segundos,
-            safe_float(valor_fila(row, "minutos")),
-            normalizar_fecha(valor_fila(row, "fecha_vencimiento_sla")),
-            safe_text(valor_fila(row, "tipo_falla")),
-            safe_text(valor_fila(row, "empresa")),
-            safe_text(valor_fila(row, "creado_por")),
-            normalizar_fecha(valor_fila(row, "cerrado")),
-            safe_text(valor_fila(row, "escalado_proveedor")),
-            safe_text(valor_fila(row, "servicio_negocio")),
-            normalizar_fecha(valor_fila(row, "creado")),
-            safe_text(valor_fila(row, "observaciones_trabajo")),
-            safe_text(valor_fila(row, "observaciones_adicionales")),
-            safe_text(valor_fila(row, "actualizaciones")),
-            safe_text(valor_fila(row, "impacto")),
-            safe_text(valor_fila(row, "lista_notas_trabajo")),
-            safe_text(valor_fila(row, "tipificacion_original")),
-            safe_text(valor_fila(row, "causa_raiz_original")),
-            clasificacion["origen_auto"],
-            clasificacion["tipificacion_auto"],
-            clasificacion["tipo_incidente_auto"],
-            clasificacion["causa_raiz_auto"],
-            clasificacion["es_alerta_auto"],
-            duracion_horas,
+        filas_upsert.append(
+            (
+                numero,
+                safe_text(valor_fila(row, "solicitante")),
+                safe_text(valor_fila(row, "breve_descripcion")),
+                safe_text(valor_fila(row, "categoria")),
+                safe_text(valor_fila(row, "prioridad")),
+                safe_text(valor_fila(row, "estado")),
+                safe_text(valor_fila(row, "grupo_asignacion")),
+                safe_text(valor_fila(row, "asignado_a")),
+                safe_text(valor_fila(row, "descripcion")),
+                safe_text(valor_fila(row, "despues_aprobacion")),
+                safe_text(valor_fila(row, "despues_rechazo")),
+                duracion_segundos,
+                safe_float(valor_fila(row, "minutos")),
+                normalizar_fecha(valor_fila(row, "fecha_vencimiento_sla")),
+                safe_text(valor_fila(row, "tipo_falla")),
+                safe_text(valor_fila(row, "empresa")),
+                safe_text(valor_fila(row, "creado_por")),
+                normalizar_fecha(valor_fila(row, "cerrado")),
+                safe_text(valor_fila(row, "escalado_proveedor")),
+                safe_text(valor_fila(row, "servicio_negocio")),
+                normalizar_fecha(valor_fila(row, "creado")),
+                safe_text(valor_fila(row, "observaciones_trabajo")),
+                safe_text(valor_fila(row, "observaciones_adicionales")),
+                safe_text(valor_fila(row, "actualizaciones")),
+                safe_text(valor_fila(row, "impacto")),
+                safe_text(valor_fila(row, "lista_notas_trabajo")),
+                safe_text(valor_fila(row, "tipificacion_original")),
+                safe_text(valor_fila(row, "causa_raiz_original")),
+                clasificacion["origen_auto"],
+                clasificacion["tipificacion_auto"],
+                clasificacion["tipo_incidente_auto"],
+                clasificacion["causa_raiz_auto"],
+                clasificacion["es_alerta_auto"],
+                duracion_horas,
+            )
         )
-        db_execute(conn, upsert_sql("incidents", INCIDENT_DB_COLUMNS, "numero"), data)
-        cargados += 1
+    ejecutar_upserts_lote(conn, "incidents", INCIDENT_DB_COLUMNS, "numero", filas_upsert)
+    cargados = len(filas_upsert)
     conn.commit()
     conn.close()
     return cargados, reemplazados
