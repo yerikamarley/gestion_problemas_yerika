@@ -6029,13 +6029,29 @@ def mensaje_carga_casos(cargados, reemplazados, duplicados_archivo, reemplazar_m
     )
 
 
+def crear_barra_progreso_carga(mensaje_inicial):
+    texto = st.empty()
+    barra = st.progress(0)
+
+    def actualizar(valor, mensaje=None):
+        porcentaje_barra = int(round(max(0, min(1, float(valor))) * 100))
+        texto.caption(mensaje or mensaje_inicial)
+        barra.progress(porcentaje_barra)
+
+    actualizar(0, mensaje_inicial)
+    return actualizar
+
+
 def procesar_archivo_casos(df, reemplazar_meses):
+    actualizar_progreso = crear_barra_progreso_carga("Procesando casos...")
     try:
         cargados, reemplazados, eliminados, meses_reemplazados, duplicados_archivo = guardar_casos(
             df,
             reemplazar_meses=reemplazar_meses,
+            progress_callback=actualizar_progreso,
         )
     except Exception as error:
+        actualizar_progreso(1, "No se pudo finalizar la carga de casos.")
         if es_error_db_transitorio(error):
             st.error(
                 "La base de datos estaba ocupada por otra carga. Espera unos segundos y vuelve a procesar el archivo."
@@ -6045,6 +6061,7 @@ def procesar_archivo_casos(df, reemplazar_meses):
     if cargados == 0:
         st.error("No se guardaron casos. Revisa que el archivo tenga una columna de numero de caso.")
         return
+    actualizar_progreso(1, "Carga de casos finalizada.")
     st.success(
         mensaje_carga_casos(
             cargados,
@@ -6148,10 +6165,21 @@ def vista_cargar_incidentes():
         st.write(f"Filas detectadas: {len(df)}")
         st.dataframe(df.head(), use_container_width=True, hide_index=True)
         if st.button("Procesar incidentes"):
-            cargados, reemplazados = guardar_incidentes(df)
+            actualizar_progreso = crear_barra_progreso_carga("Procesando incidentes...")
+            try:
+                cargados, reemplazados = guardar_incidentes(df, progress_callback=actualizar_progreso)
+            except Exception as error:
+                actualizar_progreso(1, "No se pudo finalizar la carga de incidentes.")
+                if es_error_db_transitorio(error):
+                    st.error(
+                        "La base de datos estaba ocupada por otra carga. Espera unos segundos y vuelve a procesar el archivo."
+                    )
+                    return
+                raise
             if cargados == 0:
                 st.error("No se guardaron incidentes. Revisa que el archivo tenga una columna de numero de incidente.")
             else:
+                actualizar_progreso(1, "Carga de incidentes finalizada.")
                 st.success(
                     f"Cargados: {cargados} | Registros existentes actualizados: {reemplazados} | "
                     "Los meses anteriores se conservan."

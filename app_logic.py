@@ -1125,6 +1125,11 @@ def db_executemany(conn, sql, rows):
         cursor.executemany(db_sql(sql), rows)
 
 
+def emitir_progreso(progress_callback, valor, mensaje):
+    if progress_callback:
+        progress_callback(max(0, min(1, float(valor))), mensaje)
+
+
 def lotes(valores, tamano):
     for inicio in range(0, len(valores), tamano):
         yield valores[inicio : inicio + tamano]
@@ -1146,10 +1151,29 @@ def numeros_existentes(conn, tabla, numeros):
     return existentes
 
 
-def ejecutar_upserts_lote(conn, tabla, columnas, columna_conflicto, filas):
+def ejecutar_upserts_lote(
+    conn,
+    tabla,
+    columnas,
+    columna_conflicto,
+    filas,
+    progress_callback=None,
+    progreso_inicio=0.75,
+    progreso_fin=0.95,
+    mensaje="Guardando registros...",
+):
     sql = upsert_sql(tabla, columnas, columna_conflicto)
+    total = len(filas)
+    procesados = 0
     for lote in lotes(filas, DB_BATCH_SIZE):
         db_executemany(conn, sql, lote)
+        procesados += len(lote)
+        avance = procesados / total if total else 1
+        emitir_progreso(
+            progress_callback,
+            progreso_inicio + ((progreso_fin - progreso_inicio) * avance),
+            f"{mensaje} {procesados} de {total}",
+        )
 
 
 def es_error_db_transitorio(error):
@@ -1683,11 +1707,13 @@ CASE_DB_COLUMNS = [
 ]
 
 
-def _guardar_casos_preparados(df, reemplazar_meses, duplicados_archivo):
+def _guardar_casos_preparados(df, reemplazar_meses, duplicados_archivo, progress_callback=None):
     conn = get_conn()
     cargados = 0
     try:
+        emitir_progreso(progress_callback, 0.12, "Procesando casos: bloqueando carga...")
         bloquear_escritura_casos(conn)
+        emitir_progreso(progress_callback, 0.18, "Procesando casos: validando meses...")
         meses_reemplazados = meses_casos(df) if reemplazar_meses else []
         eliminados = 0
         if meses_reemplazados:
@@ -1699,11 +1725,14 @@ def _guardar_casos_preparados(df, reemplazar_meses, duplicados_archivo):
             ).rowcount
 
         numeros = [safe_text(valor_fila(row, "numero")) for _, row in df.iterrows()]
+        emitir_progreso(progress_callback, 0.25, "Procesando casos: revisando existentes...")
         existentes = numeros_existentes(conn, "cases", numeros)
         reemplazados = len(existentes)
 
         filas_upsert = []
-        for _, row in df.iterrows():
+        total_filas = len(df)
+        emitir_progreso(progress_callback, 0.35, "Procesando casos: preparando filas...")
+        for indice, (_, row) in enumerate(df.iterrows(), start=1):
             numero = safe_text(valor_fila(row, "numero"))
             creado = normalizar_fecha(valor_fila(row, "creado"))
             cerrado = normalizar_fecha(valor_fila(row, "cerrado"))
@@ -1731,9 +1760,28 @@ def _guardar_casos_preparados(df, reemplazar_meses, duplicados_archivo):
                     tiempo(creado, cerrado),
                 )
             )
-        ejecutar_upserts_lote(conn, "cases", CASE_DB_COLUMNS, "numero", filas_upsert)
+            if indice % DB_BATCH_SIZE == 0 or indice == total_filas:
+                avance = indice / total_filas if total_filas else 1
+                emitir_progreso(
+                    progress_callback,
+                    0.35 + (0.35 * avance),
+                    f"Procesando casos: preparando {indice} de {total_filas}",
+                )
+        ejecutar_upserts_lote(
+            conn,
+            "cases",
+            CASE_DB_COLUMNS,
+            "numero",
+            filas_upsert,
+            progress_callback=progress_callback,
+            progreso_inicio=0.72,
+            progreso_fin=0.96,
+            mensaje="Guardando casos:",
+        )
         cargados = len(filas_upsert)
+        emitir_progreso(progress_callback, 0.98, "Procesando casos: finalizando...")
         conn.commit()
+        emitir_progreso(progress_callback, 1, "Carga de casos finalizada.")
         return cargados, reemplazados, eliminados, meses_reemplazados, duplicados_archivo
     except Exception:
         try:
@@ -1745,16 +1793,19 @@ def _guardar_casos_preparados(df, reemplazar_meses, duplicados_archivo):
         conn.close()
 
 
-def guardar_casos(df, reemplazar_meses=False):
+def guardar_casos(df, reemplazar_meses=False, progress_callback=None):
     filas_recibidas = len(df)
+    emitir_progreso(progress_callback, 0.03, "Procesando casos: leyendo archivo...")
     df = preparar_casos(df)
     duplicados_archivo = max(filas_recibidas - len(df), 0)
     if df.empty:
+        emitir_progreso(progress_callback, 1, "No se encontraron casos validos.")
         return 0, 0, 0, [], duplicados_archivo
 
+    emitir_progreso(progress_callback, 0.08, "Procesando casos: ordenando registros...")
     df = df.sort_values("numero", kind="mergesort").reset_index(drop=True)
     return ejecutar_con_reintentos_db(
-        lambda: _guardar_casos_preparados(df, reemplazar_meses, duplicados_archivo)
+        lambda: _guardar_casos_preparados(df, reemplazar_meses, duplicados_archivo, progress_callback)
     )
 
 
@@ -2144,20 +2195,25 @@ INCIDENT_DB_COLUMNS = [
 ]
 
 
-def guardar_incidentes(df):
+def guardar_incidentes(df, progress_callback=None):
     conn = get_conn()
     cargados = 0
+    emitir_progreso(progress_callback, 0.03, "Procesando incidentes: leyendo archivo...")
     df = preparar_incidentes(df)
     if df.empty:
         conn.close()
+        emitir_progreso(progress_callback, 1, "No se encontraron incidentes validos.")
         return 0, 0
 
     numeros = [safe_text(valor_fila(row, "numero")) for _, row in df.iterrows()]
+    emitir_progreso(progress_callback, 0.18, "Procesando incidentes: revisando existentes...")
     existentes = numeros_existentes(conn, "incidents", numeros)
     reemplazados = len(existentes)
 
     filas_upsert = []
-    for _, row in df.iterrows():
+    total_filas = len(df)
+    emitir_progreso(progress_callback, 0.28, "Procesando incidentes: preparando filas...")
+    for indice, (_, row) in enumerate(df.iterrows(), start=1):
         numero = safe_text(valor_fila(row, "numero"))
         clasificacion = clasificacion_incidente_detallada(row)
         duracion_segundos = safe_float(valor_fila(row, "duracion_segundos"))
@@ -2200,10 +2256,29 @@ def guardar_incidentes(df):
                 duracion_horas,
             )
         )
-    ejecutar_upserts_lote(conn, "incidents", INCIDENT_DB_COLUMNS, "numero", filas_upsert)
+        if indice % DB_BATCH_SIZE == 0 or indice == total_filas:
+            avance = indice / total_filas if total_filas else 1
+            emitir_progreso(
+                progress_callback,
+                0.28 + (0.44 * avance),
+                f"Procesando incidentes: preparando {indice} de {total_filas}",
+            )
+    ejecutar_upserts_lote(
+        conn,
+        "incidents",
+        INCIDENT_DB_COLUMNS,
+        "numero",
+        filas_upsert,
+        progress_callback=progress_callback,
+        progreso_inicio=0.74,
+        progreso_fin=0.96,
+        mensaje="Guardando incidentes:",
+    )
     cargados = len(filas_upsert)
+    emitir_progreso(progress_callback, 0.98, "Procesando incidentes: finalizando...")
     conn.commit()
     conn.close()
+    emitir_progreso(progress_callback, 1, "Carga de incidentes finalizada.")
     return cargados, reemplazados
 
 
