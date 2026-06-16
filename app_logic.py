@@ -2012,7 +2012,14 @@ def duracion_sla_horas_incidente(row):
     duracion = safe_float(valor_fila(row, "duracion_horas"))
     if duracion is not None:
         return duracion
-    return segundos_a_horas(safe_float(valor_fila(row, "duracion_segundos")))
+    duracion = segundos_a_horas(safe_float(valor_fila(row, "duracion_segundos")))
+    if duracion is not None:
+        return duracion
+    creado = pd.to_datetime(normalizar_fecha(valor_fila(row, "creado")), errors="coerce")
+    cerrado = pd.to_datetime(normalizar_fecha(valor_fila(row, "cerrado")), errors="coerce")
+    if pd.isna(creado) or pd.isna(cerrado) or cerrado < creado:
+        return None
+    return round((cerrado - creado).total_seconds() / 3600, 2)
 
 
 def estado_sla_incidente(row):

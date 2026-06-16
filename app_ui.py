@@ -1509,7 +1509,16 @@ def clasificar_rango_resolucion(horas):
 def mascara_cerrados(df):
     if df.empty or TEXT_ESTADO not in df.columns:
         return pd.Series(False, index=df.index)
-    return df[TEXT_ESTADO].apply(normalizar_texto).eq(TEXT_CERRADO)
+    estado = df[TEXT_ESTADO].apply(normalizar_texto)
+    cerrado_por_estado = estado.str.contains(
+        r"(?<![a-z0-9])(?:cerrado|closed|resuelto|resolved|solucionado|finalizado|completado)(?![a-z0-9])",
+        regex=True,
+        na=False,
+    )
+    if TEXT_CERRADO in df.columns:
+        cerrado_por_fecha = df[TEXT_CERRADO].apply(valor_limpio).ne("")
+        return cerrado_por_estado | cerrado_por_fecha
+    return cerrado_por_estado
 
 
 def mascara_prioridad_alta(df):
@@ -4906,6 +4915,26 @@ def dashboard_incidentes():
     st.subheader("SLA de incidentes reales")
     if sla_base.empty:
         st.info("No hay incidentes cerrados con objetivo SLA para el periodo seleccionado.")
+        diagnostico_sla = pd.DataFrame(
+            [
+                ("Incidentes reales", len(incidentes_reales)),
+                ("Incidentes reales cerrados", len(incidentes_reales[mascara_cerrados(incidentes_reales)])),
+                (
+                    "Con objetivo SLA",
+                    int(pd.to_numeric(incidentes_reales[TEXT_SLA_OBJETIVO_HORAS], errors=TEXT_COERCE).notna().sum())
+                    if TEXT_SLA_OBJETIVO_HORAS in incidentes_reales.columns
+                    else 0,
+                ),
+                (
+                    "Con duracion SLA",
+                    int(pd.to_numeric(incidentes_reales[TEXT_DURACION_SLA_HORAS], errors=TEXT_COERCE).notna().sum())
+                    if TEXT_DURACION_SLA_HORAS in incidentes_reales.columns
+                    else 0,
+                ),
+            ],
+            columns=["Validacion", TEXT_CANTIDAD],
+        )
+        st.dataframe(diagnostico_sla, use_container_width=True, hide_index=True)
     else:
         st.caption(
             "Solo incluye incidentes reales. Seguridad se muestra como tipo de incidente dentro de cliente externo o interno."
