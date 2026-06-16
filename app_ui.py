@@ -21,10 +21,17 @@ from app_logic import (
     limpiar_incidentes,
     listar_usuarios,
     load_casos,
+    load_casos_anios,
     load_incidentes,
+    load_incidentes_anios,
+    duracion_sla_horas_incidente,
+    estado_sla_incidente,
+    familia_sla_incidente,
     normalizar_fecha,
+    normalizar_prioridad_incidente,
     normalizar_texto,
     normalizar_email,
+    sla_objetivo_horas_incidente,
 )
 
 
@@ -4619,20 +4626,66 @@ def anios_disponibles_kpi_comparativo(*tablas):
     return sorted(anios)
 
 
-def preparar_bases_kpi_comparativo(casos, incidentes):
-    casos = normalizar_tipificaciones_casos_df(casos)
-    casos = preparar_fechas_dashboard(casos) if not casos.empty else casos
-    casos = casos.dropna(subset=[TEXT_CREADO_DT_DASHBOARD]) if TEXT_CREADO_DT_DASHBOARD in casos.columns else casos
-    base_casos, _ = preparar_kpi_casos_cliente_externo(casos)
-
-    incidentes = preparar_fechas_dashboard(incidentes) if not incidentes.empty else incidentes
-    incidentes = (
-        incidentes.dropna(subset=[TEXT_CREADO_DT_DASHBOARD])
-        if TEXT_CREADO_DT_DASHBOARD in incidentes.columns
-        else incidentes
+def preparar_casos_kpi_comparativo_ligero(casos):
+    if casos.empty:
+        return casos.copy()
+    trabajo = normalizar_tipificaciones_casos_df(casos)
+    trabajo = preparar_fechas_dashboard(trabajo)
+    trabajo = trabajo.dropna(subset=[TEXT_CREADO_DT_DASHBOARD])
+    trabajo[TEXT_CERRADO_2] = mascara_cerrados(trabajo)
+    trabajo[TEXT_ABIERTO] = ~trabajo[TEXT_CERRADO_2]
+    trabajo["_tiempo_eval_sla_h"] = pd.to_numeric(
+        trabajo.get(TEXT_TIEMPO_RESPUESTA, pd.Series(dtype=TEXT_FLOAT)),
+        errors=TEXT_COERCE,
     )
-    base_incidentes, _ = preparar_kpi_incidentes(incidentes)
-    return base_casos, base_incidentes
+    trabajo["Cumple SLA <=36h"] = trabajo["_tiempo_eval_sla_h"].apply(
+        lambda valor: "Si" if pd.notna(valor) and valor <= SLA_CASOS_HORAS else "No"
+    )
+    return trabajo
+
+
+def asegurar_columna(df, columna, default=""):
+    if columna not in df.columns:
+        df[columna] = default
+    return df
+
+
+def preparar_incidentes_kpi_comparativo_ligero(incidentes):
+    if incidentes.empty:
+        return incidentes.copy()
+    trabajo = preparar_fechas_dashboard(incidentes)
+    trabajo = trabajo.dropna(subset=[TEXT_CREADO_DT_DASHBOARD])
+    for columna in [TEXT_TIPIFICACION_AUTO, TEXT_TIPO_INCIDENTE_AUTO, TEXT_PRIORIDAD, TEXT_DURACION_HORAS, "duracion_segundos"]:
+        asegurar_columna(trabajo, columna)
+
+    tipificacion = trabajo[TEXT_TIPIFICACION_AUTO].fillna("")
+    tiene_tipificacion_real = tipificacion.isin(
+        [TIPIFICACION_INCIDENTE_CLIENTE_EXTERNO, TIPIFICACION_INCIDENTE_INTERNO]
+    ).any()
+    if tiene_tipificacion_real:
+        trabajo = trabajo[
+            tipificacion.isin([TIPIFICACION_INCIDENTE_CLIENTE_EXTERNO, TIPIFICACION_INCIDENTE_INTERNO])
+        ].copy()
+    trabajo[TEXT_CERRADO_2] = mascara_cerrados(trabajo)
+    trabajo[TEXT_ABIERTO] = ~trabajo[TEXT_CERRADO_2]
+    trabajo[TEXT_SEGMENTO] = trabajo[TEXT_TIPIFICACION_AUTO].apply(segmento_incidente)
+    trabajo[TEXT_PRIORIDAD_NORMALIZADA] = trabajo[TEXT_PRIORIDAD].apply(normalizar_prioridad_incidente)
+    trabajo["familia_sla"] = trabajo.apply(
+        lambda row: familia_sla_incidente(row[TEXT_TIPIFICACION_AUTO], row[TEXT_TIPO_INCIDENTE_AUTO]),
+        axis=1,
+    )
+    trabajo[TEXT_SLA_OBJETIVO_HORAS] = trabajo.apply(sla_objetivo_horas_incidente, axis=1)
+    trabajo[TEXT_DURACION_SLA_HORAS] = trabajo.apply(duracion_sla_horas_incidente, axis=1)
+    trabajo[TEXT_ESTADO_SLA] = trabajo.apply(estado_sla_incidente, axis=1)
+    trabajo[TEXT_DURACION_HORAS_NUM] = pd.to_numeric(trabajo[TEXT_DURACION_SLA_HORAS], errors=TEXT_COERCE)
+    return trabajo
+
+
+def preparar_bases_kpi_comparativo(casos, incidentes):
+    return (
+        preparar_casos_kpi_comparativo_ligero(casos),
+        preparar_incidentes_kpi_comparativo_ligero(incidentes),
+    )
 
 
 def metricas_casos_comparativo(base, anio):
@@ -4844,16 +4897,8 @@ def render_graficas_kpi_comparativo(metricas, tendencia, anios):
 
 def dashboard_kpi_comparativo_anual():
     st.subheader(MENU_KPI_COMPARATIVO_ANUAL)
-    with st.spinner("Cargando casos e incidentes..."):
-        casos = load_casos()
-        incidentes = load_incidentes()
-
-    if casos.empty and incidentes.empty:
-        st.info("No hay casos ni incidentes cargados para comparar.")
-        return
-
-    base_casos, base_incidentes = preparar_bases_kpi_comparativo(casos, incidentes)
-    anios_disponibles = anios_disponibles_kpi_comparativo(base_casos, base_incidentes)
+    anio_actual = pd.Timestamp.now().year
+    anios_disponibles = list(range(2024, max(2026, anio_actual) + 1))
     col_base, col_comparado = st.columns(2)
     with col_base:
         anio_base = st.selectbox(
@@ -4875,6 +4920,16 @@ def dashboard_kpi_comparativo_anual():
         return
 
     anios = [anio_base, anio_comparado]
+    with st.spinner(f"Cargando solo registros de {anio_base} y {anio_comparado}..."):
+        casos = load_casos_anios(anios)
+        incidentes = load_incidentes_anios(anios)
+
+    if casos.empty and incidentes.empty:
+        st.info("No hay casos ni incidentes cargados para los anios seleccionados.")
+        return
+
+    with st.spinner("Calculando KPI comparativo liviano..."):
+        base_casos, base_incidentes = preparar_bases_kpi_comparativo(casos, incidentes)
     metricas = tabla_metricas_kpi_comparativo(base_casos, base_incidentes, anios)
     comparativo = tabla_comparativo_anios(metricas, anio_base, anio_comparado)
     tendencia = pd.concat(

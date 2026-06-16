@@ -1205,6 +1205,56 @@ def read_table(table_name):
     return pd.DataFrame(rows, columns=columns)
 
 
+def read_table_years(table_name, years, columns=None):
+    years = [str(year) for year in years if str(year).strip()]
+    if not years:
+        return pd.DataFrame()
+    conn = get_conn()
+    column_sql = ", ".join(columns) if columns else "*"
+    placeholders = db_placeholders(len(years))
+    cursor = db_execute(
+        conn,
+        f"SELECT {column_sql} FROM {table_name} WHERE substr(creado, 1, 4) IN ({placeholders})",
+        years,
+    )
+    rows = cursor.fetchall()
+    columns = [column[0] for column in cursor.description]
+    conn.close()
+    return pd.DataFrame(rows, columns=columns)
+
+
+def load_casos_anios(years):
+    return read_table_years(
+        "cases",
+        years,
+        columns=[
+            "numero",
+            "estado",
+            "creado",
+            "cerrado",
+            "tiempo_respuesta",
+        ],
+    )
+
+
+def load_incidentes_anios(years):
+    return read_table_years(
+        "incidents",
+        years,
+        columns=[
+            "numero",
+            "estado",
+            "creado",
+            "cerrado",
+            "prioridad",
+            "tipificacion_auto",
+            "tipo_incidente_auto",
+            "duracion_horas",
+            "duracion_segundos",
+        ],
+    )
+
+
 def upsert_sql(table_name, columns, conflict_column):
     column_sql = ", ".join(columns)
     placeholder_sql = db_placeholders(len(columns))
