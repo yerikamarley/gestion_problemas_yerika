@@ -303,6 +303,7 @@ COL_CASOS_REINCIDENTES_AGENDA = "Casos reincidentes agenda"
 COL_REINCIDENCIA_AGENDAMIENTO = "Reincidencia agendamiento %"
 MENU_CLIENTES_CLAVE = "Clientes clave"
 MENU_KPI_CLIENTES_CLAVE = "KPI Clientes Clave"
+MENU_DASHBOARD_CASOS_SOPORTE = "Dashboard Casos Soporte"
 MENU_KPI_CASOS_CLIENTE_EXTERNO = "KPI Casos Cliente Externo"
 MENU_KPI_INCIDENTES = "KPI Incidentes"
 MENU_KPI_COMPARATIVO_ANUAL = "KPI 2025 vs 2026"
@@ -484,7 +485,9 @@ CASE_SUPPORT_CERT_FIRMA_ACUSES_TERMS = [
     "rpost",
     "acuse",
     "acuses",
+    "acusese",
     "acuse de recibo",
+    "acuses de recibo",
     "trazabilidad de envio",
     "trazabilidad de envios",
 ]
@@ -2546,15 +2549,30 @@ def clasificar_tipologia_soporte_caso(row):
     texto = texto_caso_para_tipologia_soporte(row)
     if texto_contiene_alguno(texto, CASE_SUPPORT_TOKEN_VIRTUAL_TERMS):
         return SOPORTE_TOKEN_VIRTUAL
-    if texto_contiene_alguno(texto, CASE_SUPPORT_TOKEN_FISICO_TERMS):
-        return SOPORTE_TOKEN_FISICO
     if texto_contiene_alguno(texto, CASE_SUPPORT_SECURITY_TERMS):
         return SOPORTE_PLATAFORMA_ACCESOS_SEGURIDAD
     if texto_contiene_alguno(texto, CASE_SUPPORT_CERT_FIRMA_ACUSES_TERMS):
         return SOPORTE_CERTIFICADO_FIRMA_ACUSES
+    if texto_contiene_alguno(texto, CASE_SUPPORT_TOKEN_FISICO_TERMS):
+        return SOPORTE_TOKEN_FISICO
     if texto_contiene_alguno(texto, CASE_SUPPORT_PLATFORM_ACCESS_TERMS):
         return SOPORTE_PLATAFORMA_ACCESOS_SEGURIDAD
     return SOPORTE_PLATAFORMA_ACCESOS_SEGURIDAD
+
+
+def agregar_tipologia_soporte_casos(df):
+    trabajo = df.copy()
+    if TEXT_TIPOLOGIA_SOPORTE not in trabajo.columns:
+        if trabajo.empty:
+            trabajo[TEXT_TIPOLOGIA_SOPORTE] = pd.Series(dtype=TEXT_OBJECT)
+        else:
+            trabajo[TEXT_TIPOLOGIA_SOPORTE] = trabajo.apply(clasificar_tipologia_soporte_caso, axis=1)
+    return trabajo
+
+
+@st.cache_data(ttl=CACHE_TTL_SEGUNDOS, show_spinner=False)
+def cargar_casos_soporte_cache():
+    return agregar_tipologia_soporte_casos(normalizar_tipificaciones_casos_df(cargar_casos_cache()))
 
 
 def resumen_tipologias_soporte_casos(base):
@@ -2659,7 +2677,7 @@ def preparar_kpi_casos_cliente_externo(df):
         return trabajo, {}
 
     trabajo[TEXT_CAUSA_COMUN] = trabajo.apply(inferir_causa_comun_caso, axis=1)
-    trabajo[TEXT_TIPOLOGIA_SOPORTE] = trabajo.apply(clasificar_tipologia_soporte_caso, axis=1)
+    trabajo = agregar_tipologia_soporte_casos(trabajo)
     trabajo["_tipificacion_kpi"] = serie_categorica_limpia(trabajo, TEXT_TIPIFICACION_2, "Sin tipificacion")
     trabajo[TEXT_CERRADO_2] = mascara_cerrados(trabajo)
     trabajo[TEXT_ABIERTO] = ~trabajo[TEXT_CERRADO_2]
@@ -3626,7 +3644,7 @@ def render_kpi_casos_cliente_externo(df, mes_dashboard=None):
                 TEXT_PRODUCTO: "Servicio",
             }
         )
-        st.dataframe(visible, use_container_width=True, hide_index=True)
+        dataframe_liviano(visible)
 
 
 def segmento_incidente(valor):
@@ -4911,7 +4929,7 @@ def render_causas_incidentes(df, titulo, porcentaje_columna):
 
 
 def dashboard_casos():
-    df = normalizar_tipificaciones_casos_df(cargar_casos_cache())
+    df = cargar_casos_soporte_cache()
     if df.empty:
         st.info("No hay datos de casos cargados.")
         return
@@ -4955,20 +4973,8 @@ def dashboard_casos():
     col1, col2 = st.columns(2)
 
     with col1:
-        tip = tabla_resumen_tipificaciones_casos(df)[[TEXT_TIPIFICACION, TEXT_CANTIDAD]]
-        tip = tip.sort_values(by=TEXT_CANTIDAD, ascending=True)
-        fig = px.bar(
-            tip,
-            x=TEXT_CANTIDAD,
-            y=TEXT_TIPIFICACION,
-            orientation="h",
-            text=TEXT_CANTIDAD,
-            color=TEXT_TIPIFICACION,
-            color_discrete_sequence=CHART_COLORS,
-        )
-        fig.update_traces(textposition=TEXT_OUTSIDE)
-        fig.update_layout(showlegend=False)
-        st.plotly_chart(aplicar_estilo_figura(fig, "Casos por tipificacion"), use_container_width=True)
+        tip = resumen_tipologias_soporte_casos(df)
+        grafico_porcentaje_tipologias_soporte(tip)
 
     with col2:
         serie = df.copy()
@@ -4982,15 +4988,17 @@ def dashboard_casos():
     render_analisis_agendamiento_mesa(df, df_historico, mes_dashboard)
 
     st.divider()
-    st.subheader("Resumen de tipificaciones")
-    st.caption("Descripcion breve de cada tipificacion y cantidad actual de casos clasificados en el dashboard.")
-    st.dataframe(tabla_resumen_tipificaciones_casos(df), use_container_width=True, hide_index=True)
+    st.subheader("Resumen por tipologia de soporte")
+    st.caption("Nueva agrupacion operativa de soporte. La tipificacion original se mantiene como referencia.")
+    st.dataframe(resumen_tipologias_soporte_casos(df), use_container_width=True, hide_index=True)
+    with st.expander("Ver tipificaciones originales"):
+        st.dataframe(tabla_resumen_tipificaciones_casos(df), use_container_width=True, hide_index=True)
 
     render_seguimiento_casos(df)
 
 
 def dashboard_kpi_casos_cliente_externo():
-    df = normalizar_tipificaciones_casos_df(cargar_casos_cache())
+    df = cargar_casos_soporte_cache()
     if df.empty:
         st.info("No hay datos de casos cargados.")
         return
@@ -7409,12 +7417,14 @@ def vista_cargar_casos():
         procesar_archivo_casos(df, reemplazar_meses)
 
 def vista_casos():
-    df = normalizar_tipificaciones_casos_df(cargar_casos_cache())
+    df = cargar_casos_soporte_cache()
     if not df.empty:
         df = preparar_fechas_dashboard(df)
         df["mes"] = df[TEXT_CREADO_DT_DASHBOARD].dt.to_period("M").astype(str).replace("NaT", "Sin fecha")
 
-        filtro_col1, filtro_col2, filtro_col3, filtro_col4, filtro_col5 = st.columns([1, 1, 1.5, 1.5, 2])
+        filtro_col1, filtro_col2, filtro_col3, filtro_col4, filtro_col5, filtro_col6 = st.columns(
+            [1, 1, 1.5, 1.5, 1.5, 2]
+        )
         with filtro_col1:
             filtro_mes = selector_mes_dashboard(df, "vista_casos_mes")
         if filtro_mes != TEXT_TODOS:
@@ -7424,20 +7434,28 @@ def vista_casos():
             estados = sorted(df[TEXT_ESTADO].dropna().unique().tolist())
             filtro_estado = st.selectbox(TEXT_ESTADO_2, [TEXT_TODOS] + estados, key="estado_casos")
         with filtro_col3:
+            filtro_soporte = st.selectbox(
+                TEXT_TIPOLOGIA_SOPORTE,
+                [TEXT_TODOS] + CASE_SUPPORT_TYPOLOGY_ORDER,
+                key="tipologia_soporte_casos",
+            )
+        with filtro_col4:
             clasificaciones = sorted(df[TEXT_TIPIFICACION_2].dropna().unique().tolist())
             filtro_clasificacion = st.selectbox(
-                TEXT_CLASIFICACION,
+                "Tipificacion original",
                 [TEXT_TODOS] + clasificaciones,
                 key="clasificacion_casos",
             )
-        with filtro_col4:
+        with filtro_col5:
             servicios = opciones_filtro_servicio(df, TEXT_PRODUCTO)
             filtro_servicio = st.selectbox("Servicio", [TEXT_TODOS] + servicios, key="servicio_casos")
-        with filtro_col5:
+        with filtro_col6:
             filtro_cuenta = st.text_input("Cuenta", key="cuenta_casos")
 
         if filtro_estado != TEXT_TODOS:
             df = df[df[TEXT_ESTADO] == filtro_estado]
+        if filtro_soporte != TEXT_TODOS:
+            df = df[df[TEXT_TIPOLOGIA_SOPORTE] == filtro_soporte]
         if filtro_clasificacion != TEXT_TODOS:
             df = df[df[TEXT_TIPIFICACION_2] == filtro_clasificacion]
         if filtro_servicio != TEXT_TODOS:
@@ -7449,6 +7467,7 @@ def vista_casos():
             TEXT_NUMERO,
             TEXT_ESTADO,
             "mes",
+            TEXT_TIPOLOGIA_SOPORTE,
             TEXT_CUENTA,
             "contacto",
             TEXT_DESCRIPCION_2,
@@ -7717,7 +7736,7 @@ def vista_administrar_usuarios():
 ADMIN_MENU_OPTIONS = [
     "Cargar Excel Casos",
     TEXT_CASOS,
-    "Dashboard Casos",
+    MENU_DASHBOARD_CASOS_SOPORTE,
     MENU_KPI_CASOS_CLIENTE_EXTERNO,
     "Cargar Excel Incidentes",
     TEXT_INCIDENTES,
@@ -7734,6 +7753,7 @@ ADMIN_MENU_OPTIONS = [
 
 VIEWER_MENU_OPTIONS = [
     TEXT_CASOS,
+    MENU_DASHBOARD_CASOS_SOPORTE,
     MENU_KPI_CASOS_CLIENTE_EXTERNO,
     TEXT_INCIDENTES,
     MENU_KPI_INCIDENTES,
@@ -7748,7 +7768,7 @@ VIEWER_MENU_OPTIONS = [
 ADMIN_VIEWS = {
     "Cargar Excel Casos": vista_cargar_casos,
     TEXT_CASOS: vista_casos,
-    "Dashboard Casos": dashboard_casos,
+    MENU_DASHBOARD_CASOS_SOPORTE: dashboard_casos,
     MENU_KPI_CASOS_CLIENTE_EXTERNO: dashboard_kpi_casos_cliente_externo,
     "Cargar Excel Incidentes": vista_cargar_incidentes,
     TEXT_INCIDENTES: vista_incidentes,
@@ -7765,6 +7785,7 @@ ADMIN_VIEWS = {
 
 VIEWER_VIEWS = {
     TEXT_CASOS: dashboard_casos,
+    MENU_DASHBOARD_CASOS_SOPORTE: dashboard_casos,
     MENU_KPI_CASOS_CLIENTE_EXTERNO: dashboard_kpi_casos_cliente_externo,
     TEXT_INCIDENTES: dashboard_incidentes,
     MENU_KPI_INCIDENTES: dashboard_kpi_incidentes,
