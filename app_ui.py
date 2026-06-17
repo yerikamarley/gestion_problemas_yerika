@@ -180,7 +180,48 @@ CHART_COLORS = [
     UI_PALETTE["text"],
 ]
 
+CACHE_TTL_SEGUNDOS = 300
+DATAFRAME_DISPLAY_LIMIT = 1000
 SLA_CASOS_HORAS = 36
+
+
+def limpiar_cache_datos():
+    st.cache_data.clear()
+
+
+def dataframe_liviano(df, limite=DATAFRAME_DISPLAY_LIMIT):
+    if len(df) > limite:
+        st.caption(
+            f"Mostrando {limite} de {len(df)} registros para mantener la vista agil. "
+            "Aplica filtros para revisar un subconjunto mas pequeno."
+        )
+        df = df.head(limite)
+    st.dataframe(df, use_container_width=True, hide_index=True)
+
+
+@st.cache_data(ttl=CACHE_TTL_SEGUNDOS, show_spinner=False)
+def cargar_casos_cache():
+    return load_casos()
+
+
+@st.cache_data(ttl=CACHE_TTL_SEGUNDOS, show_spinner=False)
+def cargar_incidentes_cache():
+    return load_incidentes()
+
+
+@st.cache_data(ttl=CACHE_TTL_SEGUNDOS, show_spinner=False)
+def cargar_incidentes_sla_cache():
+    return agregar_campos_sla_incidentes(cargar_incidentes_cache())
+
+
+@st.cache_data(ttl=CACHE_TTL_SEGUNDOS, show_spinner=False)
+def cargar_casos_anios_cache(anios):
+    return load_casos_anios(list(anios))
+
+
+@st.cache_data(ttl=CACHE_TTL_SEGUNDOS, show_spinner=False)
+def cargar_incidentes_anios_cache(anios):
+    return load_incidentes_anios(list(anios))
 
 # Constantes de etiquetas usadas en tablas, filtros y graficas
 TIPIFICACION_REDIRECCIONAMIENTO_AGENDA = "9 - Redireccionamiento Agenda"
@@ -2174,6 +2215,16 @@ def preparar_incidentes_clientes_clave(df):
     trabajo[TEXT_CERRADO_DT] = pd.to_datetime(trabajo[TEXT_CERRADO].apply(normalizar_fecha), errors=TEXT_COERCE)
     trabajo[TEXT_DURACION_HORAS_NUM] = pd.to_numeric(trabajo[TEXT_DURACION_HORAS], errors=TEXT_COERCE)
     return trabajo
+
+
+@st.cache_data(ttl=CACHE_TTL_SEGUNDOS, show_spinner=False)
+def cargar_casos_clientes_clave_cache():
+    return preparar_casos_clientes_clave(cargar_casos_cache())
+
+
+@st.cache_data(ttl=CACHE_TTL_SEGUNDOS, show_spinner=False)
+def cargar_incidentes_clientes_clave_cache():
+    return preparar_incidentes_clientes_clave(cargar_incidentes_cache())
 
 
 def fecha_maxima_cliente(casos_cliente, incidentes_cliente):
@@ -4860,7 +4911,7 @@ def render_causas_incidentes(df, titulo, porcentaje_columna):
 
 
 def dashboard_casos():
-    df = normalizar_tipificaciones_casos_df(load_casos())
+    df = normalizar_tipificaciones_casos_df(cargar_casos_cache())
     if df.empty:
         st.info("No hay datos de casos cargados.")
         return
@@ -4939,7 +4990,7 @@ def dashboard_casos():
 
 
 def dashboard_kpi_casos_cliente_externo():
-    df = normalizar_tipificaciones_casos_df(load_casos())
+    df = normalizar_tipificaciones_casos_df(cargar_casos_cache())
     if df.empty:
         st.info("No hay datos de casos cargados.")
         return
@@ -4955,7 +5006,7 @@ def dashboard_kpi_casos_cliente_externo():
 
 
 def dashboard_kpi_incidentes():
-    df = load_incidentes()
+    df = cargar_incidentes_cache()
     if df.empty:
         st.info("No hay datos de incidentes cargados.")
         return
@@ -5529,8 +5580,8 @@ def dashboard_kpi_comparativo_anual_legacy():
 
     anios = [anio_base, anio_comparado]
     with st.spinner(f"Cargando solo registros de {anio_base} y {anio_comparado}..."):
-        casos = load_casos_anios(anios)
-        incidentes = load_incidentes_anios(anios)
+        casos = cargar_casos_anios_cache(tuple(anios))
+        incidentes = cargar_incidentes_anios_cache(tuple(anios))
 
     if casos.empty and incidentes.empty:
         st.info("No hay casos ni incidentes cargados para los años seleccionados.")
@@ -5563,7 +5614,7 @@ def dashboard_kpi_comparativo_anual():
 
     anios = [ANS_INCIDENT_YEAR_BASE, ANS_INCIDENT_YEAR_FOCUS]
     with st.spinner("Cargando incidentes para el reporte ANS..."):
-        incidentes = load_incidentes_anios(anios)
+        incidentes = cargar_incidentes_anios_cache(tuple(anios))
 
     if incidentes.empty:
         st.info("No hay incidentes cargados para 2025 o 2026.")
@@ -5671,14 +5722,14 @@ def render_tabla_reincidencias(reincidencias):
     if reincidencias.empty:
         st.info("No se identificaron reincidencias con los filtros seleccionados.")
         return
-    st.dataframe(reincidencias, use_container_width=True, hide_index=True)
+    dataframe_liviano(reincidencias)
 
 
 def render_tabla_problemas_sugeridos(problemas):
     if problemas.empty:
         st.info("No se generaron problemas sugeridos con los filtros seleccionados.")
         return
-    st.dataframe(problemas, use_container_width=True, hide_index=True)
+    dataframe_liviano(problemas)
 
 
 def render_detalle_reincidencias(base, problemas=None):
@@ -5710,11 +5761,7 @@ def render_detalle_reincidencias(base, problemas=None):
         "tipo_incidente",
     ]
     columnas = [col for col in columnas if col in detalle.columns]
-    st.dataframe(
-        detalle.sort_values(by=["fecha_dt"], ascending=False)[columnas],
-        use_container_width=True,
-        hide_index=True,
-    )
+    dataframe_liviano(detalle.sort_values(by=["fecha_dt"], ascending=False)[columnas])
 
 
 def preparar_fechas_reincidencias(df):
@@ -5764,8 +5811,8 @@ def seleccionar_meses_reincidencias(casos, incidentes):
 def dashboard_reincidencias_problemas():
     st.subheader(MENU_REINCIDENCIAS_PROBLEMAS)
     with st.spinner("Cargando casos e incidentes..."):
-        casos = load_casos()
-        incidentes = load_incidentes()
+        casos = cargar_casos_cache()
+        incidentes = cargar_incidentes_cache()
     if casos.empty and incidentes.empty:
         st.info("No hay casos ni incidentes cargados para analizar.")
         return
@@ -5816,7 +5863,7 @@ def dashboard_reincidencias_problemas():
 
 
 def dashboard_incidentes():
-    df = load_incidentes()
+    df = cargar_incidentes_cache()
     if df.empty:
         st.info("No hay datos de incidentes cargados.")
         return
@@ -6171,6 +6218,16 @@ def filtrar_incidentes_rpost(incidentes):
     return trabajo
 
 
+@st.cache_data(ttl=CACHE_TTL_SEGUNDOS, show_spinner=False)
+def cargar_casos_rpost_cache():
+    return filtrar_casos_no_recibio_acuse(cargar_casos_cache())
+
+
+@st.cache_data(ttl=CACHE_TTL_SEGUNDOS, show_spinner=False)
+def cargar_incidentes_rpost_cache():
+    return filtrar_incidentes_rpost(cargar_incidentes_cache())
+
+
 def fechas_seguimiento_rpost(casos, incidentes):
     fechas = []
     for df in [casos, incidentes]:
@@ -6343,7 +6400,7 @@ def render_detalle_casos_seguimiento_rpost(casos):
             TEXT_TIPIFICACION_2: TEXT_TIPIFICACION,
         }
     )
-    st.dataframe(tabla, use_container_width=True, hide_index=True)
+    dataframe_liviano(tabla)
 
 
 def render_detalle_incidentes_seguimiento_rpost(incidentes):
@@ -6378,14 +6435,14 @@ def render_detalle_incidentes_seguimiento_rpost(incidentes):
             TEXT_BREVE_DESCRIPCION: "Breve descripcion",
         }
     )
-    st.dataframe(tabla, use_container_width=True, hide_index=True)
+    dataframe_liviano(tabla)
 
 
 def dashboard_seguimiento_rpost():
     st.subheader(MENU_SEGUIMIENTO_RPOST)
     with st.spinner("Cargando seguimiento de RPost..."):
-        casos = filtrar_casos_no_recibio_acuse(load_casos())
-        incidentes = filtrar_incidentes_rpost(load_incidentes())
+        casos = cargar_casos_rpost_cache()
+        incidentes = cargar_incidentes_rpost_cache()
 
     if casos.empty and incidentes.empty:
         st.info("No hay casos relacionados con RPost/acuses ni incidentes RPost cargados.")
@@ -6699,7 +6756,7 @@ def dashboard_casos_clientes_clave_comparativo():
     )
 
     with st.spinner("Cargando casos de clientes clave para el comparativo..."):
-        casos = load_casos_anios([KEY_CLIENT_CASE_YEAR_BASE, KEY_CLIENT_CASE_YEAR_FOCUS])
+        casos = cargar_casos_anios_cache((KEY_CLIENT_CASE_YEAR_BASE, KEY_CLIENT_CASE_YEAR_FOCUS))
 
     if casos.empty:
         st.info("No hay casos cargados para 2025 o 2026.")
@@ -6962,7 +7019,7 @@ def render_tab_abiertos_clientes(casos, incidentes):
         st.success("No hay casos ni incidentes abiertos para los clientes seleccionados.")
     else:
         st.caption("Detalle de atenciones abiertas. El campo Tipo indica si corresponde a caso o incidente.")
-        st.dataframe(abiertos_detalle, use_container_width=True, hide_index=True)
+        dataframe_liviano(abiertos_detalle)
 
 
 def render_tab_casos_clientes(casos):
@@ -6985,11 +7042,7 @@ def render_tab_casos_clientes(casos):
         TEXT_FUENTE_CLIENTE,
     ]
     columnas_casos = [col for col in columnas_casos if col in casos.columns]
-    st.dataframe(
-        casos.sort_values(by=TEXT_CREADO_DT, ascending=False)[columnas_casos],
-        use_container_width=True,
-        hide_index=True,
-    )
+    dataframe_liviano(casos.sort_values(by=TEXT_CREADO_DT, ascending=False)[columnas_casos])
 
 
 def render_tab_incidentes_clientes(incidentes):
@@ -7014,11 +7067,7 @@ def render_tab_incidentes_clientes(incidentes):
         TEXT_FUENTE_CLIENTE,
     ]
     columnas_incidentes = [col for col in columnas_incidentes if col in incidentes.columns]
-    st.dataframe(
-        incidentes.sort_values(by=TEXT_CREADO_DT, ascending=False)[columnas_incidentes],
-        use_container_width=True,
-        hide_index=True,
-    )
+    dataframe_liviano(incidentes.sort_values(by=TEXT_CREADO_DT, ascending=False)[columnas_incidentes])
 
 
 def clientes_en_seguimiento(resumen_actividad):
@@ -7199,8 +7248,8 @@ def dashboard_kpi_clientes_clave():
         dashboard_casos_clientes_clave_comparativo()
         return
 
-    casos = preparar_casos_clientes_clave(load_casos())
-    incidentes = preparar_incidentes_clientes_clave(load_incidentes())
+    casos = cargar_casos_clientes_clave_cache()
+    incidentes = cargar_incidentes_clientes_clave_cache()
 
     fechas = fechas_clientes_clave(casos, incidentes)
     clientes_seleccionados, mes_dashboard, rango_fechas = seleccionar_filtros_clientes_clave(
@@ -7249,8 +7298,8 @@ def dashboard_kpi_clientes_clave():
 
 
 def dashboard_clientes_clave():
-    casos = preparar_casos_clientes_clave(load_casos())
-    incidentes = preparar_incidentes_clientes_clave(load_incidentes())
+    casos = cargar_casos_clientes_clave_cache()
+    incidentes = cargar_incidentes_clientes_clave_cache()
     st.subheader(MENU_CLIENTES_CLAVE)
 
     fechas = fechas_clientes_clave(casos, incidentes)
@@ -7326,6 +7375,7 @@ def procesar_archivo_casos(df, reemplazar_meses):
     if cargados == 0:
         st.error("No se guardaron casos. Revisa que el archivo tenga una columna de numero de caso.")
         return
+    limpiar_cache_datos()
     actualizar_progreso(1, "Carga de casos finalizada.")
     st.success(
         mensaje_carga_casos(
@@ -7359,7 +7409,7 @@ def vista_cargar_casos():
         procesar_archivo_casos(df, reemplazar_meses)
 
 def vista_casos():
-    df = normalizar_tipificaciones_casos_df(load_casos())
+    df = normalizar_tipificaciones_casos_df(cargar_casos_cache())
     if not df.empty:
         df = preparar_fechas_dashboard(df)
         df["mes"] = df[TEXT_CREADO_DT_DASHBOARD].dt.to_period("M").astype(str).replace("NaT", "Sin fecha")
@@ -7420,7 +7470,7 @@ def vista_casos():
         ]
         df = df[[col for col in columnas if col in df.columns]]
         st.caption(f"Registros encontrados: {len(df)}")
-    st.dataframe(df, use_container_width=True, hide_index=True)
+    dataframe_liviano(df)
 
 
 def vista_cargar_incidentes():
@@ -7444,6 +7494,7 @@ def vista_cargar_incidentes():
             if cargados == 0:
                 st.error("No se guardaron incidentes. Revisa que el archivo tenga una columna de numero de incidente.")
             else:
+                limpiar_cache_datos()
                 actualizar_progreso(1, "Carga de incidentes finalizada.")
                 st.success(
                     f"Cargados: {cargados} | Registros existentes actualizados: {reemplazados} | "
@@ -7452,7 +7503,7 @@ def vista_cargar_incidentes():
 
 
 def vista_incidentes():
-    df = agregar_campos_sla_incidentes(load_incidentes())
+    df = cargar_incidentes_sla_cache()
     if not df.empty:
         df = preparar_fechas_dashboard(df)
         df["mes"] = df[TEXT_CREADO_DT_DASHBOARD].dt.to_period("M").astype(str).replace("NaT", "Sin fecha")
@@ -7531,11 +7582,11 @@ def vista_incidentes():
         df = df.drop(columns=[TEXT_CREADO_DT_DASHBOARD], errors="ignore")
         df = df[[col for col in columnas if col in df.columns]]
         st.caption(f"Registros encontrados: {len(df)}")
-    st.dataframe(df, use_container_width=True, hide_index=True)
+    dataframe_liviano(df)
 
 
 def vista_seguimiento_incidentes():
-    df = load_incidentes()
+    df = cargar_incidentes_cache()
     if df.empty:
         st.info("No hay incidentes cargados.")
         return
@@ -7615,6 +7666,7 @@ def render_mantenimiento_incidentes():
         st.error("Clave incorrecta.")
     if st.button("Limpiar incidentes", disabled=not puede_limpiar):
         borrados = limpiar_incidentes()
+        limpiar_cache_datos()
         st.success(f"Incidentes eliminados: {borrados}. Los casos no fueron modificados.")
         st.rerun()
 

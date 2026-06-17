@@ -1206,7 +1206,7 @@ def read_table(table_name):
 
 
 def read_table_years(table_name, years, columns=None):
-    years = [str(year) for year in years if str(year).strip()]
+    years = [str(year).strip() for year in years if str(year).strip()]
     if not years:
         return pd.DataFrame()
     conn = get_conn()
@@ -1234,11 +1234,16 @@ def read_table_years(table_name, years, columns=None):
             df.attrs["missing_columns"] = missing_columns
             return df
     column_sql = ", ".join(selected_columns) if selected_columns else "*"
-    placeholders = db_placeholders(len(years))
+    condiciones = []
+    params = []
+    for year in years:
+        siguiente = str(int(year) + 1)
+        condiciones.append("(creado >= ? AND creado < ?)")
+        params.extend([year, siguiente])
     cursor = db_execute(
         conn,
-        f"SELECT {column_sql} FROM {table_name} WHERE substr(creado, 1, 4) IN ({placeholders})",
-        years,
+        f"SELECT {column_sql} FROM {table_name} WHERE {' OR '.join(condiciones)}",
+        params,
     )
     rows = cursor.fetchall()
     columns = [column[0] for column in cursor.description]
@@ -1484,6 +1489,23 @@ def ensure_table_columns(conn, table_name, columns):
             db_execute(conn, f"ALTER TABLE {table_name} ADD COLUMN {nombre} {tipo}")
 
 
+def ensure_indexes(conn):
+    indices = [
+        ("idx_cases_creado", "cases", "creado"),
+        ("idx_cases_cuenta", "cases", "cuenta"),
+        ("idx_cases_estado", "cases", "estado"),
+        ("idx_cases_tipificacion", "cases", "tipificacion"),
+        ("idx_cases_cerrado", "cases", "cerrado"),
+        ("idx_incidents_creado", "incidents", "creado"),
+        ("idx_incidents_empresa", "incidents", "empresa"),
+        ("idx_incidents_estado", "incidents", "estado"),
+        ("idx_incidents_tipificacion_auto", "incidents", "tipificacion_auto"),
+        ("idx_incidents_cerrado", "incidents", "cerrado"),
+    ]
+    for nombre, tabla, columna in indices:
+        db_execute(conn, f"CREATE INDEX IF NOT EXISTS {nombre} ON {tabla} ({columna})")
+
+
 def init_db():
     conn = get_conn()
     db_execute(
@@ -1617,6 +1639,7 @@ def init_db():
             "duracion_horas": "REAL",
         },
     )
+    ensure_indexes(conn)
     conn.commit()
     conn.close()
 
