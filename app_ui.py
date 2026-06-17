@@ -22,8 +22,12 @@ from app_logic import (
     listar_usuarios,
     load_casos,
     load_casos_anios,
+    load_casos_filtrados,
     load_incidentes,
     load_incidentes_anios,
+    load_incidentes_filtrados,
+    obtener_meses_disponibles,
+    obtener_ultimo_mes_disponible,
     duracion_sla_horas_incidente,
     estado_sla_incidente,
     familia_sla_incidente,
@@ -223,6 +227,72 @@ def cargar_casos_anios_cache(anios):
 def cargar_incidentes_anios_cache(anios):
     return load_incidentes_anios(list(anios))
 
+
+@st.cache_data(ttl=CACHE_TTL_SEGUNDOS, show_spinner=False)
+def cargar_meses_disponibles_cache(tabla):
+    return obtener_meses_disponibles(tabla)
+
+
+@st.cache_data(ttl=CACHE_TTL_SEGUNDOS, show_spinner=False)
+def cargar_ultimo_mes_disponible_cache(tabla):
+    return obtener_ultimo_mes_disponible(tabla)
+
+
+@st.cache_data(ttl=CACHE_TTL_SEGUNDOS, show_spinner=False)
+def cargar_meses_disponibles_multi_cache(tablas):
+    meses = set()
+    for tabla in tablas:
+        meses.update(obtener_meses_disponibles(tabla))
+    return sorted(meses)
+
+
+@st.cache_data(ttl=CACHE_TTL_SEGUNDOS, show_spinner=False)
+def cargar_casos_filtrados_cache(anio=None, mes=None, cliente="", estado="", servicio="", tipificacion=""):
+    return load_casos_filtrados(
+        anio=anio,
+        mes=mes,
+        cliente=cliente,
+        estado=estado,
+        servicio=servicio,
+        tipificacion=tipificacion,
+    )
+
+
+@st.cache_data(ttl=CACHE_TTL_SEGUNDOS, show_spinner=False)
+def cargar_incidentes_filtrados_cache(
+    anio=None,
+    mes=None,
+    cliente="",
+    estado="",
+    servicio="",
+    tipificacion="",
+    es_alerta="",
+):
+    return load_incidentes_filtrados(
+        anio=anio,
+        mes=mes,
+        cliente=cliente,
+        estado=estado,
+        servicio=servicio,
+        tipificacion=tipificacion,
+        es_alerta=es_alerta,
+    )
+
+
+@st.cache_data(ttl=CACHE_TTL_SEGUNDOS, show_spinner=False)
+def cargar_incidentes_sla_filtrados_cache(
+    anio=None,
+    mes=None,
+    cliente="",
+    estado="",
+    servicio="",
+    tipificacion="",
+    es_alerta="",
+):
+    return agregar_campos_sla_incidentes(
+        cargar_incidentes_filtrados_cache(anio, mes, cliente, estado, servicio, tipificacion, es_alerta)
+    )
+
 # Constantes de etiquetas usadas en tablas, filtros y graficas
 TIPIFICACION_REDIRECCIONAMIENTO_AGENDA = "9 - Redireccionamiento Agenda"
 TIPIFICACION_CLIENTE_NO_ASISTIO = "10 - Cliente no asistio"
@@ -338,6 +408,85 @@ MONTH_NAMES_ES = {
     11: "Noviembre",
     12: "Diciembre",
 }
+
+
+def parse_mes_periodo(valor):
+    if not valor or not isinstance(valor, str) or "-" not in valor:
+        return None, None
+    anio, mes = valor.split("-", 1)
+    return int(anio), int(mes)
+
+
+def etiqueta_mes_periodo(anio, mes):
+    if mes in (None, "", TEXT_TODOS):
+        return f"{anio} completo" if anio else TEXT_TODOS
+    return f"{MONTH_NAMES_ES.get(int(mes), str(mes))} {int(anio)}"
+
+
+def periodo_key_sql(anio, mes):
+    if anio and mes:
+        return f"{int(anio):04d}-{int(mes):02d}"
+    return TEXT_TODOS
+
+
+def selector_periodo_sql(tabla, key, label_anio="Año", label_mes="Mes"):
+    meses = cargar_meses_disponibles_cache(tabla)
+    return selector_periodo_desde_meses(meses, key, label_anio, label_mes)
+
+
+def selector_periodo_multi_sql(tablas, key, label_anio="Año", label_mes="Mes"):
+    meses = cargar_meses_disponibles_multi_cache(tuple(tablas))
+    return selector_periodo_desde_meses(meses, key, label_anio, label_mes)
+
+
+def selector_periodo_desde_meses(meses, key, label_anio="Año", label_mes="Mes"):
+    if not meses:
+        st.caption("No hay fechas validas para filtrar por periodo.")
+        return None, None, TEXT_TODOS
+
+    ultimo_mes = meses[-1]
+    ultimo_anio, ultimo_mes_num = parse_mes_periodo(ultimo_mes)
+    anios = sorted({parse_mes_periodo(mes)[0] for mes in meses if parse_mes_periodo(mes)[0]})
+
+    col_anio, col_mes = st.columns([1, 1])
+    with col_anio:
+        anio = st.selectbox(
+            label_anio,
+            anios,
+            index=anios.index(ultimo_anio) if ultimo_anio in anios else len(anios) - 1,
+            key=f"{key}_anio",
+        )
+
+    meses_anio = sorted(
+        {
+            parse_mes_periodo(mes)[1]
+            for mes in meses
+            if parse_mes_periodo(mes)[0] == int(anio)
+        }
+    )
+    opciones_mes = [TEXT_TODOS] + [MONTH_NAMES_ES.get(mes, f"{mes:02d}") for mes in meses_anio]
+    mapa_mes = {MONTH_NAMES_ES.get(mes, f"{mes:02d}"): mes for mes in meses_anio}
+    mes_default = ultimo_mes_num if int(anio) == int(ultimo_anio) else (meses_anio[-1] if meses_anio else None)
+    etiqueta_default = MONTH_NAMES_ES.get(mes_default, f"{mes_default:02d}") if mes_default else TEXT_TODOS
+
+    with col_mes:
+        mes_label = st.selectbox(
+            label_mes,
+            opciones_mes,
+            index=opciones_mes.index(etiqueta_default) if etiqueta_default in opciones_mes else 0,
+            key=f"{key}_mes",
+        )
+
+    mes = mapa_mes.get(mes_label)
+    return int(anio), mes, etiqueta_mes_periodo(anio, mes)
+
+
+def periodo_sql_valido(anio, etiqueta="datos"):
+    if anio is not None:
+        return True
+    st.info(f"No hay fechas validas para consultar {etiqueta}.")
+    return False
+
 CASE_TIPIFICATION_RENAMES = {
     "8 - Instalaciones": TIPIFICACION_REDIRECCIONAMIENTO_AGENDA,
     "8 - Agenda Instalaciones IVR": TIPIFICACION_REDIRECCIONAMIENTO_AGENDA,
@@ -2226,8 +2375,18 @@ def cargar_casos_clientes_clave_cache():
 
 
 @st.cache_data(ttl=CACHE_TTL_SEGUNDOS, show_spinner=False)
+def cargar_casos_clientes_clave_filtrados_cache(anio=None, mes=None):
+    return preparar_casos_clientes_clave(cargar_casos_filtrados_cache(anio, mes))
+
+
+@st.cache_data(ttl=CACHE_TTL_SEGUNDOS, show_spinner=False)
 def cargar_incidentes_clientes_clave_cache():
     return preparar_incidentes_clientes_clave(cargar_incidentes_cache())
+
+
+@st.cache_data(ttl=CACHE_TTL_SEGUNDOS, show_spinner=False)
+def cargar_incidentes_clientes_clave_filtrados_cache(anio=None, mes=None):
+    return preparar_incidentes_clientes_clave(cargar_incidentes_filtrados_cache(anio, mes))
 
 
 def fecha_maxima_cliente(casos_cliente, incidentes_cliente):
@@ -2573,6 +2732,22 @@ def agregar_tipologia_soporte_casos(df):
 @st.cache_data(ttl=CACHE_TTL_SEGUNDOS, show_spinner=False)
 def cargar_casos_soporte_cache():
     return agregar_tipologia_soporte_casos(normalizar_tipificaciones_casos_df(cargar_casos_cache()))
+
+
+@st.cache_data(ttl=CACHE_TTL_SEGUNDOS, show_spinner=False)
+def cargar_casos_soporte_filtrados_cache(
+    anio=None,
+    mes=None,
+    cliente="",
+    estado="",
+    servicio="",
+    tipificacion="",
+):
+    return agregar_tipologia_soporte_casos(
+        normalizar_tipificaciones_casos_df(
+            cargar_casos_filtrados_cache(anio, mes, cliente, estado, servicio, tipificacion)
+        )
+    )
 
 
 def resumen_tipologias_soporte_casos(base):
@@ -4929,16 +5104,17 @@ def render_causas_incidentes(df, titulo, porcentaje_columna):
 
 
 def dashboard_casos():
-    df = cargar_casos_soporte_cache()
+    anio, mes, periodo_label = selector_periodo_sql("cases", "dashboard_casos_periodo")
+    if not periodo_sql_valido(anio, "casos"):
+        return
+    df = cargar_casos_soporte_filtrados_cache(anio, mes)
     if df.empty:
-        st.info("No hay datos de casos cargados.")
+        st.info(f"No hay casos cargados para {periodo_label}.")
         return
 
-    df_historico = preparar_fechas_dashboard(df)
-    mes_dashboard = selector_mes_dashboard(df_historico, "dashboard_casos_mes")
-    df = filtrar_mes_dashboard(df_historico, mes_dashboard)
+    df = preparar_fechas_dashboard(df)
     if df.empty:
-        st.info(f"No hay casos cargados para {mes_dashboard}.")
+        st.info(f"No hay casos cargados para {periodo_label}.")
         return
 
     total = len(df)
@@ -4964,7 +5140,7 @@ def dashboard_casos():
             (f"SLA <{SLA_CASOS_HORAS}h (%)", f"{porcentaje_sla}%"),
         ]
     )
-    st.caption(f"{TEXT_PERIODO}{mes_dashboard} | Cumplen: {cumplen}{TEXT_NO_CUMPLEN}{incumplen}")
+    st.caption(f"{TEXT_PERIODO}{periodo_label} | Cumplen: {cumplen}{TEXT_NO_CUMPLEN}{incumplen}")
 
     st.divider()
     render_carga_agentes(df, TEXT_ASIGNADO, "Carga por agente - casos", TEXT_CASOS)
@@ -4985,7 +5161,11 @@ def dashboard_casos():
         st.plotly_chart(aplicar_estilo_figura(fig, "Casos por dia"), use_container_width=True)
 
     st.divider()
-    render_analisis_agendamiento_mesa(df, df_historico, mes_dashboard)
+    with st.expander("Analisis de agendamiento con historico"):
+        st.caption("Este bloque puede consultar mas datos. Se carga solo cuando lo solicitas.")
+        if st.button("Calcular analisis de agendamiento", key="calcular_agendamiento_dashboard_casos"):
+            historico = preparar_fechas_dashboard(cargar_casos_soporte_cache())
+            render_analisis_agendamiento_mesa(df, historico, periodo_key_sql(anio, mes))
 
     st.divider()
     st.subheader("Resumen por tipologia de soporte")
@@ -4998,35 +5178,37 @@ def dashboard_casos():
 
 
 def dashboard_kpi_casos_cliente_externo():
-    df = cargar_casos_soporte_cache()
+    anio, mes, periodo_label = selector_periodo_sql("cases", "kpi_casos_cliente_externo_periodo")
+    if not periodo_sql_valido(anio, "casos"):
+        return
+    df = cargar_casos_soporte_filtrados_cache(anio, mes)
     if df.empty:
-        st.info("No hay datos de casos cargados.")
+        st.info(f"No hay casos cargados para {periodo_label}.")
         return
 
     df = preparar_fechas_dashboard(df)
-    mes_dashboard = selector_mes_dashboard(df, "kpi_casos_cliente_externo_mes")
-    df = filtrar_mes_dashboard(df, mes_dashboard)
     if df.empty:
-        st.info(f"No hay casos cargados para {mes_dashboard}.")
+        st.info(f"No hay casos cargados para {periodo_label}.")
         return
 
-    render_kpi_casos_cliente_externo(df, mes_dashboard)
+    render_kpi_casos_cliente_externo(df, periodo_label)
 
 
 def dashboard_kpi_incidentes():
-    df = cargar_incidentes_cache()
+    anio, mes, periodo_label = selector_periodo_sql("incidents", "kpi_incidentes_periodo")
+    if not periodo_sql_valido(anio, "incidentes"):
+        return
+    df = cargar_incidentes_filtrados_cache(anio, mes)
     if df.empty:
-        st.info("No hay datos de incidentes cargados.")
+        st.info(f"No hay incidentes cargados para {periodo_label}.")
         return
 
     df = preparar_fechas_dashboard(df)
-    mes_dashboard = selector_mes_dashboard(df, "kpi_incidentes_mes")
-    df = filtrar_mes_dashboard(df, mes_dashboard)
     if df.empty:
-        st.info(f"No hay incidentes cargados para {mes_dashboard}.")
+        st.info(f"No hay incidentes cargados para {periodo_label}.")
         return
 
-    render_kpi_incidentes(df, mes_dashboard)
+    render_kpi_incidentes(df, periodo_label)
 
 
 def filtrar_anio_dashboard(df, anio, columna_dt=TEXT_CREADO_DT_DASHBOARD):
@@ -5818,16 +6000,31 @@ def seleccionar_meses_reincidencias(casos, incidentes):
 
 def dashboard_reincidencias_problemas():
     st.subheader(MENU_REINCIDENCIAS_PROBLEMAS)
-    with st.spinner("Cargando casos e incidentes..."):
-        casos = cargar_casos_cache()
-        incidentes = cargar_incidentes_cache()
-    if casos.empty and incidentes.empty:
-        st.info("No hay casos ni incidentes cargados para analizar.")
-        return
+    st.caption("Selecciona el periodo antes de calcular. La vista solo consulta esos cortes para mantenerla rapida.")
+    col_casos, col_incidentes = st.columns(2)
+    with col_casos:
+        st.markdown("##### Casos")
+        anio_casos, mes_casos_num, periodo_casos = selector_periodo_sql("cases", "reincidencias_periodo_casos")
+    with col_incidentes:
+        st.markdown("##### Incidentes")
+        anio_incidentes, mes_incidentes_num, periodo_incidentes = selector_periodo_sql(
+            "incidents",
+            "reincidencias_periodo_incidentes",
+        )
 
-    casos, incidentes, mes_casos, mes_incidentes = seleccionar_meses_reincidencias(casos, incidentes)
+    with st.spinner("Cargando casos e incidentes del periodo seleccionado..."):
+        casos = (
+            cargar_casos_filtrados_cache(anio_casos, mes_casos_num)
+            if anio_casos is not None
+            else pd.DataFrame()
+        )
+        incidentes = (
+            cargar_incidentes_filtrados_cache(anio_incidentes, mes_incidentes_num)
+            if anio_incidentes is not None
+            else pd.DataFrame()
+        )
     if casos.empty and incidentes.empty:
-        st.info("No hay casos ni incidentes para los meses seleccionados.")
+        st.info("No hay casos ni incidentes para los periodos seleccionados.")
         return
 
     with st.spinner("Calculando reincidencias y problemas sugeridos..."):
@@ -5854,7 +6051,7 @@ def dashboard_reincidencias_problemas():
         ]
     )
     st.caption(
-        f"Periodo analizado: casos {mes_casos} | incidentes {mes_incidentes}. "
+        f"Periodo analizado: casos {periodo_casos} | incidentes {periodo_incidentes}. "
         "Lectura simple: reincidencias de casos/incidentes y posibles problemas cuando una misma causa raiz se repite. "
         "No modifica datos ni crea registros nuevos."
     )
@@ -5871,18 +6068,18 @@ def dashboard_reincidencias_problemas():
 
 
 def dashboard_incidentes():
-    df = cargar_incidentes_cache()
+    anio, mes, periodo_label = selector_periodo_sql("incidents", "dashboard_incidentes_periodo")
+    if not periodo_sql_valido(anio, "incidentes"):
+        return
+    df = cargar_incidentes_sla_filtrados_cache(anio, mes)
     if df.empty:
-        st.info("No hay datos de incidentes cargados.")
+        st.info(f"No hay incidentes cargados para {periodo_label}.")
         return
 
     df = preparar_fechas_dashboard(df)
-    mes_dashboard = selector_mes_dashboard(df, "dashboard_incidentes_mes")
-    df = filtrar_mes_dashboard(df, mes_dashboard)
     if df.empty:
-        st.info(f"No hay incidentes cargados para {mes_dashboard}.")
+        st.info(f"No hay incidentes cargados para {periodo_label}.")
         return
-    df = agregar_campos_sla_incidentes(df)
 
     total = len(df)
     cerrados_mask = mascara_cerrados(df)
@@ -5928,7 +6125,7 @@ def dashboard_incidentes():
         ]
     )
     st.caption(
-        f"{TEXT_PERIODO}{mes_dashboard} | Cerrados: {cerrados} | Abiertos: {abiertos} | "
+        f"{TEXT_PERIODO}{periodo_label} | Cerrados: {cerrados} | Abiertos: {abiertos} | "
         f"Promedio incidentes: {promedio}h | Cumplen: {cumplen}{TEXT_NO_CUMPLEN}{incumplen} | "
         f"Externos: {len(incidentes_externos)} | Internos: {len(incidentes_internos)} | "
         f"SLA casos cliente externo: {casos_sla}%"
@@ -6232,8 +6429,18 @@ def cargar_casos_rpost_cache():
 
 
 @st.cache_data(ttl=CACHE_TTL_SEGUNDOS, show_spinner=False)
+def cargar_casos_rpost_filtrados_cache(anio=None, mes=None):
+    return filtrar_casos_no_recibio_acuse(cargar_casos_filtrados_cache(anio, mes))
+
+
+@st.cache_data(ttl=CACHE_TTL_SEGUNDOS, show_spinner=False)
 def cargar_incidentes_rpost_cache():
     return filtrar_incidentes_rpost(cargar_incidentes_cache())
+
+
+@st.cache_data(ttl=CACHE_TTL_SEGUNDOS, show_spinner=False)
+def cargar_incidentes_rpost_filtrados_cache(anio=None, mes=None):
+    return filtrar_incidentes_rpost(cargar_incidentes_filtrados_cache(anio, mes))
 
 
 def fechas_seguimiento_rpost(casos, incidentes):
@@ -6448,39 +6655,31 @@ def render_detalle_incidentes_seguimiento_rpost(incidentes):
 
 def dashboard_seguimiento_rpost():
     st.subheader(MENU_SEGUIMIENTO_RPOST)
+    anio, mes, periodo_label = selector_periodo_multi_sql(
+        ["cases", "incidents"],
+        "seguimiento_rpost_periodo",
+    )
+    if not periodo_sql_valido(anio, "seguimiento RPost"):
+        return
     with st.spinner("Cargando seguimiento de RPost..."):
-        casos = cargar_casos_rpost_cache()
-        incidentes = cargar_incidentes_rpost_cache()
+        casos = cargar_casos_rpost_filtrados_cache(anio, mes)
+        incidentes = cargar_incidentes_rpost_filtrados_cache(anio, mes)
 
     if casos.empty and incidentes.empty:
-        st.info("No hay casos relacionados con RPost/acuses ni incidentes RPost cargados.")
+        st.info(f"No hay casos RPost/acuses ni incidentes RPost para {periodo_label}.")
         return
 
-    fechas = fechas_seguimiento_rpost(casos, incidentes)
-    filtros_col1, filtros_col2, filtros_col3 = st.columns([1, 1.4, 1.4])
+    filtros_col1, filtros_col2 = st.columns([1.4, 1.4])
+    clientes = clientes_seguimiento_rpost(casos, incidentes)
     with filtros_col1:
-        if fechas.empty:
-            mes_dashboard = TEXT_TODOS
-            st.caption("No hay fechas validas para filtrar por mes.")
-        else:
-            mes_dashboard = selector_mes_dashboard(
-                pd.DataFrame({TEXT_CREADO_DT_DASHBOARD: fechas}),
-                "seguimiento_rpost_mes",
-                label="Mes",
-            )
-
-    casos_mes = filtrar_mes_dashboard(casos, mes_dashboard)
-    incidentes_mes = filtrar_mes_dashboard(incidentes, mes_dashboard)
-    clientes = clientes_seguimiento_rpost(casos_mes, incidentes_mes)
-    with filtros_col2:
         cliente = st.selectbox("Cliente", [TEXT_TODOS] + clientes, key="seguimiento_rpost_cliente")
-    with filtros_col3:
+    with filtros_col2:
         busqueda = st.text_input("Buscar numero o texto", key="seguimiento_rpost_busqueda")
 
     casos, incidentes = aplicar_filtros_seguimiento_rpost(
         casos,
         incidentes,
-        mes_dashboard,
+        TEXT_TODOS,
         cliente,
         busqueda,
     )
@@ -6500,7 +6699,7 @@ def dashboard_seguimiento_rpost():
         ]
     )
     st.caption(
-        f"{TEXT_PERIODO}{mes_dashboard} | Casos: no recibio acuse o Certimail/Certicmal | "
+        f"{TEXT_PERIODO}{periodo_label} | Casos: no recibio acuse o Certimail/Certicmal | "
         "Incidentes: cualquier registro que mencione RPost."
     )
 
@@ -7256,25 +7455,25 @@ def dashboard_kpi_clientes_clave():
         dashboard_casos_clientes_clave_comparativo()
         return
 
-    casos = cargar_casos_clientes_clave_cache()
-    incidentes = cargar_incidentes_clientes_clave_cache()
-
-    fechas = fechas_clientes_clave(casos, incidentes)
-    clientes_seleccionados, mes_dashboard, rango_fechas = seleccionar_filtros_clientes_clave(
-        fechas,
-        "kpi_clientes_clave",
+    anio, mes, periodo_label = selector_periodo_multi_sql(
+        ["cases", "incidents"],
+        "kpi_clientes_clave_periodo",
+    )
+    if not periodo_sql_valido(anio, "clientes clave"):
+        return
+    clientes_seleccionados = st.multiselect(
+        "Clientes",
+        CLIENTES_CLAVE,
+        default=CLIENTES_CLAVE,
+        key="kpi_clientes_clave_filtro",
     )
     if not clientes_seleccionados:
         st.warning("Selecciona al menos un cliente clave.")
         return
 
-    casos, incidentes = aplicar_filtros_clientes_clave(
-        casos,
-        incidentes,
-        clientes_seleccionados,
-        mes_dashboard,
-        rango_fechas,
-    )
+    casos = cargar_casos_clientes_clave_filtrados_cache(anio, mes)
+    incidentes = cargar_incidentes_clientes_clave_filtrados_cache(anio, mes)
+    casos, incidentes = filtrar_clientes_seleccionados(casos, incidentes, clientes_seleccionados)
     resumen = resumen_clientes_clave(casos, incidentes)
     resumen = resumen[resumen[TEXT_CLIENTE].isin(clientes_seleccionados)].copy()
     resumen_actividad = resumen[resumen[COL_TOTAL_ATENCIONES] > 0].copy()
@@ -7282,12 +7481,12 @@ def dashboard_kpi_clientes_clave():
 
     modo_diapositiva = st.toggle("Formato diapositiva 16:9", key="slide_kpi_clientes_clave")
     if modo_diapositiva and not resumen_actividad.empty:
-        render_slide_kpi_clientes_clave(metricas, resumen_actividad, mes_dashboard, clientes_seleccionados)
+        render_slide_kpi_clientes_clave(metricas, resumen_actividad, periodo_label, clientes_seleccionados)
         return
 
     render_tarjetas_kpi_clientes_clave(metricas)
     st.caption(
-        f"{TEXT_PERIODO}{mes_dashboard} | Clientes seleccionados: {len(clientes_seleccionados)} | "
+        f"{TEXT_PERIODO}{periodo_label} | Clientes seleccionados: {len(clientes_seleccionados)} | "
         f"Casos: {metricas[TEXT_TOTAL_CASOS]} | Incidentes: {metricas[TEXT_TOTAL_INCIDENTES]}"
     )
     render_clientes_sin_actividad(resumen)
@@ -7306,29 +7505,33 @@ def dashboard_kpi_clientes_clave():
 
 
 def dashboard_clientes_clave():
-    casos = cargar_casos_clientes_clave_cache()
-    incidentes = cargar_incidentes_clientes_clave_cache()
     st.subheader(MENU_CLIENTES_CLAVE)
 
-    fechas = fechas_clientes_clave(casos, incidentes)
-    clientes_seleccionados, mes_dashboard, rango_fechas = seleccionar_filtros_clientes_clave(fechas)
+    anio, mes, periodo_label = selector_periodo_multi_sql(
+        ["cases", "incidents"],
+        "clientes_clave_periodo",
+    )
+    if not periodo_sql_valido(anio, "clientes clave"):
+        return
+    clientes_seleccionados = st.multiselect(
+        "Clientes",
+        CLIENTES_CLAVE,
+        default=CLIENTES_CLAVE,
+        key="clientes_clave_filtro",
+    )
     if not clientes_seleccionados:
         st.warning("Selecciona al menos un cliente clave.")
         return
 
-    casos, incidentes = aplicar_filtros_clientes_clave(
-        casos,
-        incidentes,
-        clientes_seleccionados,
-        mes_dashboard,
-        rango_fechas,
-    )
+    casos = cargar_casos_clientes_clave_filtrados_cache(anio, mes)
+    incidentes = cargar_incidentes_clientes_clave_filtrados_cache(anio, mes)
+    casos, incidentes = filtrar_clientes_seleccionados(casos, incidentes, clientes_seleccionados)
     resumen = resumen_clientes_clave(casos, incidentes)
     resumen = resumen[resumen[TEXT_CLIENTE].isin(clientes_seleccionados)].copy()
     resumen_actividad = resumen[resumen[COL_TOTAL_ATENCIONES] > 0].copy()
 
     metricas = metricas_dashboard_clientes(casos, incidentes, resumen_actividad)
-    render_kpis_clientes_clave(metricas, mes_dashboard)
+    render_kpis_clientes_clave(metricas, periodo_label)
     render_clientes_sin_actividad(resumen)
 
     if resumen_actividad.empty:
@@ -7417,40 +7620,55 @@ def vista_cargar_casos():
         procesar_archivo_casos(df, reemplazar_meses)
 
 def vista_casos():
-    df = cargar_casos_soporte_cache()
+    anio, mes, periodo_label = selector_periodo_sql("cases", "vista_casos_periodo")
+    if not periodo_sql_valido(anio, "casos"):
+        return
+    df = cargar_casos_soporte_filtrados_cache(anio, mes)
     if not df.empty:
         df = preparar_fechas_dashboard(df)
         df["mes"] = df[TEXT_CREADO_DT_DASHBOARD].dt.to_period("M").astype(str).replace("NaT", "Sin fecha")
 
-        filtro_col1, filtro_col2, filtro_col3, filtro_col4, filtro_col5, filtro_col6 = st.columns(
-            [1, 1, 1.5, 1.5, 1.5, 2]
-        )
+        filtro_col1, filtro_col2, filtro_col3, filtro_col4, filtro_col5 = st.columns([1, 1.5, 1.5, 1.5, 2])
         with filtro_col1:
-            filtro_mes = selector_mes_dashboard(df, "vista_casos_mes")
-        if filtro_mes != TEXT_TODOS:
-            df = filtrar_mes_dashboard(df, filtro_mes)
-
-        with filtro_col2:
             estados = sorted(df[TEXT_ESTADO].dropna().unique().tolist())
             filtro_estado = st.selectbox(TEXT_ESTADO_2, [TEXT_TODOS] + estados, key="estado_casos")
-        with filtro_col3:
+        with filtro_col2:
             filtro_soporte = st.selectbox(
                 TEXT_TIPOLOGIA_SOPORTE,
                 [TEXT_TODOS] + CASE_SUPPORT_TYPOLOGY_ORDER,
                 key="tipologia_soporte_casos",
             )
-        with filtro_col4:
+        with filtro_col3:
             clasificaciones = sorted(df[TEXT_TIPIFICACION_2].dropna().unique().tolist())
             filtro_clasificacion = st.selectbox(
                 "Tipificacion original",
                 [TEXT_TODOS] + clasificaciones,
                 key="clasificacion_casos",
             )
-        with filtro_col5:
+        with filtro_col4:
             servicios = opciones_filtro_servicio(df, TEXT_PRODUCTO)
             filtro_servicio = st.selectbox("Servicio", [TEXT_TODOS] + servicios, key="servicio_casos")
-        with filtro_col6:
+        with filtro_col5:
             filtro_cuenta = st.text_input("Cuenta", key="cuenta_casos")
+
+        filtro_estado_sql = filtro_estado if filtro_estado != TEXT_TODOS else ""
+        filtro_clasificacion_sql = filtro_clasificacion if filtro_clasificacion != TEXT_TODOS else ""
+        filtro_servicio_sql = (
+            filtro_servicio
+            if filtro_servicio not in (TEXT_TODOS, SIN_SERVICIO)
+            else ""
+        )
+        if filtro_estado_sql or filtro_clasificacion_sql or filtro_servicio_sql or filtro_cuenta:
+            df = cargar_casos_soporte_filtrados_cache(
+                anio,
+                mes,
+                filtro_cuenta,
+                filtro_estado_sql,
+                filtro_servicio_sql,
+                filtro_clasificacion_sql,
+            )
+            df = preparar_fechas_dashboard(df)
+            df["mes"] = df[TEXT_CREADO_DT_DASHBOARD].dt.to_period("M").astype(str).replace("NaT", "Sin fecha")
 
         if filtro_estado != TEXT_TODOS:
             df = df[df[TEXT_ESTADO] == filtro_estado]
@@ -7489,6 +7707,7 @@ def vista_casos():
         ]
         df = df[[col for col in columnas if col in df.columns]]
         st.caption(f"Registros encontrados: {len(df)}")
+        st.caption(f"{TEXT_PERIODO}{periodo_label}")
     dataframe_liviano(df)
 
 
@@ -7522,35 +7741,54 @@ def vista_cargar_incidentes():
 
 
 def vista_incidentes():
-    df = cargar_incidentes_sla_cache()
+    anio, mes, periodo_label = selector_periodo_sql("incidents", "vista_incidentes_periodo")
+    if not periodo_sql_valido(anio, "incidentes"):
+        return
+    df = cargar_incidentes_sla_filtrados_cache(anio, mes)
     if not df.empty:
         df = preparar_fechas_dashboard(df)
         df["mes"] = df[TEXT_CREADO_DT_DASHBOARD].dt.to_period("M").astype(str).replace("NaT", "Sin fecha")
 
-        filtro_col1, filtro_col2, filtro_col3, filtro_col4, filtro_col5 = st.columns([1, 1, 1.4, 1.4, 1])
+        filtro_col1, filtro_col2, filtro_col3, filtro_col4 = st.columns([1, 1.4, 1.4, 1])
         with filtro_col1:
-            filtro_mes = selector_mes_dashboard(df, "vista_incidentes_mes")
-        if filtro_mes != TEXT_TODOS:
-            df = filtrar_mes_dashboard(df, filtro_mes)
-
-        with filtro_col2:
             estados = sorted(df[TEXT_ESTADO].dropna().unique().tolist())
             filtro_estado = st.selectbox(TEXT_ESTADO_2, [TEXT_TODOS] + estados, key="estado_inc")
-        with filtro_col3:
+        with filtro_col2:
             filtro_tipificacion = st.selectbox(
                 TEXT_TIPIFICACION,
                 [TEXT_TODOS] + sorted(df[TEXT_TIPIFICACION_AUTO].dropna().unique().tolist()),
                 key="tip_inc",
             )
-        with filtro_col4:
+        with filtro_col3:
             servicios = opciones_filtro_servicio(df, TEXT_SERVICIO_NEGOCIO)
             filtro_servicio = st.selectbox("Servicio", [TEXT_TODOS] + servicios, key="servicio_inc")
-        with filtro_col5:
+        with filtro_col4:
             filtro_alerta = st.selectbox(
                 "Es alerta",
                 [TEXT_TODOS] + sorted(df[TEXT_ES_ALERTA_AUTO].dropna().unique().tolist()),
                 key="alerta_inc",
             )
+
+        filtro_estado_sql = filtro_estado if filtro_estado != TEXT_TODOS else ""
+        filtro_tipificacion_sql = filtro_tipificacion if filtro_tipificacion != TEXT_TODOS else ""
+        filtro_servicio_sql = (
+            filtro_servicio
+            if filtro_servicio not in (TEXT_TODOS, SIN_SERVICIO)
+            else ""
+        )
+        filtro_alerta_sql = filtro_alerta if filtro_alerta != TEXT_TODOS else ""
+        if filtro_estado_sql or filtro_tipificacion_sql or filtro_servicio_sql or filtro_alerta_sql:
+            df = cargar_incidentes_sla_filtrados_cache(
+                anio,
+                mes,
+                "",
+                filtro_estado_sql,
+                filtro_servicio_sql,
+                filtro_tipificacion_sql,
+                filtro_alerta_sql,
+            )
+            df = preparar_fechas_dashboard(df)
+            df["mes"] = df[TEXT_CREADO_DT_DASHBOARD].dt.to_period("M").astype(str).replace("NaT", "Sin fecha")
 
         if filtro_estado != TEXT_TODOS:
             df = df[df[TEXT_ESTADO] == filtro_estado]
@@ -7601,23 +7839,25 @@ def vista_incidentes():
         df = df.drop(columns=[TEXT_CREADO_DT_DASHBOARD], errors="ignore")
         df = df[[col for col in columnas if col in df.columns]]
         st.caption(f"Registros encontrados: {len(df)}")
+        st.caption(f"{TEXT_PERIODO}{periodo_label}")
     dataframe_liviano(df)
 
 
 def vista_seguimiento_incidentes():
-    df = cargar_incidentes_cache()
+    anio, mes, periodo_label = selector_periodo_sql("incidents", "seguimiento_incidentes_periodo")
+    if not periodo_sql_valido(anio, "incidentes"):
+        return
+    df = cargar_incidentes_filtrados_cache(anio, mes)
     if df.empty:
-        st.info("No hay incidentes cargados.")
+        st.info(f"No hay incidentes cargados para {periodo_label}.")
         return
 
     df = preparar_fechas_dashboard(df)
-    mes_dashboard = selector_mes_dashboard(df, "seguimiento_incidentes_mes")
-    df = filtrar_mes_dashboard(df, mes_dashboard)
     if df.empty:
-        st.info(f"No hay incidentes cargados para {mes_dashboard}.")
+        st.info(f"No hay incidentes cargados para {periodo_label}.")
         return
 
-    st.caption(f"{TEXT_PERIODO}{mes_dashboard}")
+    st.caption(f"{TEXT_PERIODO}{periodo_label}")
     render_seguimiento_operativo_incidentes(df)
 
 
