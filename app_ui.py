@@ -610,6 +610,57 @@ CASE_SUPPORT_TOKEN_FISICO_TERMS = [
     "token no detectado",
 ]
 
+CASE_TOKEN_FISICO_READING_TERMS = [
+    "token fisico",
+    "epass",
+    "e pass",
+    "safenet",
+    "safe net",
+    "token usb",
+    "usb token",
+    "dispositivo fisico",
+    "driver",
+    "drivers",
+    "no reconoce token",
+    "token no reconocido",
+    "no detecta token",
+    "token no detectado",
+    "token gris",
+    "feitian",
+]
+
+CASE_SIGNING_PROBLEM_TERMS = [
+    "problema para firmar",
+    "problemas para firmar",
+    "dificultad para firmar",
+    "dificultades para firmar",
+    "error al firmar",
+    "error firmando",
+    "no firma",
+    "no puede firmar",
+    "no permite firmar",
+    "falla al firmar",
+    "fallas al firmar",
+    "firmar documento",
+    "validacion de firma",
+    "validar firma",
+    "firma invalida",
+]
+
+CASE_ACUSES_TERMS = [
+    "acuse",
+    "acuses",
+    "acusese",
+    "acuse de recibo",
+    "acuses de recibo",
+    "no recibio acuse",
+    "no recibe acuse",
+    "no llegan acuses",
+    "no se reciben acuses",
+    "trazabilidad de envio",
+    "trazabilidad de envios",
+]
+
 CASE_SUPPORT_SECURITY_TERMS = [
     "phishing",
     "pishing",
@@ -3828,6 +3879,44 @@ def resumen_tipologia_soporte_principal(base):
     return f"{principal} concentra {cantidad} casos ({porcentaje(cantidad, len(base))}%)."
 
 
+def resumen_focos_uso_casos(base):
+    columnas = ["Foco", TEXT_CANTIDAD, "% casos"]
+    if base.empty:
+        return pd.DataFrame(columns=columnas)
+
+    texto = base.apply(texto_caso_para_tipologia_soporte, axis=1)
+    total = len(base)
+    focos = [
+        ("Token fisico", CASE_TOKEN_FISICO_READING_TERMS),
+        ("Token virtual", CASE_SUPPORT_TOKEN_VIRTUAL_TERMS),
+        ("Problemas para firmar", CASE_SIGNING_PROBLEM_TERMS),
+        ("Acuses", CASE_ACUSES_TERMS),
+    ]
+    filas = []
+    for foco, palabras in focos:
+        mascara = texto.apply(lambda valor: texto_contiene_alguno(valor, palabras))
+        cantidad = int(mascara.sum())
+        filas.append(
+            {
+                "Foco": foco,
+                TEXT_CANTIDAD: cantidad,
+                "% casos": porcentaje(cantidad, total),
+            }
+        )
+    return pd.DataFrame(filas, columns=columnas)
+
+
+def lectura_focos_uso_casos(base):
+    resumen = resumen_focos_uso_casos(base)
+    if resumen.empty:
+        return "No hay datos suficientes para calcular focos de uso."
+    partes = [
+        f"{fila['Foco']}: {int(fila[TEXT_CANTIDAD])} ({fila['% casos']}%)"
+        for _, fila in resumen.iterrows()
+    ]
+    return "Focos sobre el total de casos (pueden solaparse): " + " | ".join(partes) + "."
+
+
 def lineas_lectura_kpi_casos(metricas, base):
     causa_principal = metricas[COL_PRINCIPAL_CAUSA_COMUN]
     detalle_causa = resumen_detalle_causa_principal(base, causa_principal)
@@ -3837,6 +3926,7 @@ def lineas_lectura_kpi_casos(metricas, base):
             f"<strong>{html.escape(str(metricas[COL_PRINCIPAL_SOPORTE]))}</strong>"
         ),
         f'<div class="slide-note-muted">{html.escape(resumen_tipologia_soporte_principal(base))}</div>',
+        f'<div class="slide-note-muted">{html.escape(lectura_focos_uso_casos(base))}</div>',
         f"Causa comun: <strong>{html.escape(str(causa_principal))}</strong>",
         f'<div class="slide-note-muted">{html.escape(detalle_causa)}</div>',
         (
@@ -3853,9 +3943,10 @@ def render_lectura_kpi(metricas, base):
         <div class="executive-note-title">Lectura</div>
         <div class="executive-note-line">{lineas[0]}</div>
         <div class="executive-note-detail">{lineas[1]}</div>
-        <div class="executive-note-line">{lineas[2]}</div>
-        <div class="executive-note-detail">{lineas[3]}</div>
-        <div class="executive-note-conclusion">{lineas[4]}</div>
+        <div class="executive-note-detail">{lineas[2]}</div>
+        <div class="executive-note-line">{lineas[3]}</div>
+        <div class="executive-note-detail">{lineas[4]}</div>
+        <div class="executive-note-conclusion">{lineas[5]}</div>
     </div>
     """
     st.markdown(contenido, unsafe_allow_html=True)
