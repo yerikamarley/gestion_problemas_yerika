@@ -200,7 +200,13 @@ def dataframe_liviano(df, limite=DATAFRAME_DISPLAY_LIMIT, height=None):
             "Aplica filtros para revisar un subconjunto mas pequeno."
         )
         df = df.head(limite)
-    st.dataframe(df, use_container_width=True, hide_index=True, height=height)
+    kwargs = {
+        "use_container_width": True,
+        "hide_index": True,
+    }
+    if height is not None:
+        kwargs["height"] = height
+    st.dataframe(df, **kwargs)
 
 
 @st.cache_data(ttl=CACHE_TTL_SEGUNDOS, show_spinner=False)
