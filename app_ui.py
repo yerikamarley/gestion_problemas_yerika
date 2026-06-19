@@ -3413,6 +3413,41 @@ def slide_component_css():
         font-weight: 500;
     }}
 
+    .slide-cause-table {{
+        width: 100%;
+        border-collapse: collapse;
+        table-layout: fixed;
+    }}
+
+    .slide-cause-table th,
+    .slide-cause-table td {{
+        border-top: 1px solid var(--border);
+        color: var(--text);
+        font-size: 0.92rem;
+        line-height: 1.25;
+        padding: 10px 9px;
+        text-align: left;
+        vertical-align: middle;
+        white-space: normal;
+        overflow-wrap: anywhere;
+    }}
+
+    .slide-cause-table th {{
+        background: #fff7f2;
+        color: var(--muted);
+        font-size: 0.75rem;
+        font-weight: 900;
+        text-transform: uppercase;
+    }}
+
+    .slide-cause-table .number-cell {{
+        color: var(--primary);
+        font-weight: 900;
+        text-align: right;
+        white-space: nowrap;
+        font-variant-numeric: tabular-nums;
+    }}
+
     .slide-download-bar {{
         max-width: 1600px;
         display: flex;
@@ -4452,33 +4487,78 @@ def ranking_causas_segmento_kpi(causas, segmento):
     )
 
 
+def slide_tabla_causa_raiz_incidentes_html(causas):
+    if causas.empty:
+        filas = '<tr><td colspan="5">Sin causas raiz para mostrar.</td></tr>'
+    else:
+        tabla = causas.pivot_table(
+            index=COL_CAUSA_RAIZ,
+            columns=TEXT_SEGMENTO,
+            values=TEXT_CANTIDAD,
+            aggfunc="sum",
+            fill_value=0,
+        ).reset_index()
+        for segmento in ["Cliente externo", "Cliente interno"]:
+            if segmento not in tabla.columns:
+                tabla[segmento] = 0
+        tabla[TEXT_TOTAL] = tabla["Cliente externo"] + tabla["Cliente interno"]
+        total = int(tabla[TEXT_TOTAL].sum())
+        tabla["%"] = tabla[TEXT_TOTAL].apply(lambda valor: porcentaje(valor, total))
+        tabla = tabla[tabla[TEXT_TOTAL] > 0].sort_values(
+            by=[TEXT_TOTAL, COL_CAUSA_RAIZ],
+            ascending=[False, True],
+        )
+
+        filas_lista = []
+        for _, row in tabla.iterrows():
+            filas_lista.append(
+                "<tr>"
+                f"<td>{html.escape(str(row[COL_CAUSA_RAIZ]))}</td>"
+                f'<td class="number-cell">{int(row["Cliente externo"])}</td>'
+                f'<td class="number-cell">{int(row["Cliente interno"])}</td>'
+                f'<td class="number-cell">{int(row[TEXT_TOTAL])}</td>'
+                f'<td class="number-cell">{html.escape(str(row["%"]))}%</td>'
+                "</tr>"
+            )
+        filas = "".join(filas_lista) if filas_lista else '<tr><td colspan="5">Sin causas raiz para mostrar.</td></tr>'
+
+    return f"""
+    <div class="slide-panel">
+        <div class="slide-panel-title">Causa raiz de incidentes</div>
+        <table class="slide-cause-table">
+            <thead>
+                <tr>
+                    <th>Causa raiz</th>
+                    <th>Externo</th>
+                    <th>Interno</th>
+                    <th>Total</th>
+                    <th>%</th>
+                </tr>
+            </thead>
+            <tbody>{filas}</tbody>
+        </table>
+    </div>
+    """
+
+
 def render_slide_kpi_incidentes(metricas, causas, mes_dashboard):
     tarjetas = [
-        ("Incidentes cliente externo", metricas["externos"]),
-        ("Incidentes cliente interno", metricas["internos"]),
-        ("Abiertos cliente externo", metricas["abiertos_externos"]),
-        ("Abiertos cliente interno", metricas["abiertos_internos"]),
-        ("Reincidencia", f"{metricas['tasa_reincidencia']}%"),
+        ("Total incidentes", metricas["externos"] + metricas["internos"]),
+        ("Abiertos", metricas["abiertos_externos"] + metricas["abiertos_internos"]),
         ("SLA incidentes", f"{metricas['cumplimiento_sla']}%"),
+        ("Reincidencia", f"{metricas['tasa_reincidencia']}%"),
     ]
     caption = (
+        f"Externos: {metricas['externos']} | Internos: {metricas['internos']} | "
         f"Cerrados cliente externo: {metricas['cerrados_externos']} | "
         f"Cerrados cliente interno: {metricas['cerrados_internos']} | "
-        f"Reincidentes: {metricas['reincidentes']} | "
         f"Promedio: {metricas['promedio']} h | "
         f"Cumplen SLA: {metricas['cumple_sla']} | No cumplen: {metricas['no_cumple_sla']}"
     )
-    ranking_externo = ranking_causas_segmento_kpi(causas, "Cliente externo")
-    ranking_interno = ranking_causas_segmento_kpi(causas, "Cliente interno")
     lineas = lineas_lectura_kpi_incidentes(causas)
-    izquierda = (
-        '<div class="slide-panel-group">'
-        f'{slide_ranking_html(ranking_externo, COL_CAUSA_RAIZ, TEXT_CANTIDAD, "Causa raiz cliente externo", top_n=5, limite=90)}'
-        f'{slide_ranking_html(ranking_interno, COL_CAUSA_RAIZ, TEXT_CANTIDAD, "Causa raiz cliente interno", top_n=5, limite=90)}'
-        "</div>"
-    )
+    izquierda = slide_tabla_causa_raiz_incidentes_html(causas)
     derecha = slide_note_html("Lectura", lineas)
-    render_slide_frame_kpi(MENU_KPI_INCIDENTES, mes_dashboard, tarjetas, caption, izquierda, derecha)
+    render_slide_component_kpi(MENU_KPI_INCIDENTES, mes_dashboard, tarjetas, caption, izquierda, derecha)
 
 
 def render_kpi_incidentes(df, mes_dashboard=None):
