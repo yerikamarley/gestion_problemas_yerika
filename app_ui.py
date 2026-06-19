@@ -6,6 +6,7 @@ from io import BytesIO
 import pandas as pd
 import plotly.express as px
 import streamlit as st
+import streamlit.components.v1 as components
 from PIL import Image, ImageDraw, ImageFont
 
 from app_logic import (
