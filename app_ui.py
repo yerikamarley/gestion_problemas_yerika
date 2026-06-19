@@ -5470,26 +5470,40 @@ def resumen_causas_incidentes(df, porcentaje_columna="% incidentes"):
         valores = pd.Series(valores_utiles).value_counts().head(2).index.tolist()
         return "; ".join(valores)
 
+    def primer_valor_util(serie):
+        for valor in serie.dropna().astype(str).tolist():
+            limpio = valor_limpio(valor)
+            if limpio:
+                return limpio
+        return ""
+
     resumen = (
         trabajo.groupby(
             [
                 COL_CAUSA_RAIZ,
                 COL_FAMILIA_INCIDENTE,
-                COL_LECTURA_EJECUTIVA,
-                COL_EVIDENCIA_INCIDENTE,
-                COL_ACCION_SUGERIDA,
             ],
             dropna=False,
         )
         .agg(
             Cantidad=(TEXT_NUMERO, TEXT_COUNT),
+            Lectura_ejecutiva=(COL_LECTURA_EJECUTIVA, primer_valor_util),
+            Evidencia_observada=(COL_EVIDENCIA_INCIDENTE, detalles_tecnicos),
+            Accion_sugerida=(COL_ACCION_SUGERIDA, primer_valor_util),
             Detalle_tecnico_observado=(TEXT_CAUSA_TECNICA, detalles_tecnicos),
         )
         .reset_index()
         .sort_values(by=[TEXT_CANTIDAD, COL_CAUSA_RAIZ], ascending=[False, True])
     )
     resumen[porcentaje_columna] = resumen[TEXT_CANTIDAD].apply(lambda valor: porcentaje(valor, total))
-    resumen = resumen.rename(columns={"Detalle_tecnico_observado": "Detalle tecnico observado"})
+    resumen = resumen.rename(
+        columns={
+            "Lectura_ejecutiva": COL_LECTURA_EJECUTIVA,
+            "Evidencia_observada": COL_EVIDENCIA_INCIDENTE,
+            "Accion_sugerida": COL_ACCION_SUGERIDA,
+            "Detalle_tecnico_observado": "Detalle tecnico observado",
+        }
+    )
     return resumen[columnas]
 
 
