@@ -3442,6 +3442,14 @@ def slide_component_css():
         text-transform: uppercase;
     }}
 
+    .slide-cause-table .number-header {{
+        text-align: right;
+    }}
+
+    .slide-cause-table .cause-cell {{
+        font-weight: 700;
+    }}
+
     .slide-cause-table .number-cell {{
         color: var(--primary);
         font-weight: 900;
@@ -4515,7 +4523,7 @@ def slide_tabla_causa_raiz_incidentes_html(causas):
         for _, row in tabla.iterrows():
             filas_lista.append(
                 "<tr>"
-                f"<td>{html.escape(str(row[COL_CAUSA_RAIZ]))}</td>"
+                f'<td class="cause-cell">{html.escape(str(row[COL_CAUSA_RAIZ]))}</td>'
                 f'<td class="number-cell">{int(row["Cliente externo"])}</td>'
                 f'<td class="number-cell">{int(row["Cliente interno"])}</td>'
                 f'<td class="number-cell">{int(row[TEXT_TOTAL])}</td>'
@@ -4528,13 +4536,20 @@ def slide_tabla_causa_raiz_incidentes_html(causas):
     <div class="slide-panel">
         <div class="slide-panel-title">Causa raiz de incidentes</div>
         <table class="slide-cause-table">
+            <colgroup>
+                <col style="width: 43%;">
+                <col style="width: 14%;">
+                <col style="width: 14%;">
+                <col style="width: 14%;">
+                <col style="width: 15%;">
+            </colgroup>
             <thead>
                 <tr>
                     <th>Causa raiz</th>
-                    <th>Externo</th>
-                    <th>Interno</th>
-                    <th>Total</th>
-                    <th>%</th>
+                    <th class="number-header">Externo</th>
+                    <th class="number-header">Interno</th>
+                    <th class="number-header">Total</th>
+                    <th class="number-header">%</th>
                 </tr>
             </thead>
             <tbody>{filas}</tbody>
