@@ -3914,7 +3914,7 @@ def lectura_focos_uso_casos(base):
         f"{fila['Foco']}: {int(fila[TEXT_CANTIDAD])} ({fila['% casos']}%)"
         for _, fila in resumen.iterrows()
     ]
-    return "Focos sobre el total de casos (pueden solaparse): " + " | ".join(partes) + "."
+    return "Focos sobre el total de casos : " + " | ".join(partes) + "."
 
 
 def lineas_lectura_kpi_casos(metricas, base):
