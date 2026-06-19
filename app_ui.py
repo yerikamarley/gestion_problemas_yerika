@@ -4323,7 +4323,7 @@ def texto_lectura_causa_segmento(causas, segmento):
     if fila is None:
         return f"No hay causas raiz para {segmento.lower()} en el periodo."
     return (
-        f"{segmento}: el grupo principal es {fila[COL_CAUSA_RAIZ]} "
+        f"{segmento}: la causa raiz principal es {fila[COL_CAUSA_RAIZ]} "
         f"({int(fila[TEXT_CANTIDAD])} casos, {fila['% segmento']}%). "
         f"{fila[COL_LECTURA_EJECUTIVA]} Evidencia: {fila[COL_EVIDENCIA_INCIDENTE]}."
     )
@@ -4365,7 +4365,7 @@ def tabla_temas_incidentes_html(causas, segmento):
         return (
             '<div class="executive-note">'
             f'<div class="executive-note-title">{html.escape(segmento)}</div>'
-            '<div class="executive-note-detail">No hay grupos de incidentes para este segmento en el periodo.</div>'
+            '<div class="executive-note-detail">No hay causas raiz para este segmento en el periodo.</div>'
             "</div>"
         )
 
@@ -4388,7 +4388,7 @@ def tabla_temas_incidentes_html(causas, segmento):
         <table class="executive-table">
             <thead>
                 <tr>
-                    <th>Grupo de incidente</th>
+                    <th>Causa raiz</th>
                     <th>Familia</th>
                     <th>Cant.</th>
                     <th>%</th>
@@ -4406,7 +4406,7 @@ def tabla_temas_incidentes_html(causas, segmento):
 
 def render_tablas_temas_kpi_incidentes(causas):
     if causas.empty:
-        st.info("No hay grupos de incidentes para mostrar en el periodo seleccionado.")
+        st.info("No hay causas raiz de incidentes para mostrar en el periodo seleccionado.")
         return
 
     col_externo, col_interno = st.columns(2)
@@ -4473,8 +4473,8 @@ def render_slide_kpi_incidentes(metricas, causas, mes_dashboard):
     lineas = lineas_lectura_kpi_incidentes(causas)
     izquierda = (
         '<div class="slide-panel-group">'
-        f'{slide_ranking_html(ranking_externo, COL_CAUSA_RAIZ, TEXT_CANTIDAD, "Grupos cliente externo", top_n=5, limite=90)}'
-        f'{slide_ranking_html(ranking_interno, COL_CAUSA_RAIZ, TEXT_CANTIDAD, "Grupos cliente interno", top_n=5, limite=90)}'
+        f'{slide_ranking_html(ranking_externo, COL_CAUSA_RAIZ, TEXT_CANTIDAD, "Causa raiz cliente externo", top_n=5, limite=90)}'
+        f'{slide_ranking_html(ranking_interno, COL_CAUSA_RAIZ, TEXT_CANTIDAD, "Causa raiz cliente interno", top_n=5, limite=90)}'
         "</div>"
     )
     derecha = slide_note_html("Lectura", lineas)
@@ -5268,11 +5268,11 @@ def valor_detalle_incidente(row):
         valor = valor_limpio(row.get(campo))
         if es_detalle_incidente_util(valor):
             return valor
-    return "Pendiente de normalizacion"
+    return "Validacion tecnica complementaria"
 
 
 def tema_revision_especifica(row):
-    return "Pendiente de normalizacion"
+    return "Validacion tecnica complementaria"
 
 
 def clasificacion_tema_incidente(row):
@@ -5302,7 +5302,7 @@ def clasificacion_tema_incidente(row):
                 "servicio caido",
                 "fuera de servicio",
             ],
-            "Disponibilidad y plataforma",
+            "Disponibilidad del servicio",
             "Disponibilidad",
             "Caida, indisponibilidad o degradacion de un servicio, plataforma o componente monitoreado.",
             "Revisar ventana de afectacion, recurrencia, dependencias y comunicacion a clientes.",
@@ -5323,7 +5323,7 @@ def clasificacion_tema_incidente(row):
                 "acuse",
                 "acuses",
             ],
-            "Comunicaciones, Certimail y acuses",
+            "Comunicaciones y acuses",
             "Comunicaciones",
             "Fallas en envio, recepcion, acuses o procesamiento de notificaciones al cliente.",
             "Revisar colas, rebotes, trazabilidad, acuses y proveedor de correo.",
@@ -5389,8 +5389,8 @@ def clasificacion_tema_incidente(row):
         ),
         (
             ["duplicad"],
-            "Pendiente de normalizacion",
-            "Normalizacion",
+            "Validacion tecnica complementaria",
+            "Validacion tecnica",
             "Registros repetidos que pueden distorsionar la lectura operativa.",
             "Depurar duplicados y ajustar reglas de cargue o cierre.",
         ),
@@ -5410,9 +5410,9 @@ def clasificacion_tema_incidente(row):
     tema = tema_revision_especifica(row)
     return (
         tema,
-        "Normalizacion",
-        "La causa tecnica no esta normalizada en el cierre y requiere depuracion para lectura ejecutiva.",
-        "Completar causa tecnica, servicio afectado y detalle de cierre para evitar dispersion.",
+        "Validacion tecnica",
+        "La informacion disponible no permite inferir con certeza una familia tecnica principal.",
+        "Revisar servicio afectado, causa registrada y detalle de cierre para fortalecer la lectura de causa raiz.",
         detalle,
     )
 
@@ -5466,7 +5466,7 @@ def resumen_causas_incidentes(df, porcentaje_columna="% incidentes"):
             if es_detalle_incidente_util(valor)
         ]
         if not valores_utiles:
-            return "Pendiente de normalizacion"
+            return "Validacion tecnica complementaria"
         valores = pd.Series(valores_utiles).value_counts().head(2).index.tolist()
         return "; ".join(valores)
 
