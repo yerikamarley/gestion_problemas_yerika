@@ -4306,9 +4306,9 @@ def lectura_causa_kpi_incidente(row):
     }
     if lectura not in lecturas_genericas:
         return lectura
-    if detalle and detalle != "Sin inferencia":
+    if es_detalle_incidente_util(detalle):
         return f"Casos asociados a {detalle.lower()}."
-    return "Causa raiz pendiente de clasificacion en el cierre."
+    return "La causa tecnica requiere normalizacion en el cierre para una lectura ejecutiva precisa."
 
 
 def causa_principal_segmento(causas, segmento):
@@ -4323,7 +4323,7 @@ def texto_lectura_causa_segmento(causas, segmento):
     if fila is None:
         return f"No hay causas raiz para {segmento.lower()} en el periodo."
     return (
-        f"{segmento}: el tema principal es {fila[COL_CAUSA_RAIZ]} "
+        f"{segmento}: el grupo principal es {fila[COL_CAUSA_RAIZ]} "
         f"({int(fila[TEXT_CANTIDAD])} casos, {fila['% segmento']}%). "
         f"{fila[COL_LECTURA_EJECUTIVA]} Evidencia: {fila[COL_EVIDENCIA_INCIDENTE]}."
     )
@@ -4365,7 +4365,7 @@ def tabla_temas_incidentes_html(causas, segmento):
         return (
             '<div class="executive-note">'
             f'<div class="executive-note-title">{html.escape(segmento)}</div>'
-            '<div class="executive-note-detail">No hay temas para este segmento en el periodo.</div>'
+            '<div class="executive-note-detail">No hay grupos de incidentes para este segmento en el periodo.</div>'
             "</div>"
         )
 
@@ -4388,7 +4388,7 @@ def tabla_temas_incidentes_html(causas, segmento):
         <table class="executive-table">
             <thead>
                 <tr>
-                    <th>Tema especifico</th>
+                    <th>Grupo de incidente</th>
                     <th>Familia</th>
                     <th>Cant.</th>
                     <th>%</th>
@@ -4406,7 +4406,7 @@ def tabla_temas_incidentes_html(causas, segmento):
 
 def render_tablas_temas_kpi_incidentes(causas):
     if causas.empty:
-        st.info("No hay temas de incidentes para mostrar en el periodo seleccionado.")
+        st.info("No hay grupos de incidentes para mostrar en el periodo seleccionado.")
         return
 
     col_externo, col_interno = st.columns(2)
@@ -4473,8 +4473,8 @@ def render_slide_kpi_incidentes(metricas, causas, mes_dashboard):
     lineas = lineas_lectura_kpi_incidentes(causas)
     izquierda = (
         '<div class="slide-panel-group">'
-        f'{slide_ranking_html(ranking_externo, COL_CAUSA_RAIZ, TEXT_CANTIDAD, "Temas cliente externo", top_n=5, limite=90)}'
-        f'{slide_ranking_html(ranking_interno, COL_CAUSA_RAIZ, TEXT_CANTIDAD, "Temas cliente interno", top_n=5, limite=90)}'
+        f'{slide_ranking_html(ranking_externo, COL_CAUSA_RAIZ, TEXT_CANTIDAD, "Grupos cliente externo", top_n=5, limite=90)}'
+        f'{slide_ranking_html(ranking_interno, COL_CAUSA_RAIZ, TEXT_CANTIDAD, "Grupos cliente interno", top_n=5, limite=90)}'
         "</div>"
     )
     derecha = slide_note_html("Lectura", lineas)
@@ -5223,17 +5223,56 @@ def texto_incidente_para_tema(row):
     return " ".join(normalizar_texto(row.get(campo)) for campo in campos).strip()
 
 
+INCIDENT_DETAIL_NOISE_VALUES = {
+    "",
+    "all",
+    "todos",
+    "todo",
+    "na",
+    "n/a",
+    "no aplica",
+    "no apica",
+    "no definido",
+    "sin dato",
+    "sin datos",
+    "sin informacion",
+    "sin informacion suficiente",
+    "sin inferencia",
+    "sin patron",
+    "sin patron concluyente",
+    "null",
+    "none",
+    "-",
+    ".",
+}
+
+
+def es_detalle_incidente_util(valor):
+    valor_texto = valor_limpio(valor)
+    normalizado = normalizar_texto(valor_texto)
+    if not normalizado or normalizado in INCIDENT_DETAIL_NOISE_VALUES:
+        return False
+    if "sin patron" in normalizado or "sin inferencia" in normalizado:
+        return False
+    return True
+
+
 def valor_detalle_incidente(row):
-    for campo in [TEXT_SERVICIO_NEGOCIO, TEXT_TIPO_FALLA, TEXT_CAUSA_RAIZ_AUTO, TEXT_BREVE_DESCRIPCION]:
+    for campo in [
+        TEXT_SERVICIO_NEGOCIO,
+        TEXT_TIPO_FALLA,
+        TEXT_CAUSA_RAIZ_AUTO,
+        TEXT_BREVE_DESCRIPCION,
+        TEXT_DESCRIPCION_2,
+    ]:
         valor = valor_limpio(row.get(campo))
-        if valor and "sin patron" not in normalizar_texto(valor) and "sin inferencia" not in normalizar_texto(valor):
+        if es_detalle_incidente_util(valor):
             return valor
-    return valor_limpio(row.get(TEXT_NUMERO)) or "Registro sin detalle suficiente"
+    return "Causa tecnica pendiente de normalizar"
 
 
 def tema_revision_especifica(row):
-    detalle = valor_detalle_incidente(row)
-    return f"Revision especifica - {detalle}"
+    return "Causa tecnica pendiente de normalizar"
 
 
 def clasificacion_tema_incidente(row):
@@ -5243,101 +5282,124 @@ def clasificacion_tema_incidente(row):
     reglas = [
         (
             ["phishing", "pishing", "suplantacion", "fraude", "malicioso", "correo sospechoso"],
-            "Seguridad - Phishing o suplantacion",
+            "Seguridad y fraude",
             "Seguridad",
             "Reporte de seguridad asociado a correo sospechoso, suplantacion o posible fraude.",
             "Validar origen, bloquear indicadores y reforzar comunicacion preventiva.",
         ),
         (
-            ["ocsp"],
-            "Disponibilidad - OCSP",
+            [
+                "ocsp",
+                "rpost",
+                "portal rpost",
+                "caida",
+                "indisponibilidad",
+                "degradacion",
+                "no disponible",
+                "disponibilidad",
+                "monitoreo",
+                "noc",
+                "servicio caido",
+                "fuera de servicio",
+            ],
+            "Disponibilidad del servicio",
             "Disponibilidad",
-            "Afectacion del servicio OCSP o validacion de estado de certificados.",
-            "Revisar disponibilidad OCSP, tiempos de respuesta y dependencias del servicio.",
+            "Caida, indisponibilidad o degradacion de un servicio, plataforma o componente monitoreado.",
+            "Revisar ventana de afectacion, recurrencia, dependencias y comunicacion a clientes.",
         ),
         (
-            ["tsa"],
-            "Validacion - TSA",
-            "Firma y validacion",
-            "Afectacion relacionada con sellado de tiempo o validacion TSA.",
-            "Validar servicio TSA, trazas y recurrencia por cliente o aplicacion.",
-        ),
-        (
-            ["certimail", "certi mail", "certicmal"],
-            "Correo / Notificaciones - Certimail",
+            [
+                "certimail",
+                "certi mail",
+                "certicmal",
+                "correo",
+                "notificacion",
+                "notificaciones",
+                "smtp",
+                "mail",
+                "envio",
+                "recepcion",
+                "procesamiento",
+                "acuse",
+                "acuses",
+            ],
+            "Correo, Certimail y acuses",
             "Comunicaciones",
-            "Afectacion especifica en Certimail o flujo de notificaciones certificadas.",
-            "Revisar flujo de envio, acuses, rebotes y trazabilidad del mensaje.",
+            "Fallas en envio, recepcion, acuses o procesamiento de notificaciones al cliente.",
+            "Revisar colas, rebotes, trazabilidad, acuses y proveedor de correo.",
         ),
         (
-            ["rpost", "portal rpost"],
-            "Disponibilidad - Portal RPost" if any(p in texto for p in ["caida", "indisponibilidad", "no disponible", "degradacion"]) else "Plataforma - RPost",
-            "Disponibilidad" if any(p in texto for p in ["caida", "indisponibilidad", "no disponible", "degradacion"]) else "Plataforma",
-            "Afectacion relacionada con RPost o su portal operativo.",
-            "Revisar disponibilidad, trazabilidad y comportamiento del portal RPost.",
-        ),
-        (
-            ["correo", "notificacion", "notificaciones", "smtp", "mail", "envio", "recepcion", "procesamiento"],
-            "Correo / Notificaciones",
-            "Comunicaciones",
-            "Fallas en envio, recepcion o procesamiento de notificaciones al cliente.",
-            "Revisar colas, rebotes, plantillas y proveedor de correo.",
-        ),
-        (
-            ["firma", "firmar", "validacion", "validar", "documento no firma"],
-            "Firma digital y validacion",
+            [
+                "firma",
+                "firmar",
+                "validacion",
+                "validar",
+                "documento no firma",
+                "tsa",
+                "certificado",
+                "cadena de confianza",
+                "ssl",
+                "certificados",
+            ],
+            "Firma digital, certificados y validacion",
             "Firma y validacion",
-            "Dificultades para firmar, validar o completar procesos de firma digital.",
-            "Revisar flujo de firma, mensaje de error y recurrencia por producto.",
+            "Dificultades para firmar, validar, sellar tiempo o operar certificados digitales.",
+            "Revisar flujo de firma, cadena de confianza, TSA, mensaje de error y recurrencia por producto.",
         ),
         (
-            ["certificado", "cadena de confianza", "ssl", "certificados"],
-            "Certificados / cadena de confianza",
-            "Firma y validacion",
-            "Problemas asociados a certificados, confianza o validacion criptografica.",
-            "Validar vigencia, cadena, configuracion y comunicacion preventiva.",
-        ),
-        (
-            ["base de datos", "database", "sql", " bd "],
-            "Infraestructura - Base de datos",
+            [
+                "base de datos",
+                "database",
+                "sql",
+                " bd ",
+                "red",
+                "conectividad",
+                "vpn",
+                "latencia",
+                "enlace",
+                "comunicacion",
+                "servidor",
+                "cpu",
+                "memoria",
+                "disco",
+                "infraestructura",
+            ],
+            "Infraestructura y conectividad",
             "Infraestructura",
-            "Errores o indisponibilidad asociados a datos o consultas del servicio.",
-            "Revisar bloqueos, consultas, disponibilidad y eventos recurrentes de base de datos.",
+            "Afectacion asociada a red, conectividad, servidores, recursos o base de datos.",
+            "Validar capacidad, trazas, conectividad, eventos de sistema y recurrencia del componente.",
         ),
         (
-            ["red", "conectividad", "vpn", "latencia", "enlace", "comunicacion"],
-            "Infraestructura - Red / conectividad",
-            "Infraestructura",
-            "Problemas de red, comunicacion o acceso al servicio.",
-            "Validar trazas, conectividad y dependencias de terceros.",
-        ),
-        (
-            ["servidor", "cpu", "memoria", "disco", "infraestructura"],
-            "Infraestructura - Servidor",
-            "Infraestructura",
-            "Afectacion asociada a recursos o componentes de servidor.",
-            "Revisar capacidad, eventos de sistema y recurrencia del componente.",
-        ),
-        (
-            ["ldap", "directorio activo", "active directory", "login", "autenticacion", "acceso"],
+            [
+                "ldap",
+                "directorio activo",
+                "active directory",
+                "login",
+                "autenticacion",
+                "acceso",
+                "usuario",
+                "clave",
+                "password",
+                "permiso",
+            ],
             "Accesos / Autenticacion",
             "Accesos",
             "Problemas de acceso, autenticacion o directorio.",
             "Validar permisos, autenticacion y trazas del usuario o servicio.",
         ),
         (
-            ["caida", "indisponibilidad", "degradacion", "no disponible", "disponibilidad", "monitoreo", "noc"],
-            f"Disponibilidad - {detalle}",
-            "Disponibilidad",
-            "Caida, indisponibilidad o degradacion percibida por monitoreo o clientes.",
-            "Revisar ventana de afectacion, continuidad y comunicacion a clientes.",
-        ),
-        (
             ["duplicad"],
-            "Registros duplicados",
+            "Calidad de datos y duplicados",
             "Calidad de datos",
             "Registros repetidos que pueden distorsionar la lectura operativa.",
             "Depurar duplicados y ajustar reglas de cargue o cierre.",
+        ),
+        (
+            ["proveedor", "tercero", "escalado", "escalamiento"],
+            "Gestion con proveedor",
+            "Proveedores",
+            "Incidentes relacionados con escalamiento, dependencia o gestion de proveedor.",
+            "Validar responsable, tiempos de respuesta del proveedor y acuerdos de escalamiento.",
         ),
     ]
 
@@ -5348,9 +5410,9 @@ def clasificacion_tema_incidente(row):
     tema = tema_revision_especifica(row)
     return (
         tema,
-        "Revision especifica",
-        "Tema especifico construido con el servicio, tipo de falla o descripcion disponible.",
-        "Revisar el detalle tecnico del registro y normalizar la causa en el cierre.",
+        "Calidad de datos",
+        "La causa tecnica no esta normalizada en el cierre y requiere depuracion para lectura ejecutiva.",
+        "Completar causa tecnica, servicio afectado y detalle de cierre para evitar dispersion.",
         detalle,
     )
 
@@ -5398,7 +5460,14 @@ def resumen_causas_incidentes(df, porcentaje_columna="% incidentes"):
     total = len(trabajo)
 
     def detalles_tecnicos(serie):
-        valores = serie.dropna().astype(str).value_counts().head(2).index.tolist()
+        valores_utiles = [
+            valor_limpio(valor)
+            for valor in serie.dropna().astype(str).tolist()
+            if es_detalle_incidente_util(valor)
+        ]
+        if not valores_utiles:
+            return "Causa tecnica pendiente de normalizar"
+        valores = pd.Series(valores_utiles).value_counts().head(2).index.tolist()
         return "; ".join(valores)
 
     resumen = (
