@@ -5268,11 +5268,11 @@ def valor_detalle_incidente(row):
         valor = valor_limpio(row.get(campo))
         if es_detalle_incidente_util(valor):
             return valor
-    return "Causa tecnica pendiente de normalizar"
+    return "Pendiente de normalizacion"
 
 
 def tema_revision_especifica(row):
-    return "Causa tecnica pendiente de normalizar"
+    return "Pendiente de normalizacion"
 
 
 def clasificacion_tema_incidente(row):
@@ -5302,7 +5302,7 @@ def clasificacion_tema_incidente(row):
                 "servicio caido",
                 "fuera de servicio",
             ],
-            "Disponibilidad del servicio",
+            "Disponibilidad y plataforma",
             "Disponibilidad",
             "Caida, indisponibilidad o degradacion de un servicio, plataforma o componente monitoreado.",
             "Revisar ventana de afectacion, recurrencia, dependencias y comunicacion a clientes.",
@@ -5323,7 +5323,7 @@ def clasificacion_tema_incidente(row):
                 "acuse",
                 "acuses",
             ],
-            "Correo, Certimail y acuses",
+            "Comunicaciones, Certimail y acuses",
             "Comunicaciones",
             "Fallas en envio, recepcion, acuses o procesamiento de notificaciones al cliente.",
             "Revisar colas, rebotes, trazabilidad, acuses y proveedor de correo.",
@@ -5341,7 +5341,7 @@ def clasificacion_tema_incidente(row):
                 "ssl",
                 "certificados",
             ],
-            "Firma digital, certificados y validacion",
+            "Firma, certificados y validacion",
             "Firma y validacion",
             "Dificultades para firmar, validar, sellar tiempo o operar certificados digitales.",
             "Revisar flujo de firma, cadena de confianza, TSA, mensaje de error y recurrencia por producto.",
@@ -5364,9 +5364,9 @@ def clasificacion_tema_incidente(row):
                 "disco",
                 "infraestructura",
             ],
-            "Infraestructura y conectividad",
-            "Infraestructura",
-            "Afectacion asociada a red, conectividad, servidores, recursos o base de datos.",
+            "Infraestructura, accesos y proveedor",
+            "Operacion tecnica",
+            "Afectacion asociada a infraestructura, conectividad, recursos, accesos o componentes tecnicos.",
             "Validar capacidad, trazas, conectividad, eventos de sistema y recurrencia del componente.",
         ),
         (
@@ -5382,22 +5382,22 @@ def clasificacion_tema_incidente(row):
                 "password",
                 "permiso",
             ],
-            "Accesos / Autenticacion",
-            "Accesos",
-            "Problemas de acceso, autenticacion o directorio.",
-            "Validar permisos, autenticacion y trazas del usuario o servicio.",
+            "Infraestructura, accesos y proveedor",
+            "Operacion tecnica",
+            "Problemas de acceso, autenticacion, directorio o permisos.",
+            "Validar permisos, autenticacion, trazas del usuario y dependencia tecnica.",
         ),
         (
             ["duplicad"],
-            "Calidad de datos y duplicados",
-            "Calidad de datos",
+            "Pendiente de normalizacion",
+            "Normalizacion",
             "Registros repetidos que pueden distorsionar la lectura operativa.",
             "Depurar duplicados y ajustar reglas de cargue o cierre.",
         ),
         (
             ["proveedor", "tercero", "escalado", "escalamiento"],
-            "Gestion con proveedor",
-            "Proveedores",
+            "Infraestructura, accesos y proveedor",
+            "Operacion tecnica",
             "Incidentes relacionados con escalamiento, dependencia o gestion de proveedor.",
             "Validar responsable, tiempos de respuesta del proveedor y acuerdos de escalamiento.",
         ),
@@ -5410,7 +5410,7 @@ def clasificacion_tema_incidente(row):
     tema = tema_revision_especifica(row)
     return (
         tema,
-        "Calidad de datos",
+        "Normalizacion",
         "La causa tecnica no esta normalizada en el cierre y requiere depuracion para lectura ejecutiva.",
         "Completar causa tecnica, servicio afectado y detalle de cierre para evitar dispersion.",
         detalle,
@@ -5466,7 +5466,7 @@ def resumen_causas_incidentes(df, porcentaje_columna="% incidentes"):
             if es_detalle_incidente_util(valor)
         ]
         if not valores_utiles:
-            return "Causa tecnica pendiente de normalizar"
+            return "Pendiente de normalizacion"
         valores = pd.Series(valores_utiles).value_counts().head(2).index.tolist()
         return "; ".join(valores)
 
