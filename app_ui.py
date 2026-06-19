@@ -395,6 +395,7 @@ SOPORTE_USO = "Soporte Uso"
 ENVIO_AGENDA_MANUAL_USO = "Envio agenda / manual de uso"
 SOLICITUDES_CASOS = "Solicitudes"
 INCIDENTES_CASOS = "Incidentes"
+CASE_TYPOLOGY_CACHE_VERSION = "casos-tipologia-agenda-directa-v2"
 KEY_CLIENT_CASE_YEAR_BASE = 2025
 KEY_CLIENT_CASE_YEAR_FOCUS = 2026
 KEY_CLIENT_CASE_MONTHS_FOCUS = [3, 4, 6]
@@ -2858,16 +2859,15 @@ def clasificar_tipologia_soporte_caso(row):
 
 def agregar_tipologia_soporte_casos(df):
     trabajo = df.copy()
-    if TEXT_TIPOLOGIA_SOPORTE not in trabajo.columns:
-        if trabajo.empty:
-            trabajo[TEXT_TIPOLOGIA_SOPORTE] = pd.Series(dtype=TEXT_OBJECT)
-        else:
-            trabajo[TEXT_TIPOLOGIA_SOPORTE] = trabajo.apply(clasificar_tipologia_soporte_caso, axis=1)
+    if trabajo.empty:
+        trabajo[TEXT_TIPOLOGIA_SOPORTE] = pd.Series(dtype=TEXT_OBJECT)
+    else:
+        trabajo[TEXT_TIPOLOGIA_SOPORTE] = trabajo.apply(clasificar_tipologia_soporte_caso, axis=1)
     return trabajo
 
 
 @st.cache_data(ttl=CACHE_TTL_SEGUNDOS, show_spinner=False)
-def cargar_casos_soporte_cache():
+def cargar_casos_soporte_cache(_version=CASE_TYPOLOGY_CACHE_VERSION):
     return agregar_tipologia_soporte_casos(normalizar_tipificaciones_casos_df(cargar_casos_cache()))
 
 
@@ -2879,6 +2879,7 @@ def cargar_casos_soporte_filtrados_cache(
     estado="",
     servicio="",
     tipificacion="",
+    _version=CASE_TYPOLOGY_CACHE_VERSION,
 ):
     return agregar_tipologia_soporte_casos(
         normalizar_tipificaciones_casos_df(
