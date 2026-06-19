@@ -392,7 +392,7 @@ MENU_SEGUIMIENTO_RPOST = "Seguimiento de RPost"
 LABEL_CASOS_CLIENTE_EXTERNO = "Casos cliente externo"
 TEXT_TIPOLOGIA_SOPORTE = "Tipologia caso"
 SOPORTE_USO = "Soporte Uso"
-ENVIO_AGENDA_MANUAL_USO = "Envio agenda con manual de uso"
+ENVIO_AGENDA_MANUAL_USO = "Envio agenda / manual de uso"
 SOLICITUDES_CASOS = "Solicitudes"
 INCIDENTES_CASOS = "Incidentes"
 KEY_CLIENT_CASE_YEAR_BASE = 2025
@@ -549,8 +549,8 @@ CASE_SUPPORT_TYPOLOGY_GUIDE = [
     {
         TEXT_TIPOLOGIA_SOPORTE: ENVIO_AGENDA_MANUAL_USO,
         TEXT_DESCRIPCION: (
-            "Casos donde el agente envia manual, guia, instructivo o PDF de uso y adicionalmente direcciona "
-            "al usuario a agenda, cita oficial o canal de agendamiento para atencion paso a paso."
+            "Casos donde el agente direcciona al usuario a agenda, cita oficial o canal de agendamiento. "
+            "Incluye los casos donde ademas envia manual, guia, instructivo, PDF o adjunto de uso."
         ),
     },
     {
@@ -687,7 +687,7 @@ CASE_MANUAL_USAGE_TERMS = [
     "token gris",
 ]
 
-CASE_AGENDA_WITH_MANUAL_TERMS = [
+CASE_AGENDA_DIRECT_TERMS = [
     "agenda",
     "agendamiento",
     "agenda directa",
@@ -2847,10 +2847,7 @@ def clasificar_tipologia_soporte_caso(row):
         return INCIDENTES_CASOS
     if texto_contiene_alguno(texto, CASE_INCIDENT_TERMS):
         return INCIDENTES_CASOS
-    if texto_contiene_alguno(texto, CASE_MANUAL_USAGE_TERMS) and texto_contiene_alguno(
-        texto,
-        CASE_AGENDA_WITH_MANUAL_TERMS,
-    ):
+    if texto_contiene_alguno(texto, CASE_AGENDA_DIRECT_TERMS):
         return ENVIO_AGENDA_MANUAL_USO
     if "4 - solicitudes" in tipificacion:
         return SOLICITUDES_CASOS
