@@ -5282,10 +5282,10 @@ def clasificacion_tema_incidente(row):
     reglas = [
         (
             ["phishing", "pishing", "suplantacion", "fraude", "malicioso", "correo sospechoso"],
-            "Seguridad y fraude",
-            "Seguridad",
-            "Reporte de seguridad asociado a correo sospechoso, suplantacion o posible fraude.",
-            "Validar origen, bloquear indicadores y reforzar comunicacion preventiva.",
+            "Infraestructura, accesos, seguridad y proveedor",
+            "Operacion tecnica",
+            "Reporte asociado a seguridad, acceso, suplantacion, fraude o correo sospechoso.",
+            "Validar origen, bloquear indicadores, revisar accesos y reforzar comunicacion preventiva.",
         ),
         (
             [
@@ -5364,7 +5364,7 @@ def clasificacion_tema_incidente(row):
                 "disco",
                 "infraestructura",
             ],
-            "Infraestructura, accesos y proveedor",
+            "Infraestructura, accesos, seguridad y proveedor",
             "Operacion tecnica",
             "Afectacion asociada a infraestructura, conectividad, recursos, accesos o componentes tecnicos.",
             "Validar capacidad, trazas, conectividad, eventos de sistema y recurrencia del componente.",
@@ -5382,7 +5382,7 @@ def clasificacion_tema_incidente(row):
                 "password",
                 "permiso",
             ],
-            "Infraestructura, accesos y proveedor",
+            "Infraestructura, accesos, seguridad y proveedor",
             "Operacion tecnica",
             "Problemas de acceso, autenticacion, directorio o permisos.",
             "Validar permisos, autenticacion, trazas del usuario y dependencia tecnica.",
@@ -5396,7 +5396,7 @@ def clasificacion_tema_incidente(row):
         ),
         (
             ["proveedor", "tercero", "escalado", "escalamiento"],
-            "Infraestructura, accesos y proveedor",
+            "Infraestructura, accesos, seguridad y proveedor",
             "Operacion tecnica",
             "Incidentes relacionados con escalamiento, dependencia o gestion de proveedor.",
             "Validar responsable, tiempos de respuesta del proveedor y acuerdos de escalamiento.",
