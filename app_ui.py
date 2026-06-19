@@ -193,14 +193,14 @@ def limpiar_cache_datos():
     st.cache_data.clear()
 
 
-def dataframe_liviano(df, limite=DATAFRAME_DISPLAY_LIMIT):
+def dataframe_liviano(df, limite=DATAFRAME_DISPLAY_LIMIT, height=None):
     if len(df) > limite:
         st.caption(
             f"Mostrando {limite} de {len(df)} registros para mantener la vista agil. "
             "Aplica filtros para revisar un subconjunto mas pequeno."
         )
         df = df.head(limite)
-    st.dataframe(df, use_container_width=True, hide_index=True)
+    st.dataframe(df, use_container_width=True, hide_index=True, height=height)
 
 
 @st.cache_data(ttl=CACHE_TTL_SEGUNDOS, show_spinner=False)
@@ -352,6 +352,8 @@ COL_CASOS_AGENDA = "Casos agenda"
 COL_PRIMERA_AGENDA = "Primera agenda"
 COL_ULTIMA_AGENDA = "Ultima agenda"
 COL_LECTURA_EJECUTIVA = "Lectura ejecutiva"
+COL_FAMILIA_INCIDENTE = "Familia incidente"
+COL_EVIDENCIA_INCIDENTE = "Evidencia observada"
 COL_CUMPLE_SLA = "Cumple SLA"
 COL_NO_CUMPLE_SLA = "No cumple SLA"
 COL_PROM_HORAS = "Prom. horas"
@@ -359,7 +361,7 @@ COL_PROM_DIAS = "Prom. dias"
 COL_CAUSA_RAIZ = "Causa raiz"
 COL_MOTIVO_CASO = "Motivo del caso"
 COL_PRINCIPAL_TIPIFICACION = "Principal tipificacion"
-COL_PRINCIPAL_SOPORTE = "Principal soporte"
+COL_PRINCIPAL_SOPORTE = "Tipologia principal"
 COL_PRINCIPAL_CAUSA_COMUN = "Principal causa comun"
 COL_SLA_OBJETIVO = "SLA objetivo"
 COL_SLA_OBJETIVO_H = "SLA objetivo h"
@@ -382,11 +384,11 @@ MENU_SEGUIMIENTO_INCIDENTES_VIEWER = "Seguimiento incidentes"
 MENU_SEGUIMIENTO_INCIDENTES_ADMIN = "Seguimiento Incidentes"
 MENU_SEGUIMIENTO_RPOST = "Seguimiento de RPost"
 LABEL_CASOS_CLIENTE_EXTERNO = "Casos cliente externo"
-TEXT_TIPOLOGIA_SOPORTE = "Tipologia soporte"
-SOPORTE_TOKEN_FISICO = "Soporte Token Fisico"
-SOPORTE_TOKEN_VIRTUAL = "Soporte Token Virtual"
-SOPORTE_CERTIFICADO_FIRMA_ACUSES = "Soporte Certificado, Firma y Acuses"
-SOPORTE_PLATAFORMA_ACCESOS_SEGURIDAD = "Soporte Plataforma, Accesos y Seguridad"
+TEXT_TIPOLOGIA_SOPORTE = "Tipologia caso"
+SOPORTE_USO = "Soporte Uso"
+ENVIO_AGENDA_MANUAL_USO = "Envio agenda con manual de uso"
+SOLICITUDES_CASOS = "Solicitudes"
+INCIDENTES_CASOS = "Incidentes"
 KEY_CLIENT_CASE_YEAR_BASE = 2025
 KEY_CLIENT_CASE_YEAR_FOCUS = 2026
 KEY_CLIENT_CASE_MONTHS_FOCUS = [3, 4, 6]
@@ -539,31 +541,31 @@ CASE_RPOST_RELATION_RULES = [
 
 CASE_SUPPORT_TYPOLOGY_GUIDE = [
     {
-        TEXT_TIPOLOGIA_SOPORTE: SOPORTE_TOKEN_FISICO,
+        TEXT_TIPOLOGIA_SOPORTE: ENVIO_AGENDA_MANUAL_USO,
         TEXT_DESCRIPCION: (
-            "ePass, Safenet, token USB, dispositivo fisico, token no reconocido, drivers, bloqueo "
-            "o problemas al conectar y usar el token fisico."
+            "Casos donde el agente envia manual, guia, instructivo o PDF de uso y adicionalmente direcciona "
+            "al usuario a agenda, cita oficial o canal de agendamiento para atencion paso a paso."
         ),
     },
     {
-        TEXT_TIPOLOGIA_SOPORTE: SOPORTE_TOKEN_VIRTUAL,
+        TEXT_TIPOLOGIA_SOPORTE: SOPORTE_USO,
         TEXT_DESCRIPCION: (
-            "Certitoken o token virtual: activacion, descarga, configuracion, bloqueo, recuperacion, "
-            "uso del token virtual y errores al generar o validar codigos."
+            "Acompanamiento, configuracion, instalacion, acceso, recuperacion, certificados, firma digital, "
+            "token fisico, token virtual, errores funcionales, activaciones, agenda y apoyo para usar el servicio."
         ),
     },
     {
-        TEXT_TIPOLOGIA_SOPORTE: SOPORTE_CERTIFICADO_FIRMA_ACUSES,
+        TEXT_TIPOLOGIA_SOPORTE: SOLICITUDES_CASOS,
         TEXT_DESCRIPCION: (
-            "Certificado digital, descarga, instalacion, renovacion, activacion, certificado vencido, "
-            "firma digital, validacion, errores al firmar, Certimail y acuses de recibo."
+            "Requerimientos administrativos, operativos o comerciales: renovaciones, cambios de informacion, "
+            "solicitudes de certificados, pagos, biometria, consultas administrativas y requerimientos especiales."
         ),
     },
     {
-        TEXT_TIPOLOGIA_SOPORTE: SOPORTE_PLATAFORMA_ACCESOS_SEGURIDAD,
+        TEXT_TIPOLOGIA_SOPORTE: INCIDENTES_CASOS,
         TEXT_DESCRIPCION: (
-            "Portal, usuarios, contrasenas, permisos, bloqueos, autenticacion, errores generales, "
-            "lentitud, indisponibilidad, configuracion, phishing y reportes de seguridad."
+            "Afectaciones con indisponibilidad total o parcial, degradacion del servicio, afectaciones masivas, "
+            "incidentes formales o incidentes asociados a proveedores."
         ),
     },
 ]
@@ -663,6 +665,82 @@ CASE_SUPPORT_PLATFORM_ACCESS_TERMS = [
     "indisponibilidad",
     "error",
     "falla",
+]
+
+CASE_MANUAL_USAGE_TERMS = [
+    "manual",
+    "link manual",
+    "guia",
+    "instructivo",
+    "pdf",
+    "archivo adjunto",
+    "adjunto",
+    "instalacion_firma_digital",
+    "instalacion firma digital",
+    "feitian",
+    "token gris",
+]
+
+CASE_AGENDA_WITH_MANUAL_TERMS = [
+    "agenda",
+    "agendamiento",
+    "agenda directa",
+    "cita",
+    "programa tu cita",
+    "cita oficial",
+    "canal de agendamiento",
+    "zcal",
+    "agendate",
+    "elige el horario",
+    "tecnico especializado",
+    "paso a paso",
+]
+
+CASE_REQUEST_TERMS = [
+    "renovacion",
+    "renovar",
+    "cambio de informacion",
+    "cambio informacion",
+    "actualizacion de datos",
+    "actualizacion informacion",
+    "modificacion de datos",
+    "solicitud de certificado",
+    "solicitud certificado",
+    "certificado solicitado",
+    "pago",
+    "pagos",
+    "pagar",
+    "biometria",
+    "consulta administrativa",
+    "administrativo",
+    "administrativa",
+    "comercial",
+    "requerimiento especial",
+    "requerimientos especiales",
+    "factura",
+    "facturacion",
+    "cotizacion",
+    "compra",
+]
+
+CASE_INCIDENT_TERMS = [
+    "incidente",
+    "indisponibilidad",
+    "no disponible",
+    "caida",
+    "degradacion",
+    "afectacion masiva",
+    "masivo",
+    "interrupcion",
+    "servicio caido",
+    "fuera de servicio",
+    "proveedor",
+    "phishing",
+    "pishing",
+    "suplantacion",
+    "fraude",
+    "correo sospechoso",
+    "seguridad",
 ]
 
 def normalizar_tipificaciones_casos_df(df):
@@ -1204,6 +1282,57 @@ def aplicar_tema_visual():
             margin-top: 0.9rem;
             padding-top: 0.8rem;
             font-size: 1.04rem;
+        }}
+
+        .executive-table-card {{
+            background: rgba(255, 250, 250, 0.96);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            box-shadow: 0 6px 16px rgba(20, 20, 20, 0.04);
+            margin: 0.1rem 0 0.75rem;
+            overflow: hidden;
+        }}
+
+        .executive-table-title {{
+            color: var(--primary);
+            font-size: 1.12rem;
+            font-weight: 900;
+            padding: 14px 16px 8px;
+        }}
+
+        .executive-table {{
+            border-collapse: collapse;
+            table-layout: fixed;
+            width: 100%;
+        }}
+
+        .executive-table th,
+        .executive-table td {{
+            border-top: 1px solid var(--border);
+            color: var(--text);
+            font-size: 0.92rem;
+            line-height: 1.35;
+            padding: 10px 12px;
+            text-align: left;
+            vertical-align: top;
+            white-space: normal;
+            word-break: normal;
+            overflow-wrap: anywhere;
+        }}
+
+        .executive-table th {{
+            background: #fff7f2;
+            color: var(--muted);
+            font-size: 0.78rem;
+            font-weight: 900;
+            text-transform: uppercase;
+        }}
+
+        .executive-table .number-cell {{
+            color: var(--primary);
+            font-weight: 900;
+            text-align: right;
+            white-space: nowrap;
         }}
 
         .ans-panel {{
@@ -2706,17 +2835,22 @@ def texto_contiene_alguno(texto, palabras):
 
 def clasificar_tipologia_soporte_caso(row):
     texto = texto_caso_para_tipologia_soporte(row)
-    if texto_contiene_alguno(texto, CASE_SUPPORT_TOKEN_VIRTUAL_TERMS):
-        return SOPORTE_TOKEN_VIRTUAL
-    if texto_contiene_alguno(texto, CASE_SUPPORT_SECURITY_TERMS):
-        return SOPORTE_PLATAFORMA_ACCESOS_SEGURIDAD
-    if texto_contiene_alguno(texto, CASE_SUPPORT_CERT_FIRMA_ACUSES_TERMS):
-        return SOPORTE_CERTIFICADO_FIRMA_ACUSES
-    if texto_contiene_alguno(texto, CASE_SUPPORT_TOKEN_FISICO_TERMS):
-        return SOPORTE_TOKEN_FISICO
-    if texto_contiene_alguno(texto, CASE_SUPPORT_PLATFORM_ACCESS_TERMS):
-        return SOPORTE_PLATAFORMA_ACCESOS_SEGURIDAD
-    return SOPORTE_PLATAFORMA_ACCESOS_SEGURIDAD
+    tipificacion = normalizar_texto(row.get(TEXT_TIPIFICACION_2))
+
+    if "5 - incidente" in tipificacion or "1 - phishing" in tipificacion:
+        return INCIDENTES_CASOS
+    if texto_contiene_alguno(texto, CASE_INCIDENT_TERMS):
+        return INCIDENTES_CASOS
+    if texto_contiene_alguno(texto, CASE_MANUAL_USAGE_TERMS) and texto_contiene_alguno(
+        texto,
+        CASE_AGENDA_WITH_MANUAL_TERMS,
+    ):
+        return ENVIO_AGENDA_MANUAL_USO
+    if "4 - solicitudes" in tipificacion:
+        return SOLICITUDES_CASOS
+    if texto_contiene_alguno(texto, CASE_REQUEST_TERMS):
+        return SOLICITUDES_CASOS
+    return SOPORTE_USO
 
 
 def agregar_tipologia_soporte_casos(df):
@@ -3642,7 +3776,7 @@ def grafico_barras_kpi(df, x, y, titulo, color):
 
 def grafico_porcentaje_tipologias_soporte(resumen):
     if resumen.empty or resumen[TEXT_CANTIDAD].sum() <= 0:
-        st.info("No hay datos para graficar las tipologias de soporte.")
+        st.info("No hay datos para graficar las tipologias de casos.")
         return
 
     datos = resumen.copy()
@@ -3665,7 +3799,7 @@ def grafico_porcentaje_tipologias_soporte(resumen):
     fig.update_traces(textposition=TEXT_OUTSIDE, cliponaxis=False)
     fig.update_xaxes(range=[0, max(100, float(datos["% casos"].max()) + 8)], ticksuffix="%")
     fig.update_layout(showlegend=False, height=390)
-    st.plotly_chart(aplicar_estilo_figura(fig, "Distribucion porcentual por soporte"), use_container_width=True)
+    st.plotly_chart(aplicar_estilo_figura(fig, "Distribucion porcentual por tipologia"), use_container_width=True)
 
 
 def resumen_otras_tipificaciones(base, top_n=3):
@@ -3681,10 +3815,10 @@ def resumen_otras_tipificaciones(base, top_n=3):
 
 def resumen_tipologia_soporte_principal(base):
     if base.empty or TEXT_TIPOLOGIA_SOPORTE not in base.columns:
-        return "No hay tipologia de soporte suficiente para resumir."
+        return "No hay tipologia de casos suficiente para resumir."
     conteo = base[TEXT_TIPOLOGIA_SOPORTE].value_counts()
     if conteo.empty:
-        return "No hay tipologia de soporte suficiente para resumir."
+        return "No hay tipologia de casos suficiente para resumir."
     principal = conteo.index[0]
     cantidad = int(conteo.iloc[0])
     return f"{principal} concentra {cantidad} casos ({porcentaje(cantidad, len(base))}%)."
@@ -3695,7 +3829,7 @@ def lineas_lectura_kpi_casos(metricas, base):
     detalle_causa = resumen_detalle_causa_principal(base, causa_principal)
     return [
         (
-            "Principal soporte: "
+            "Tipologia principal: "
             f"<strong>{html.escape(str(metricas[COL_PRINCIPAL_SOPORTE]))}</strong>"
         ),
         f'<div class="slide-note-muted">{html.escape(resumen_tipologia_soporte_principal(base))}</div>',
@@ -3740,7 +3874,7 @@ def render_slide_kpi_casos_cliente_externo(base, metricas, mes_dashboard):
         tipificaciones,
         TEXT_TIPOLOGIA_SOPORTE,
         TEXT_CANTIDAD,
-        "Tipologias de soporte",
+        "Tipologias de casos",
         top_n=4,
     )
     derecha = slide_note_html("Lectura", lineas)
@@ -3788,7 +3922,7 @@ def render_kpi_casos_cliente_externo(df, mes_dashboard=None):
     with col_lectura:
         render_lectura_kpi(metricas, base)
 
-    with st.expander("Descripcion de las 4 tipologias de soporte"):
+    with st.expander("Descripcion de las tipologias de casos"):
         st.dataframe(
             pd.DataFrame(CASE_SUPPORT_TYPOLOGY_GUIDE),
             use_container_width=True,
@@ -4005,9 +4139,11 @@ def resumen_causas_kpi_incidentes(base):
             columns=[
                 TEXT_SEGMENTO,
                 COL_CAUSA_RAIZ,
+                COL_FAMILIA_INCIDENTE,
                 TEXT_CANTIDAD,
                 "% segmento",
                 COL_LECTURA_EJECUTIVA,
+                COL_EVIDENCIA_INCIDENTE,
                 COL_ACCION_SUGERIDA,
                 "Detalle tecnico observado",
             ]
@@ -4092,9 +4228,9 @@ def texto_lectura_causa_segmento(causas, segmento):
     if fila is None:
         return f"No hay causas raiz para {segmento.lower()} en el periodo."
     return (
-        f"{segmento}: la causa principal es {fila[COL_CAUSA_RAIZ]} "
+        f"{segmento}: el tema principal es {fila[COL_CAUSA_RAIZ]} "
         f"({int(fila[TEXT_CANTIDAD])} casos, {fila['% segmento']}%). "
-        f"{fila[COL_LECTURA_EJECUTIVA]} Detalle observado: {fila['Detalle tecnico observado']}."
+        f"{fila[COL_LECTURA_EJECUTIVA]} Evidencia: {fila[COL_EVIDENCIA_INCIDENTE]}."
     )
 
 
@@ -4125,30 +4261,72 @@ def render_lectura_kpi_incidentes(causas):
     st.markdown(contenido, unsafe_allow_html=True)
 
 
-def render_grafico_causas_kpi_incidentes(causas):
+def tabla_temas_incidentes_html(causas, segmento):
+    datos = causas[causas[TEXT_SEGMENTO] == segmento].sort_values(
+        by=[TEXT_CANTIDAD, COL_CAUSA_RAIZ],
+        ascending=[False, True],
+    )
+    if datos.empty:
+        return (
+            '<div class="executive-note">'
+            f'<div class="executive-note-title">{html.escape(segmento)}</div>'
+            '<div class="executive-note-detail">No hay temas para este segmento en el periodo.</div>'
+            "</div>"
+        )
+
+    filas = []
+    for _, row in datos.iterrows():
+        filas.append(
+            "<tr>"
+            f"<td>{html.escape(str(row[COL_CAUSA_RAIZ]))}</td>"
+            f"<td>{html.escape(str(row[COL_FAMILIA_INCIDENTE]))}</td>"
+            f'<td class="number-cell">{int(row[TEXT_CANTIDAD])}</td>'
+            f'<td class="number-cell">{html.escape(str(row["% segmento"]))}%</td>'
+            f"<td>{html.escape(str(row[COL_LECTURA_EJECUTIVA]))}</td>"
+            f"<td>{html.escape(str(row[COL_EVIDENCIA_INCIDENTE]))}</td>"
+            "</tr>"
+        )
+
+    return f"""
+    <div class="executive-table-card">
+        <div class="executive-table-title">{html.escape(segmento)}</div>
+        <table class="executive-table">
+            <thead>
+                <tr>
+                    <th>Tema especifico</th>
+                    <th>Familia</th>
+                    <th>Cant.</th>
+                    <th>%</th>
+                    <th>Lectura</th>
+                    <th>Evidencia</th>
+                </tr>
+            </thead>
+            <tbody>
+                {''.join(filas)}
+            </tbody>
+        </table>
+    </div>
+    """
+
+
+def render_tablas_temas_kpi_incidentes(causas):
     if causas.empty:
-        st.info("No hay causas raiz para graficar en el periodo seleccionado.")
+        st.info("No hay temas de incidentes para mostrar en el periodo seleccionado.")
         return
 
     col_externo, col_interno = st.columns(2)
     segmentos = [
-        (col_externo, "Cliente externo", "Causas cliente externo"),
-        (col_interno, "Cliente interno", "Causas cliente interno"),
+        (col_externo, "Cliente externo"),
+        (col_interno, "Cliente interno"),
     ]
 
-    for columna, segmento, titulo in segmentos:
+    for columna, segmento in segmentos:
         with columna:
-            grafico = (
-                causas[causas[TEXT_SEGMENTO] == segmento]
-                .groupby(COL_LECTURA_EJECUTIVA, as_index=False)
-                .agg(Cantidad=(TEXT_CANTIDAD, "sum"))
-                .sort_values(by=TEXT_CANTIDAD, ascending=True)
-            )
-            if grafico.empty:
-                st.info(f"No hay causas para {segmento.lower()} en el periodo.")
-                continue
+            st.markdown(tabla_temas_incidentes_html(causas, segmento), unsafe_allow_html=True)
 
-            render_ranking_kpi(grafico, COL_LECTURA_EJECUTIVA, TEXT_CANTIDAD, titulo)
+
+def render_grafico_causas_kpi_incidentes(causas):
+    render_tablas_temas_kpi_incidentes(causas)
 
 
 def render_reincidencia_kpi_incidentes(base, metricas):
@@ -4170,10 +4348,10 @@ def render_reincidencia_kpi_incidentes(base, metricas):
 
 def ranking_causas_segmento_kpi(causas, segmento):
     if causas.empty:
-        return pd.DataFrame(columns=[COL_LECTURA_EJECUTIVA, TEXT_CANTIDAD])
+        return pd.DataFrame(columns=[COL_CAUSA_RAIZ, TEXT_CANTIDAD])
     return (
         causas[causas[TEXT_SEGMENTO] == segmento]
-        .groupby(COL_LECTURA_EJECUTIVA, as_index=False)
+        .groupby(COL_CAUSA_RAIZ, as_index=False)
         .agg(Cantidad=(TEXT_CANTIDAD, "sum"))
         .sort_values(by=TEXT_CANTIDAD, ascending=False)
     )
@@ -4200,8 +4378,8 @@ def render_slide_kpi_incidentes(metricas, causas, mes_dashboard):
     lineas = lineas_lectura_kpi_incidentes(causas)
     izquierda = (
         '<div class="slide-panel-group">'
-        f'{slide_ranking_html(ranking_externo, COL_LECTURA_EJECUTIVA, TEXT_CANTIDAD, "Causas cliente externo", top_n=5, limite=54)}'
-        f'{slide_ranking_html(ranking_interno, COL_LECTURA_EJECUTIVA, TEXT_CANTIDAD, "Causas cliente interno", top_n=5, limite=54)}'
+        f'{slide_ranking_html(ranking_externo, COL_CAUSA_RAIZ, TEXT_CANTIDAD, "Temas cliente externo", top_n=5, limite=90)}'
+        f'{slide_ranking_html(ranking_interno, COL_CAUSA_RAIZ, TEXT_CANTIDAD, "Temas cliente interno", top_n=5, limite=90)}'
         "</div>"
     )
     derecha = slide_note_html("Lectura", lineas)
@@ -4246,32 +4424,37 @@ def render_kpi_incidentes(df, mes_dashboard=None):
         f"Cumplen SLA: {metricas['cumple_sla']} | No cumplen: {metricas['no_cumple_sla']}"
     )
 
-    col_grafico, col_lectura = st.columns([2.15, 1])
-    with col_grafico:
-        render_grafico_causas_kpi_incidentes(causas)
-    with col_lectura:
-        render_lectura_kpi_incidentes(causas)
+    render_tablas_temas_kpi_incidentes(causas)
+    render_lectura_kpi_incidentes(causas)
 
     tab_resumen, tab_externo, tab_interno, tab_reincidencia, tab_detalle = st.tabs(
         [TEXT_RESUMEN, "Cliente externo", "Cliente interno", "Reincidencia", "Detalle"]
     )
     with tab_resumen:
-        st.dataframe(causas, use_container_width=True, hide_index=True)
+        dataframe_liviano(causas, height=360)
     with tab_externo:
-        st.dataframe(
+        dataframe_liviano(
             causas[causas[TEXT_SEGMENTO] == "Cliente externo"],
-            use_container_width=True,
-            hide_index=True,
+            height=360,
         )
     with tab_interno:
-        st.dataframe(
+        dataframe_liviano(
             causas[causas[TEXT_SEGMENTO] == "Cliente interno"],
-            use_container_width=True,
-            hide_index=True,
+            height=360,
         )
     with tab_reincidencia:
         render_reincidencia_kpi_incidentes(base, metricas)
     with tab_detalle:
+        temas_detalle = base.apply(clasificacion_tema_incidente, axis=1)
+        columnas_temas = [
+            COL_CAUSA_RAIZ,
+            COL_FAMILIA_INCIDENTE,
+            COL_LECTURA_EJECUTIVA,
+            COL_ACCION_SUGERIDA,
+            COL_EVIDENCIA_INCIDENTE,
+        ]
+        base = base.copy()
+        base[columnas_temas] = pd.DataFrame(temas_detalle.tolist(), index=base.index)
         columnas = [
             TEXT_NUMERO,
             TEXT_SEGMENTO,
@@ -4279,6 +4462,9 @@ def render_kpi_incidentes(df, mes_dashboard=None):
             TEXT_PRIORIDAD,
             TEXT_SERVICIO_NEGOCIO,
             TEXT_CAUSA_RAIZ_AUTO,
+            COL_CAUSA_RAIZ,
+            COL_FAMILIA_INCIDENTE,
+            COL_EVIDENCIA_INCIDENTE,
             TEXT_TIPO_INCIDENTE_AUTO,
             TEXT_DURACION_SLA_HORAS,
             TEXT_ESTADO_SLA,
@@ -4290,10 +4476,9 @@ def render_kpi_incidentes(df, mes_dashboard=None):
             TEXT_CERRADO,
             TEXT_BREVE_DESCRIPCION,
         ]
-        st.dataframe(
+        dataframe_liviano(
             base[[col for col in columnas if col in base.columns]],
-            use_container_width=True,
-            hide_index=True,
+            height=420,
         )
 
 
@@ -4926,69 +5111,159 @@ def tabla_resumen_tipologias_incidentes(df):
     filas = [fila_resumen_tipologia(trabajo, tipologia) for tipologia in ordenar_tipologias_incidentes(trabajo)]
     return convertir_tipos_resumen_tipologias(pd.DataFrame(filas))
 
-def clasificar_causa_incidente(causa):
-    texto = normalizar_texto(causa)
-    if not texto or "sin inferencia" in texto or "sin patron" in texto:
-        return (
-            "Sin clasificar",
-            "No hay informacion suficiente para explicar la causa.",
-            "Completar causa raiz en el cierre del incidente.",
-        )
+def texto_incidente_para_tema(row):
+    campos = [
+        TEXT_CAUSA_RAIZ_AUTO,
+        TEXT_SERVICIO_NEGOCIO,
+        TEXT_TIPO_FALLA,
+        TEXT_BREVE_DESCRIPCION,
+        TEXT_DESCRIPCION_2,
+        TEXT_OBSERVACIONES_TRABAJO,
+        TEXT_OBSERVACIONES_ADICIONALES,
+        "categoria",
+        "impacto",
+        "actualizaciones",
+        "lista_notas_trabajo",
+    ]
+    return " ".join(normalizar_texto(row.get(campo)) for campo in campos).strip()
+
+
+def valor_detalle_incidente(row):
+    for campo in [TEXT_SERVICIO_NEGOCIO, TEXT_TIPO_FALLA, TEXT_CAUSA_RAIZ_AUTO, TEXT_BREVE_DESCRIPCION]:
+        valor = valor_limpio(row.get(campo))
+        if valor and "sin patron" not in normalizar_texto(valor) and "sin inferencia" not in normalizar_texto(valor):
+            return valor
+    return valor_limpio(row.get(TEXT_NUMERO)) or "Registro sin detalle suficiente"
+
+
+def tema_revision_especifica(row):
+    detalle = valor_detalle_incidente(row)
+    return f"Revision especifica - {detalle}"
+
+
+def clasificacion_tema_incidente(row):
+    texto = texto_incidente_para_tema(row)
+    detalle = valor_detalle_incidente(row)
 
     reglas = [
         (
-            ["base de datos", "database", "sql", "bd"],
-            "Base de datos",
-            "Errores o indisponibilidad asociados a datos o consultas del servicio.",
-            "Revisar estabilidad, consultas, bloqueos y eventos recurrentes de base de datos.",
+            ["phishing", "pishing", "suplantacion", "fraude", "malicioso", "correo sospechoso"],
+            "Seguridad - Phishing o suplantacion",
+            "Seguridad",
+            "Reporte de seguridad asociado a correo sospechoso, suplantacion o posible fraude.",
+            "Validar origen, bloquear indicadores y reforzar comunicacion preventiva.",
         ),
         (
-            ["correo", "notificacion", "smtp", "mail"],
-            "Correo / notificaciones",
+            ["ocsp"],
+            "Disponibilidad - OCSP",
+            "Disponibilidad",
+            "Afectacion del servicio OCSP o validacion de estado de certificados.",
+            "Revisar disponibilidad OCSP, tiempos de respuesta y dependencias del servicio.",
+        ),
+        (
+            ["tsa"],
+            "Validacion - TSA",
+            "Firma y validacion",
+            "Afectacion relacionada con sellado de tiempo o validacion TSA.",
+            "Validar servicio TSA, trazas y recurrencia por cliente o aplicacion.",
+        ),
+        (
+            ["certimail", "certi mail", "certicmal"],
+            "Correo / Notificaciones - Certimail",
+            "Comunicaciones",
+            "Afectacion especifica en Certimail o flujo de notificaciones certificadas.",
+            "Revisar flujo de envio, acuses, rebotes y trazabilidad del mensaje.",
+        ),
+        (
+            ["rpost", "portal rpost"],
+            "Disponibilidad - Portal RPost" if any(p in texto for p in ["caida", "indisponibilidad", "no disponible", "degradacion"]) else "Plataforma - RPost",
+            "Disponibilidad" if any(p in texto for p in ["caida", "indisponibilidad", "no disponible", "degradacion"]) else "Plataforma",
+            "Afectacion relacionada con RPost o su portal operativo.",
+            "Revisar disponibilidad, trazabilidad y comportamiento del portal RPost.",
+        ),
+        (
+            ["correo", "notificacion", "notificaciones", "smtp", "mail", "envio", "recepcion", "procesamiento"],
+            "Correo / Notificaciones",
+            "Comunicaciones",
             "Fallas en envio, recepcion o procesamiento de notificaciones al cliente.",
-            "Revisar cola de envio, plantillas, rebotes y proveedores de correo.",
+            "Revisar colas, rebotes, plantillas y proveedor de correo.",
         ),
         (
-            ["certificado", "cadena de confianza", "ssl"],
-            "Certificados / cadena de confianza",
-            "Problemas asociados a certificados, confianza o validacion criptografica.",
-            "Validar vigencia, cadena, configuracion y comunicacion preventiva al cliente.",
-        ),
-        (
-            ["firma", "firmar", "validacion", "validar"],
-            "Firma digital / validacion",
+            ["firma", "firmar", "validacion", "validar", "documento no firma"],
+            "Firma digital y validacion",
+            "Firma y validacion",
             "Dificultades para firmar, validar o completar procesos de firma digital.",
-            "Revisar flujo de firma, mensajes de error y recurrencia por producto o cliente.",
+            "Revisar flujo de firma, mensaje de error y recurrencia por producto.",
+        ),
+        (
+            ["certificado", "cadena de confianza", "ssl", "certificados"],
+            "Certificados / cadena de confianza",
+            "Firma y validacion",
+            "Problemas asociados a certificados, confianza o validacion criptografica.",
+            "Validar vigencia, cadena, configuracion y comunicacion preventiva.",
+        ),
+        (
+            ["base de datos", "database", "sql", " bd "],
+            "Infraestructura - Base de datos",
+            "Infraestructura",
+            "Errores o indisponibilidad asociados a datos o consultas del servicio.",
+            "Revisar bloqueos, consultas, disponibilidad y eventos recurrentes de base de datos.",
+        ),
+        (
+            ["red", "conectividad", "vpn", "latencia", "enlace", "comunicacion"],
+            "Infraestructura - Red / conectividad",
+            "Infraestructura",
+            "Problemas de red, comunicacion o acceso al servicio.",
+            "Validar trazas, conectividad y dependencias de terceros.",
+        ),
+        (
+            ["servidor", "cpu", "memoria", "disco", "infraestructura"],
+            "Infraestructura - Servidor",
+            "Infraestructura",
+            "Afectacion asociada a recursos o componentes de servidor.",
+            "Revisar capacidad, eventos de sistema y recurrencia del componente.",
+        ),
+        (
+            ["ldap", "directorio activo", "active directory", "login", "autenticacion", "acceso"],
+            "Accesos / Autenticacion",
+            "Accesos",
+            "Problemas de acceso, autenticacion o directorio.",
+            "Validar permisos, autenticacion y trazas del usuario o servicio.",
+        ),
+        (
+            ["caida", "indisponibilidad", "degradacion", "no disponible", "disponibilidad", "monitoreo", "noc"],
+            f"Disponibilidad - {detalle}",
+            "Disponibilidad",
+            "Caida, indisponibilidad o degradacion percibida por monitoreo o clientes.",
+            "Revisar ventana de afectacion, continuidad y comunicacion a clientes.",
         ),
         (
             ["duplicad"],
             "Registros duplicados",
-            "Casos repetidos o registros duplicados que distorsionan la lectura operativa.",
-            "Depurar duplicados y ajustar la regla de clasificacion/cierre.",
-        ),
-        (
-            ["monitoreo", "noc", "caida", "indisponibilidad", "degradacion"],
-            "Disponibilidad del servicio",
-            "Eventos de disponibilidad, caida o degradacion percibidos por monitoreo o clientes.",
-            "Revisar continuidad, ventanas de afectacion y comunicacion a clientes.",
-        ),
-        (
-            ["red", "conectividad", "vpn", "latencia", "enlace"],
-            "Conectividad",
-            "Problemas de red, comunicacion o acceso al servicio.",
-            "Validar conectividad, trazas y posibles dependencias de terceros.",
+            "Calidad de datos",
+            "Registros repetidos que pueden distorsionar la lectura operativa.",
+            "Depurar duplicados y ajustar reglas de cargue o cierre.",
         ),
     ]
 
-    for palabras, causa_ejecutiva, lectura, accion in reglas:
+    for palabras, tema, familia, lectura, accion in reglas:
         if any(palabra in texto for palabra in palabras):
-            return causa_ejecutiva, lectura, accion
+            return tema, familia, lectura, accion, detalle
 
+    tema = tema_revision_especifica(row)
     return (
-        "Otros hallazgos tecnicos",
-        "Hallazgos tecnicos con bajo volumen o descripcion no estandarizada.",
-        "Normalizar la causa raiz en el cierre para mejorar el analisis mensual.",
+        tema,
+        "Revision especifica",
+        "Tema especifico construido con el servicio, tipo de falla o descripcion disponible.",
+        "Revisar el detalle tecnico del registro y normalizar la causa en el cierre.",
+        detalle,
     )
+
+
+def clasificar_causa_incidente(causa):
+    row = {TEXT_CAUSA_RAIZ_AUTO: causa}
+    tema, _familia, lectura, accion, _detalle = clasificacion_tema_incidente(row)
+    return tema, lectura, accion
 
 
 def clasificar_causa_cliente_externo(causa):
@@ -4998,9 +5273,11 @@ def clasificar_causa_cliente_externo(causa):
 def resumen_causas_incidentes(df, porcentaje_columna="% incidentes"):
     columnas = [
         COL_CAUSA_RAIZ,
+        COL_FAMILIA_INCIDENTE,
         TEXT_CANTIDAD,
         porcentaje_columna,
         COL_LECTURA_EJECUTIVA,
+        COL_EVIDENCIA_INCIDENTE,
         COL_ACCION_SUGERIDA,
         "Detalle tecnico observado",
     ]
@@ -5009,8 +5286,16 @@ def resumen_causas_incidentes(df, porcentaje_columna="% incidentes"):
 
     trabajo = df.copy()
     trabajo[TEXT_CAUSA_TECNICA] = trabajo[TEXT_CAUSA_RAIZ_AUTO].replace("", pd.NA).fillna("Sin inferencia")
-    clasificacion = trabajo[TEXT_CAUSA_TECNICA].apply(clasificar_causa_incidente)
-    trabajo[[COL_CAUSA_RAIZ, COL_LECTURA_EJECUTIVA, COL_ACCION_SUGERIDA]] = pd.DataFrame(
+    clasificacion = trabajo.apply(clasificacion_tema_incidente, axis=1)
+    trabajo[
+        [
+            COL_CAUSA_RAIZ,
+            COL_FAMILIA_INCIDENTE,
+            COL_LECTURA_EJECUTIVA,
+            COL_ACCION_SUGERIDA,
+            COL_EVIDENCIA_INCIDENTE,
+        ]
+    ] = pd.DataFrame(
         clasificacion.tolist(),
         index=trabajo.index,
     )
@@ -5022,7 +5307,16 @@ def resumen_causas_incidentes(df, porcentaje_columna="% incidentes"):
         return "; ".join(valores)
 
     resumen = (
-        trabajo.groupby([COL_CAUSA_RAIZ, COL_LECTURA_EJECUTIVA, COL_ACCION_SUGERIDA], dropna=False)
+        trabajo.groupby(
+            [
+                COL_CAUSA_RAIZ,
+                COL_FAMILIA_INCIDENTE,
+                COL_LECTURA_EJECUTIVA,
+                COL_EVIDENCIA_INCIDENTE,
+                COL_ACCION_SUGERIDA,
+            ],
+            dropna=False,
+        )
         .agg(
             Cantidad=(TEXT_NUMERO, TEXT_COUNT),
             Detalle_tecnico_observado=(TEXT_CAUSA_TECNICA, detalles_tecnicos),
@@ -5168,8 +5462,8 @@ def dashboard_casos():
             render_analisis_agendamiento_mesa(df, historico, periodo_key_sql(anio, mes))
 
     st.divider()
-    st.subheader("Resumen por tipologia de soporte")
-    st.caption("Nueva agrupacion operativa de soporte. La tipificacion original se mantiene como referencia.")
+    st.subheader("Resumen por tipologia de casos")
+    st.caption("Agrupacion ejecutiva de casos. La tipificacion original se mantiene como referencia.")
     st.dataframe(resumen_tipologias_soporte_casos(df), use_container_width=True, hide_index=True)
     with st.expander("Ver tipificaciones originales"):
         st.dataframe(tabla_resumen_tipificaciones_casos(df), use_container_width=True, hide_index=True)
@@ -7628,7 +7922,7 @@ def vista_casos():
         df = preparar_fechas_dashboard(df)
         df["mes"] = df[TEXT_CREADO_DT_DASHBOARD].dt.to_period("M").astype(str).replace("NaT", "Sin fecha")
 
-        filtro_col1, filtro_col2, filtro_col3, filtro_col4, filtro_col5 = st.columns([1, 1.5, 1.5, 1.5, 2])
+        filtro_col1, filtro_col2, filtro_col3, filtro_col4 = st.columns([1, 1.5, 1.5, 2])
         with filtro_col1:
             estados = sorted(df[TEXT_ESTADO].dropna().unique().tolist())
             filtro_estado = st.selectbox(TEXT_ESTADO_2, [TEXT_TODOS] + estados, key="estado_casos")
@@ -7639,33 +7933,24 @@ def vista_casos():
                 key="tipologia_soporte_casos",
             )
         with filtro_col3:
-            clasificaciones = sorted(df[TEXT_TIPIFICACION_2].dropna().unique().tolist())
-            filtro_clasificacion = st.selectbox(
-                "Tipificacion original",
-                [TEXT_TODOS] + clasificaciones,
-                key="clasificacion_casos",
-            )
-        with filtro_col4:
             servicios = opciones_filtro_servicio(df, TEXT_PRODUCTO)
             filtro_servicio = st.selectbox("Servicio", [TEXT_TODOS] + servicios, key="servicio_casos")
-        with filtro_col5:
+        with filtro_col4:
             filtro_cuenta = st.text_input("Cuenta", key="cuenta_casos")
 
         filtro_estado_sql = filtro_estado if filtro_estado != TEXT_TODOS else ""
-        filtro_clasificacion_sql = filtro_clasificacion if filtro_clasificacion != TEXT_TODOS else ""
         filtro_servicio_sql = (
             filtro_servicio
             if filtro_servicio not in (TEXT_TODOS, SIN_SERVICIO)
             else ""
         )
-        if filtro_estado_sql or filtro_clasificacion_sql or filtro_servicio_sql or filtro_cuenta:
+        if filtro_estado_sql or filtro_servicio_sql or filtro_cuenta:
             df = cargar_casos_soporte_filtrados_cache(
                 anio,
                 mes,
                 filtro_cuenta,
                 filtro_estado_sql,
                 filtro_servicio_sql,
-                filtro_clasificacion_sql,
             )
             df = preparar_fechas_dashboard(df)
             df["mes"] = df[TEXT_CREADO_DT_DASHBOARD].dt.to_period("M").astype(str).replace("NaT", "Sin fecha")
@@ -7674,8 +7959,6 @@ def vista_casos():
             df = df[df[TEXT_ESTADO] == filtro_estado]
         if filtro_soporte != TEXT_TODOS:
             df = df[df[TEXT_TIPOLOGIA_SOPORTE] == filtro_soporte]
-        if filtro_clasificacion != TEXT_TODOS:
-            df = df[df[TEXT_TIPIFICACION_2] == filtro_clasificacion]
         if filtro_servicio != TEXT_TODOS:
             df = filtrar_por_servicio(df, TEXT_PRODUCTO, filtro_servicio)
         if filtro_cuenta:
