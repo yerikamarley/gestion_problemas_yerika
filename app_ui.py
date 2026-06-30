@@ -4346,6 +4346,7 @@ def slide_product_distribution_html(df, periodo_label):
         "<td>-</td>"
         "</tr>"
     )
+    focos_html = slide_focos_operativos_kpi_html(df)
     return f"""
     <style>
     .slide-product-panel {{
@@ -4524,6 +4525,90 @@ def slide_product_distribution_html(df, periodo_label):
         font-size: 0.91rem;
         font-weight: 900;
     }}
+    .slide-focus-strip {{
+        border: 1px solid #d7c5f8;
+        border-radius: 8px;
+        margin-top: 12px;
+        overflow: hidden;
+    }}
+    .slide-focus-strip-title {{
+        color: {UI_PALETTE[TEXT_PURPLE]};
+        font-size: 0.78rem;
+        font-weight: 900;
+        line-height: 1;
+        padding: 8px 10px 0;
+        text-align: center;
+        text-transform: uppercase;
+    }}
+    .slide-focus-grid {{
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 7px;
+        padding: 8px 10px 10px;
+    }}
+    .slide-focus-card {{
+        border: 1px solid #d7c5f8;
+        border-radius: 8px;
+        display: grid;
+        grid-template-columns: 34px minmax(0, 1fr);
+        gap: 5px;
+        align-items: center;
+        min-height: 58px;
+        padding: 6px;
+    }}
+    .slide-focus-card-important {{
+        border-color: {UI_PALETTE[TEXT_PRIMARY]};
+    }}
+    .slide-focus-total-card {{
+        background: #f2eaf8;
+        border-color: #f2eaf8;
+        display: block;
+        text-align: center;
+    }}
+    .slide-focus-icon {{
+        width: 31px;
+        height: 31px;
+        border: 1.5px solid #0b3a78;
+        border-radius: 999px;
+        color: #0b3a78;
+        display: grid;
+        place-items: center;
+        font-size: 0.58rem;
+        font-weight: 900;
+        line-height: 1;
+    }}
+    .slide-focus-card-important .slide-focus-icon {{
+        border-color: {UI_PALETTE[TEXT_PRIMARY]};
+        color: {UI_PALETTE[TEXT_PRIMARY]};
+    }}
+    .slide-focus-label {{
+        color: #0b3a78;
+        font-size: 0.52rem;
+        font-weight: 900;
+        line-height: 1.05;
+        overflow-wrap: anywhere;
+    }}
+    .slide-focus-card-important .slide-focus-label {{
+        color: {UI_PALETTE[TEXT_PRIMARY]};
+    }}
+    .slide-focus-value {{
+        color: #0b3a78;
+        font-size: 1.03rem;
+        font-weight: 900;
+        line-height: 1;
+        margin-top: 2px;
+        font-variant-numeric: tabular-nums;
+    }}
+    .slide-focus-total-card .slide-focus-value {{
+        color: {UI_PALETTE[TEXT_PURPLE]};
+    }}
+    .slide-focus-percent {{
+        color: {UI_PALETTE[TEXT_PURPLE]};
+        font-size: 0.56rem;
+        font-weight: 900;
+        line-height: 1;
+        margin-top: 2px;
+    }}
     </style>
     <div class="slide-panel slide-product-panel">
         <div class="slide-product-title">Tickets de soporte - {html.escape(str(periodo_label).upper())}</div>
@@ -4555,6 +4640,7 @@ def slide_product_distribution_html(df, periodo_label):
                 </table>
             </div>
         </div>
+        {focos_html}
     </div>
     """
 
@@ -4591,12 +4677,16 @@ def resumen_focos_uso_casos(base):
     focos = [
         ("Token fisico", CASE_TOKEN_FISICO_READING_TERMS),
         ("Token virtual", CASE_SUPPORT_TOKEN_VIRTUAL_TERMS),
+        ("Envio agenda", CASE_AGENDA_DIRECT_TERMS),
         ("Problemas para firmar", CASE_SIGNING_PROBLEM_TERMS),
         ("Acuses", CASE_ACUSES_TERMS),
     ]
     filas = []
     for foco, palabras in focos:
-        mascara = texto.apply(lambda valor: texto_contiene_alguno(valor, palabras))
+        if foco == "Envio agenda":
+            mascara = mascara_envio_agenda_casos(base, texto)
+        else:
+            mascara = texto.apply(lambda valor: texto_contiene_alguno(valor, palabras))
         cantidad = int(mascara.sum())
         filas.append(
             {
@@ -4606,6 +4696,236 @@ def resumen_focos_uso_casos(base):
             }
         )
     return pd.DataFrame(filas, columns=columnas)
+
+
+def mascara_envio_agenda_casos(base, texto=None):
+    mascara = pd.Series(False, index=base.index)
+    if base.empty:
+        return mascara
+
+    if TEXT_TIPOLOGIA_SOPORTE in base.columns:
+        mascara = mascara | (base[TEXT_TIPOLOGIA_SOPORTE].fillna("") == ENVIO_AGENDA_MANUAL_USO)
+    if TEXT_TIPIFICACION_2 in base.columns:
+        tipificacion = base[TEXT_TIPIFICACION_2].apply(normalizar_texto)
+        mascara = mascara | tipificacion.str.contains("agenda", na=False)
+    if texto is not None:
+        mascara = mascara | texto.apply(lambda valor: texto_contiene_alguno(valor, CASE_AGENDA_DIRECT_TERMS))
+    return mascara.fillna(False)
+
+
+def resumen_focos_destacados_kpi_casos(base):
+    columnas = ["Foco", TEXT_CANTIDAD, "% casos", "Icono", "Destacado"]
+    if base.empty:
+        return pd.DataFrame(columns=columnas)
+
+    texto = base.apply(texto_caso_para_tipologia_soporte, axis=1)
+    total = len(base)
+    focos = [
+        ("Token fisico", "USB", texto.apply(lambda valor: texto_contiene_alguno(valor, CASE_TOKEN_FISICO_READING_TERMS)), False),
+        ("Token virtual", "PC", texto.apply(lambda valor: texto_contiene_alguno(valor, CASE_SUPPORT_TOKEN_VIRTUAL_TERMS)), False),
+        ("Envio agenda", "AG", mascara_envio_agenda_casos(base, texto), True),
+    ]
+    filas = []
+    for foco, icono, mascara, destacado in focos:
+        cantidad = int(mascara.sum())
+        filas.append(
+            {
+                "Foco": foco,
+                TEXT_CANTIDAD: cantidad,
+                "% casos": porcentaje(cantidad, total),
+                "Icono": icono,
+                "Destacado": destacado,
+            }
+        )
+    return pd.DataFrame(filas, columns=columnas)
+
+
+def focos_operativos_kpi_html(base):
+    resumen = resumen_focos_destacados_kpi_casos(base)
+    if resumen.empty:
+        return ""
+
+    total = len(base)
+    tarjetas = []
+    for _, row in resumen.iterrows():
+        clase_destacada = " kpi-focus-card-important" if row["Destacado"] else ""
+        tarjetas.append(
+            f'<div class="kpi-focus-card{clase_destacada}">'
+            f'<div class="kpi-focus-icon">{html.escape(str(row["Icono"]))}</div>'
+            '<div class="kpi-focus-copy">'
+            f'<div class="kpi-focus-label">{html.escape(str(row["Foco"]).upper())}</div>'
+            f'<div class="kpi-focus-value">{formato_entero_es(row[TEXT_CANTIDAD])}</div>'
+            f'<div class="kpi-focus-percent">({formato_porcentaje_es(row["% casos"])})</div>'
+            "</div>"
+            "</div>"
+        )
+
+    return f"""
+    <style>
+    .kpi-focus-panel {{
+        border: 1px solid #d7c5f8;
+        border-radius: 8px;
+        padding: 14px 16px 0;
+        margin-top: 18px;
+        background: #ffffff;
+    }}
+    .kpi-focus-title {{
+        color: {UI_PALETTE[TEXT_PURPLE]};
+        font-size: 15px;
+        font-weight: 900;
+        line-height: 1.2;
+        margin-bottom: 12px;
+        text-align: center;
+        text-transform: uppercase;
+    }}
+    .kpi-focus-grid {{
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 12px;
+    }}
+    .kpi-focus-card {{
+        border: 1px solid #d7c5f8;
+        border-radius: 8px;
+        padding: 12px;
+        display: grid;
+        grid-template-columns: 58px minmax(0, 1fr);
+        align-items: center;
+        gap: 10px;
+        min-height: 92px;
+    }}
+    .kpi-focus-card-important {{
+        border-color: {UI_PALETTE[TEXT_PRIMARY]};
+        box-shadow: inset 0 0 0 1px rgba(243, 91, 4, 0.12);
+    }}
+    .kpi-focus-icon {{
+        width: 52px;
+        height: 52px;
+        border: 2px solid #0b3a78;
+        border-radius: 999px;
+        color: #0b3a78;
+        display: grid;
+        place-items: center;
+        font-size: 15px;
+        font-weight: 900;
+        line-height: 1;
+    }}
+    .kpi-focus-card-important .kpi-focus-icon {{
+        border-color: {UI_PALETTE[TEXT_PRIMARY]};
+        color: {UI_PALETTE[TEXT_PRIMARY]};
+    }}
+    .kpi-focus-copy {{
+        min-width: 0;
+        text-align: center;
+    }}
+    .kpi-focus-label {{
+        color: #0b3a78;
+        font-size: 13px;
+        font-weight: 900;
+        line-height: 1.1;
+    }}
+    .kpi-focus-card-important .kpi-focus-label {{
+        color: {UI_PALETTE[TEXT_PRIMARY]};
+    }}
+    .kpi-focus-value {{
+        color: #0b3a78;
+        font-size: 28px;
+        font-weight: 900;
+        line-height: 1;
+        margin-top: 6px;
+        font-variant-numeric: tabular-nums;
+    }}
+    .kpi-focus-percent {{
+        color: {UI_PALETTE[TEXT_PURPLE]};
+        font-size: 13px;
+        font-weight: 900;
+        margin-top: 3px;
+    }}
+    .kpi-focus-total {{
+        background: #f2eaf8;
+        border-radius: 0 0 8px 8px;
+        color: {UI_PALETTE[TEXT_PURPLE]};
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto auto;
+        gap: 10px;
+        align-items: baseline;
+        margin: 14px -16px 0;
+        padding: 13px 18px;
+    }}
+    .kpi-focus-total span {{
+        font-size: 15px;
+        font-weight: 900;
+        text-transform: uppercase;
+    }}
+    .kpi-focus-total strong {{
+        font-size: 34px;
+        font-weight: 900;
+        line-height: 1;
+    }}
+    .kpi-focus-total em {{
+        font-size: 14px;
+        font-style: normal;
+        font-weight: 900;
+    }}
+    @media (max-width: 900px) {{
+        .kpi-focus-grid {{
+            grid-template-columns: 1fr;
+        }}
+        .kpi-focus-total {{
+            grid-template-columns: 1fr;
+            text-align: center;
+        }}
+    }}
+    </style>
+    <div class="kpi-focus-panel">
+        <div class="kpi-focus-title">Focos operativos sobre el total de tickets</div>
+        <div class="kpi-focus-grid">{"".join(tarjetas)}</div>
+        <div class="kpi-focus-total">
+            <span>Total tickets de soporte</span>
+            <strong>{formato_entero_es(total)}</strong>
+            <em>(100%)</em>
+        </div>
+    </div>
+    """
+
+
+def render_focos_operativos_kpi_casos(base):
+    contenido = focos_operativos_kpi_html(base)
+    if contenido:
+        st.markdown(contenido, unsafe_allow_html=True)
+
+
+def slide_focos_operativos_kpi_html(base):
+    resumen = resumen_focos_destacados_kpi_casos(base)
+    if resumen.empty:
+        return ""
+
+    total = len(base)
+    tarjetas = []
+    for _, row in resumen.iterrows():
+        clase_destacada = " slide-focus-card-important" if row["Destacado"] else ""
+        tarjetas.append(
+            f'<div class="slide-focus-card{clase_destacada}">'
+            f'<div class="slide-focus-icon">{html.escape(str(row["Icono"]))}</div>'
+            '<div>'
+            f'<div class="slide-focus-label">{html.escape(str(row["Foco"]).upper())}</div>'
+            f'<div class="slide-focus-value">{formato_entero_es(row[TEXT_CANTIDAD])}</div>'
+            f'<div class="slide-focus-percent">({formato_porcentaje_es(row["% casos"])})</div>'
+            "</div>"
+            "</div>"
+        )
+    tarjetas.append(
+        '<div class="slide-focus-card slide-focus-total-card">'
+        '<div class="slide-focus-label">TOTAL TICKETS</div>'
+        f'<div class="slide-focus-value">{formato_entero_es(total)}</div>'
+        '<div class="slide-focus-percent">(100%)</div>'
+        "</div>"
+    )
+    return (
+        '<div class="slide-focus-strip">'
+        '<div class="slide-focus-strip-title">Focos operativos</div>'
+        f'<div class="slide-focus-grid">{"".join(tarjetas)}</div>'
+        "</div>"
+    )
 
 
 def lectura_focos_uso_casos(base):
@@ -4707,6 +5027,7 @@ def render_kpi_casos_cliente_externo(df, mes_dashboard=None):
 
     st.divider()
     render_distribucion_productos_soporte(base, mes_dashboard or TEXT_TODOS)
+    render_focos_operativos_kpi_casos(base)
 
     st.divider()
     col_grafico, col_lectura = st.columns([2.15, 1])
