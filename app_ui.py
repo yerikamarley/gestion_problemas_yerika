@@ -3287,10 +3287,13 @@ def slide_note_html(titulo, lineas):
     )
 
 
-def slide_frame_html(titulo, periodo, tarjetas, caption, izquierda_html, derecha_html):
+def slide_frame_html(titulo, periodo, tarjetas, caption, izquierda_html, derecha_html, frame_class=""):
     periodo_html = f"{TEXT_PERIODO}{periodo}" if periodo else ""
+    clases = "slide-frame"
+    if frame_class:
+        clases += f" {html.escape(str(frame_class))}"
     return (
-        '<div class="slide-frame" id="kpi-slide-frame" data-kpi-slide-id="kpi-slide-frame">'
+        f'<div class="{clases}" id="kpi-slide-frame" data-kpi-slide-id="kpi-slide-frame">'
         f'<div class="slide-period">{html.escape(periodo_html)}</div>'
         f'<div class="slide-title">{html.escape(str(titulo))}</div>'
         f"{slide_kpi_cards_html(tarjetas)}"
@@ -3303,8 +3306,11 @@ def slide_frame_html(titulo, periodo, tarjetas, caption, izquierda_html, derecha
     )
 
 
-def render_slide_frame_kpi(titulo, periodo, tarjetas, caption, izquierda_html, derecha_html):
-    st.markdown(slide_frame_html(titulo, periodo, tarjetas, caption, izquierda_html, derecha_html), unsafe_allow_html=True)
+def render_slide_frame_kpi(titulo, periodo, tarjetas, caption, izquierda_html, derecha_html, frame_class=""):
+    st.markdown(
+        slide_frame_html(titulo, periodo, tarjetas, caption, izquierda_html, derecha_html, frame_class),
+        unsafe_allow_html=True,
+    )
 
 
 def slide_component_css():
@@ -4349,8 +4355,59 @@ def slide_product_distribution_html(df, periodo_label):
     focos_html = slide_focos_operativos_kpi_html(df)
     return f"""
     <style>
+    .kpi-ce-slide {{
+        padding: 20px 24px;
+        gap: 10px;
+    }}
+    .kpi-ce-slide .slide-period {{
+        font-size: 0.84rem;
+        line-height: 1.05;
+    }}
+    .kpi-ce-slide .slide-title {{
+        font-size: 1.42rem;
+        line-height: 1.05;
+    }}
+    .kpi-ce-slide .slide-kpi-grid {{
+        gap: 8px;
+    }}
+    .kpi-ce-slide .slide-kpi-card {{
+        min-height: 68px;
+        padding: 8px 9px;
+        border-top-width: 3px;
+    }}
+    .kpi-ce-slide .slide-kpi-title {{
+        font-size: 0.64rem;
+        line-height: 1.06;
+    }}
+    .kpi-ce-slide .slide-kpi-value {{
+        font-size: 1.45rem;
+        margin-top: 0.22rem;
+    }}
+    .kpi-ce-slide .slide-caption {{
+        font-size: 0.78rem;
+        line-height: 1.08;
+    }}
+    .kpi-ce-slide .slide-body {{
+        grid-template-columns: minmax(0, 1.8fr) minmax(230px, 0.82fr);
+        gap: 10px;
+    }}
+    .kpi-ce-slide .slide-panel {{
+        padding: 10px 12px;
+    }}
+    .kpi-ce-slide .slide-panel-title {{
+        font-size: 0.92rem;
+        margin-bottom: 0.48rem;
+    }}
+    .kpi-ce-slide .slide-note {{
+        gap: 0.38rem;
+        font-size: 0.76rem;
+        line-height: 1.18;
+    }}
     .slide-product-panel {{
         padding: 14px 16px;
+    }}
+    .kpi-ce-slide .slide-product-panel {{
+        padding: 9px 10px;
     }}
     .slide-product-title {{
         color: #0b1f3a;
@@ -4359,6 +4416,9 @@ def slide_product_distribution_html(df, periodo_label):
         line-height: 1.1;
         text-align: center;
         text-transform: uppercase;
+    }}
+    .kpi-ce-slide .slide-product-title {{
+        font-size: 0.96rem;
     }}
     .slide-product-subtitle {{
         color: #4b5563;
@@ -4369,6 +4429,10 @@ def slide_product_distribution_html(df, periodo_label):
         text-align: center;
         text-transform: uppercase;
     }}
+    .kpi-ce-slide .slide-product-subtitle {{
+        font-size: 0.6rem;
+        margin-top: 2px;
+    }}
     .slide-product-content {{
         display: grid;
         grid-template-columns: minmax(230px, 0.78fr) minmax(420px, 1.22fr);
@@ -4376,6 +4440,12 @@ def slide_product_distribution_html(df, periodo_label):
         align-items: center;
         margin-top: 12px;
         min-height: 0;
+    }}
+    .kpi-ce-slide .slide-product-content {{
+        grid-template-columns: minmax(145px, 0.55fr) minmax(270px, 1.45fr);
+        gap: 10px;
+        margin-top: 6px;
+        align-items: start;
     }}
     .slide-product-pie-wrap {{
         display: flex;
@@ -4394,6 +4464,9 @@ def slide_product_distribution_html(df, periodo_label):
         place-items: center;
         position: relative;
     }}
+    .kpi-ce-slide .slide-product-pie {{
+        width: min(100%, 168px);
+    }}
     .slide-product-pie::after {{
         content: "";
         position: absolute;
@@ -4410,12 +4483,18 @@ def slide_product_distribution_html(df, periodo_label):
         text-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
         z-index: 1;
     }}
+    .kpi-ce-slide .slide-product-center {{
+        font-size: 1.24rem;
+    }}
     .slide-product-labels {{
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: 6px 8px;
         margin-top: 12px;
         width: 100%;
+    }}
+    .kpi-ce-slide .slide-product-labels {{
+        display: none;
     }}
     .slide-product-label {{
         display: grid;
@@ -4458,12 +4537,19 @@ def slide_product_distribution_html(df, periodo_label):
         margin-top: 8px;
         text-align: center;
     }}
+    .kpi-ce-slide .slide-product-total-caption {{
+        font-size: 0.72rem;
+        margin-top: 5px;
+    }}
     .slide-product-total-caption span {{
         color: #4b5563;
         display: block;
         font-size: 0.78rem;
         font-weight: 700;
         margin-top: 2px;
+    }}
+    .kpi-ce-slide .slide-product-total-caption span {{
+        font-size: 0.54rem;
     }}
     .slide-product-table {{
         border: 1px solid #d9dee6;
@@ -4484,6 +4570,10 @@ def slide_product_distribution_html(df, periodo_label):
         padding: 9px 8px;
         text-align: center;
     }}
+    .kpi-ce-slide .slide-product-table th {{
+        font-size: 0.5rem;
+        padding: 5px 4px;
+    }}
     .slide-product-table td {{
         border-top: 1px solid #d9dee6;
         color: #0b1f3a;
@@ -4493,6 +4583,11 @@ def slide_product_distribution_html(df, periodo_label):
         text-align: center;
         line-height: 1.15;
         overflow-wrap: anywhere;
+    }}
+    .kpi-ce-slide .slide-product-table td {{
+        font-size: 0.5rem;
+        line-height: 1.08;
+        padding: 4px 4px;
     }}
     .slide-product-table th:first-child,
     .slide-product-table td:first-child {{
@@ -4514,6 +4609,14 @@ def slide_product_distribution_html(df, periodo_label):
         height: 11px;
         border-radius: 999px;
     }}
+    .kpi-ce-slide .slide-product-name {{
+        gap: 5px;
+    }}
+    .kpi-ce-slide .slide-product-name span {{
+        width: 8px;
+        min-width: 8px;
+        height: 8px;
+    }}
     .slide-product-name {{
         overflow: hidden;
         text-overflow: ellipsis;
@@ -4525,11 +4628,17 @@ def slide_product_distribution_html(df, periodo_label):
         font-size: 0.91rem;
         font-weight: 900;
     }}
+    .kpi-ce-slide .slide-product-total td {{
+        font-size: 0.58rem;
+    }}
     .slide-focus-strip {{
         border: 1px solid #d7c5f8;
         border-radius: 8px;
         margin-top: 12px;
         overflow: hidden;
+    }}
+    .kpi-ce-slide .slide-focus-strip {{
+        margin-top: 7px;
     }}
     .slide-focus-strip-title {{
         color: {UI_PALETTE[TEXT_PURPLE]};
@@ -4540,11 +4649,19 @@ def slide_product_distribution_html(df, periodo_label):
         text-align: center;
         text-transform: uppercase;
     }}
+    .kpi-ce-slide .slide-focus-strip-title {{
+        font-size: 0.52rem;
+        padding-top: 5px;
+    }}
     .slide-focus-grid {{
         display: grid;
         grid-template-columns: repeat(4, minmax(0, 1fr));
         gap: 7px;
         padding: 8px 10px 10px;
+    }}
+    .kpi-ce-slide .slide-focus-grid {{
+        gap: 5px;
+        padding: 5px 7px 7px;
     }}
     .slide-focus-card {{
         border: 1px solid #d7c5f8;
@@ -4555,6 +4672,12 @@ def slide_product_distribution_html(df, periodo_label):
         align-items: center;
         min-height: 58px;
         padding: 6px;
+    }}
+    .kpi-ce-slide .slide-focus-card {{
+        grid-template-columns: 24px minmax(0, 1fr);
+        gap: 4px;
+        min-height: 42px;
+        padding: 4px;
     }}
     .slide-focus-card-important {{
         border-color: {UI_PALETTE[TEXT_PRIMARY]};
@@ -4577,6 +4700,11 @@ def slide_product_distribution_html(df, periodo_label):
         font-weight: 900;
         line-height: 1;
     }}
+    .kpi-ce-slide .slide-focus-icon {{
+        width: 23px;
+        height: 23px;
+        font-size: 0.42rem;
+    }}
     .slide-focus-card-important .slide-focus-icon {{
         border-color: {UI_PALETTE[TEXT_PRIMARY]};
         color: {UI_PALETTE[TEXT_PRIMARY]};
@@ -4587,6 +4715,9 @@ def slide_product_distribution_html(df, periodo_label):
         font-weight: 900;
         line-height: 1.05;
         overflow-wrap: anywhere;
+    }}
+    .kpi-ce-slide .slide-focus-label {{
+        font-size: 0.42rem;
     }}
     .slide-focus-card-important .slide-focus-label {{
         color: {UI_PALETTE[TEXT_PRIMARY]};
@@ -4599,6 +4730,10 @@ def slide_product_distribution_html(df, periodo_label):
         margin-top: 2px;
         font-variant-numeric: tabular-nums;
     }}
+    .kpi-ce-slide .slide-focus-value {{
+        font-size: 0.74rem;
+        margin-top: 1px;
+    }}
     .slide-focus-total-card .slide-focus-value {{
         color: {UI_PALETTE[TEXT_PURPLE]};
     }}
@@ -4608,6 +4743,10 @@ def slide_product_distribution_html(df, periodo_label):
         font-weight: 900;
         line-height: 1;
         margin-top: 2px;
+    }}
+    .kpi-ce-slide .slide-focus-percent {{
+        font-size: 0.4rem;
+        margin-top: 1px;
     }}
     </style>
     <div class="slide-panel slide-product-panel">
@@ -4995,6 +5134,7 @@ def render_slide_kpi_casos_cliente_externo(base, metricas, mes_dashboard):
         caption,
         izquierda,
         derecha,
+        frame_class="kpi-ce-slide",
     )
 
 
