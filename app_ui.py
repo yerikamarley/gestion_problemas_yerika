@@ -186,8 +186,18 @@ CHART_COLORS = [
     UI_PALETTE["text"],
 ]
 
+PRODUCT_PIE_COLORS = [
+    "#0b3a78",
+    "#5a7f45",
+    "#971531",
+    "#ff5a00",
+    "#d89a00",
+    "#8f9294",
+]
+
 CACHE_TTL_SEGUNDOS = 300
 DATAFRAME_DISPLAY_LIMIT = 1000
+DATAFRAME_PAGE_SIZE = 50
 SLA_CASOS_HORAS = 36
 
 
@@ -209,6 +219,88 @@ def dataframe_liviano(df, limite=DATAFRAME_DISPLAY_LIMIT, height=None):
     if height is not None:
         kwargs["height"] = height
     st.dataframe(df, **kwargs)
+
+
+def cambiar_pagina_dataframe(page_key, delta):
+    st.session_state[page_key] = st.session_state.get(page_key, 0) + delta
+
+
+def dataframe_paginado(df, key, filas_por_pagina=DATAFRAME_PAGE_SIZE, height=None, reset_token=None):
+    total = len(df)
+    page_key = f"{key}_pagina"
+    token_key = f"{key}_token"
+    if st.session_state.get(token_key) != reset_token:
+        st.session_state[token_key] = reset_token
+        st.session_state[page_key] = 0
+
+    total_paginas = max(1, (total + filas_por_pagina - 1) // filas_por_pagina)
+    pagina_actual = min(max(int(st.session_state.get(page_key, 0)), 0), total_paginas - 1)
+    st.session_state[page_key] = pagina_actual
+
+    inicio = pagina_actual * filas_por_pagina
+    fin = min(inicio + filas_por_pagina, total)
+    visible = df.iloc[inicio:fin] if total else df
+
+    kwargs = {
+        "use_container_width": True,
+        "hide_index": True,
+    }
+    if height is not None:
+        kwargs["height"] = height
+    st.dataframe(visible, **kwargs)
+
+    col_info, col_anterior, col_siguiente = st.columns([2.4, 1, 1])
+    with col_info:
+        if total:
+            st.caption(
+                f"Mostrando {inicio + 1}-{fin} de {total} registros | "
+                f"Pagina {pagina_actual + 1} de {total_paginas}"
+            )
+        else:
+            st.caption("Sin registros para mostrar.")
+    with col_anterior:
+        st.button(
+            "Anterior",
+            key=f"{key}_anterior",
+            disabled=pagina_actual <= 0,
+            on_click=cambiar_pagina_dataframe,
+            args=(page_key, -1),
+            use_container_width=True,
+        )
+    with col_siguiente:
+        st.button(
+            "Siguiente",
+            key=f"{key}_siguiente",
+            disabled=pagina_actual >= total_paginas - 1,
+            on_click=cambiar_pagina_dataframe,
+            args=(page_key, 1),
+            use_container_width=True,
+        )
+
+
+@st.cache_data(show_spinner=False)
+def dataframe_csv_bytes(df):
+    return df.to_csv(index=False).encode("utf-8-sig")
+
+
+def nombre_archivo_seguro(texto):
+    limpio = re.sub(r"[^A-Za-z0-9_-]+", "_", str(texto).strip().lower())
+    limpio = re.sub(r"_+", "_", limpio).strip("_")
+    return limpio or "datos"
+
+
+def render_descarga_dataframe(df, key, nombre_base, periodo_label):
+    if df.empty:
+        return
+    archivo_periodo = nombre_archivo_seguro(periodo_label)
+    st.download_button(
+        "Descargar data completa",
+        data=dataframe_csv_bytes(df),
+        file_name=f"{nombre_base}_{archivo_periodo}.csv",
+        mime="text/csv",
+        key=key,
+        help="Incluye todos los registros del periodo y filtros actuales, no solo la pagina visible.",
+    )
 
 
 @st.cache_data(ttl=CACHE_TTL_SEGUNDOS, show_spinner=False)
@@ -3902,6 +3994,212 @@ def grafico_porcentaje_tipologias_soporte(resumen):
     st.plotly_chart(aplicar_estilo_figura(fig, "Distribucion porcentual por tipologia"), use_container_width=True)
 
 
+def formato_entero_es(valor):
+    try:
+        numero = int(round(float(valor)))
+    except (TypeError, ValueError):
+        numero = 0
+    return f"{numero:,}".replace(",", ".")
+
+
+def formato_porcentaje_es(valor, decimales=1):
+    if valor is None or pd.isna(valor):
+        valor = 0
+    return f"{float(valor):.{decimales}f}%".replace(".", ",")
+
+
+def resumen_productos_soporte(df, top_n=5):
+    columnas = ["Producto", TEXT_CANTIDAD, "% participacion"]
+    if df.empty or TEXT_PRODUCTO not in df.columns:
+        return pd.DataFrame(columns=columnas)
+
+    productos = df[TEXT_PRODUCTO].apply(lambda valor: valor_limpio(valor) or "Sin producto")
+    conteo = productos.value_counts(dropna=False)
+    total = int(conteo.sum())
+    if total <= 0:
+        return pd.DataFrame(columns=columnas)
+
+    filas = [
+        {
+            "Producto": producto,
+            TEXT_CANTIDAD: int(cantidad),
+            "% participacion": round((int(cantidad) / total) * 100, 1),
+        }
+        for producto, cantidad in conteo.head(top_n).items()
+    ]
+    otros = int(conteo.iloc[top_n:].sum())
+    if otros > 0:
+        filas.append(
+            {
+                "Producto": "Otros productos",
+                TEXT_CANTIDAD: otros,
+                "% participacion": round((otros / total) * 100, 1),
+            }
+        )
+    return pd.DataFrame(filas, columns=columnas)
+
+
+def render_tabla_productos_soporte(resumen):
+    estilos = f"""
+    <style>
+    .product-share-table {{
+        width: 100%;
+        border: 1px solid {UI_PALETTE["border"]};
+        border-radius: 8px;
+        overflow: hidden;
+        background: #ffffff;
+    }}
+    .product-share-table table {{
+        width: 100%;
+        border-collapse: collapse;
+        table-layout: fixed;
+        font-family: Arial, sans-serif;
+    }}
+    .product-share-table th {{
+        background: #0b2b5c;
+        color: #ffffff;
+        font-size: 14px;
+        font-weight: 800;
+        padding: 12px 10px;
+        text-align: center;
+    }}
+    .product-share-table td {{
+        border-top: 1px solid {UI_PALETTE["border"]};
+        color: {UI_PALETTE["text"]};
+        font-size: 15px;
+        padding: 13px 10px;
+        vertical-align: middle;
+    }}
+    .product-share-name {{
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        word-break: break-word;
+    }}
+    .product-share-dot {{
+        width: 14px;
+        min-width: 14px;
+        height: 14px;
+        border-radius: 999px;
+        display: inline-block;
+    }}
+    .product-share-number {{
+        text-align: center;
+        font-weight: 700;
+        white-space: nowrap;
+    }}
+    .product-share-total td {{
+        background: #edf2f7;
+        color: #0b1f3a;
+        font-weight: 900;
+        font-size: 16px;
+    }}
+    </style>
+    """
+    filas = []
+    total = int(resumen[TEXT_CANTIDAD].sum())
+    for indice, row in resumen.iterrows():
+        color = PRODUCT_PIE_COLORS[indice % len(PRODUCT_PIE_COLORS)]
+        filas.append(
+            "<tr>"
+            '<td><div class="product-share-name">'
+            f'<span class="product-share-dot" style="background:{color};"></span>'
+            f"{html.escape(str(row['Producto']))}"
+            "</div></td>"
+            f'<td class="product-share-number">{formato_entero_es(row[TEXT_CANTIDAD])}</td>'
+            f'<td class="product-share-number">{formato_porcentaje_es(row["% participacion"])}</td>'
+            "</tr>"
+        )
+    filas.append(
+        '<tr class="product-share-total">'
+        "<td class=\"product-share-number\">TOTAL</td>"
+        f'<td class="product-share-number">{formato_entero_es(total)}</td>'
+        '<td class="product-share-number">100,0%</td>'
+        "</tr>"
+    )
+    tabla = (
+        estilos
+        + '<div class="product-share-table"><table>'
+        "<thead><tr><th>PRODUCTO</th><th>CANTIDAD</th><th>% PARTICIPACION</th></tr></thead>"
+        f"<tbody>{''.join(filas)}</tbody>"
+        "</table></div>"
+    )
+    st.markdown(tabla, unsafe_allow_html=True)
+
+
+def render_distribucion_productos_soporte(df, periodo_label):
+    resumen = resumen_productos_soporte(df)
+    if resumen.empty:
+        st.info("No hay productos para calcular la distribucion de tickets de soporte.")
+        return
+
+    total = int(resumen[TEXT_CANTIDAD].sum())
+    titulo_periodo = str(periodo_label).upper()
+    st.markdown(
+        f"""
+        <div style="text-align:center; margin: 0 0 6px 0;">
+            <div style="font-size:30px; font-weight:900; color:#0b1f3a; line-height:1.1;">
+                TICKETS DE SOPORTE - {html.escape(titulo_periodo)}
+            </div>
+            <div style="font-size:18px; font-weight:700; color:#4b5563; margin-top:4px;">
+                DISTRIBUCION POR PRODUCTO
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    datos = resumen.copy()
+    datos["Etiqueta %"] = datos["% participacion"].apply(formato_porcentaje_es)
+    col_grafico, col_tabla = st.columns([1.05, 1])
+
+    with col_grafico:
+        fig = px.pie(
+            datos,
+            values=TEXT_CANTIDAD,
+            names="Producto",
+            color_discrete_sequence=PRODUCT_PIE_COLORS,
+        )
+        fig.update_traces(
+            sort=False,
+            direction="clockwise",
+            text=datos["Etiqueta %"],
+            texttemplate="%{text}",
+            textposition=TEXT_OUTSIDE,
+            marker={"line": {"color": "#ffffff", "width": 2}},
+            hovertemplate="<b>%{label}</b><br>Cantidad: %{value}<br>Participacion: %{text}<extra></extra>",
+        )
+        principal = float(datos["% participacion"].max())
+        if principal >= 45:
+            fig.add_annotation(
+                text=formato_porcentaje_es(principal),
+                x=0.5,
+                y=0.48,
+                showarrow=False,
+                font={"size": 32, "color": "#ffffff", "family": "Arial, sans-serif"},
+            )
+        fig.update_layout(
+            showlegend=False,
+            height=440,
+            margin={"l": 8, "r": 8, "t": 18, "b": 0},
+            paper_bgcolor="rgba(255,255,255,0)",
+            font={"color": UI_PALETTE["text"], "size": 15, "family": "Arial, sans-serif"},
+        )
+        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+        st.markdown(
+            f"""
+            <div style="text-align:center; margin-top:-18px; color:#0b1f3a;">
+                <div style="font-weight:900; font-size:18px;">TOTAL: {formato_entero_es(total)}</div>
+                <div style="font-size:15px;">Tickets de soporte</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    with col_tabla:
+        render_tabla_productos_soporte(datos)
+
+
 def resumen_otras_tipificaciones(base, top_n=3):
     conteo = base["_tipificacion_kpi"].value_counts(dropna=False)
     otras = conteo.iloc[top_n:]
@@ -4055,6 +4353,10 @@ def render_kpi_casos_cliente_externo(df, mes_dashboard=None):
         f"Cumplen SLA: {metricas['cumple_sla']} | No cumplen: {metricas['no_cumple_sla']}"
     )
 
+    st.divider()
+    render_distribucion_productos_soporte(base, mes_dashboard or TEXT_TODOS)
+
+    st.divider()
     col_grafico, col_lectura = st.columns([2.15, 1])
     with col_grafico:
         tipificaciones = resumen_tipologias_soporte_casos(base)
@@ -5710,6 +6012,9 @@ def dashboard_casos():
         ]
     )
     st.caption(f"{TEXT_PERIODO}{periodo_label} | Cumplen: {cumplen}{TEXT_NO_CUMPLEN}{incumplen}")
+
+    st.divider()
+    render_distribucion_productos_soporte(df, periodo_label)
 
     st.divider()
     render_carga_agentes(df, TEXT_ASIGNADO, "Carga por agente - casos", TEXT_CASOS)
@@ -8193,6 +8498,10 @@ def vista_casos():
     if not periodo_sql_valido(anio, "casos"):
         return
     df = cargar_casos_soporte_filtrados_cache(anio, mes)
+    filtro_estado = TEXT_TODOS
+    filtro_soporte = TEXT_TODOS
+    filtro_servicio = TEXT_TODOS
+    filtro_cuenta = ""
     if not df.empty:
         df = preparar_fechas_dashboard(df)
         df["mes"] = df[TEXT_CREADO_DT_DASHBOARD].dt.to_period("M").astype(str).replace("NaT", "Sin fecha")
@@ -8266,7 +8575,12 @@ def vista_casos():
         df = df[[col for col in columnas if col in df.columns]]
         st.caption(f"Registros encontrados: {len(df)}")
         st.caption(f"{TEXT_PERIODO}{periodo_label}")
-    dataframe_liviano(df)
+    render_descarga_dataframe(df, "descargar_casos_completos", "casos", periodo_label)
+    dataframe_paginado(
+        df,
+        "vista_casos_tabla",
+        reset_token=(periodo_label, filtro_estado, filtro_soporte, filtro_servicio, filtro_cuenta, len(df)),
+    )
 
 
 def vista_cargar_incidentes():
@@ -8303,6 +8617,10 @@ def vista_incidentes():
     if not periodo_sql_valido(anio, "incidentes"):
         return
     df = cargar_incidentes_sla_filtrados_cache(anio, mes)
+    filtro_estado = TEXT_TODOS
+    filtro_tipificacion = TEXT_TODOS
+    filtro_servicio = TEXT_TODOS
+    filtro_alerta = TEXT_TODOS
     if not df.empty:
         df = preparar_fechas_dashboard(df)
         df["mes"] = df[TEXT_CREADO_DT_DASHBOARD].dt.to_period("M").astype(str).replace("NaT", "Sin fecha")
@@ -8398,7 +8716,12 @@ def vista_incidentes():
         df = df[[col for col in columnas if col in df.columns]]
         st.caption(f"Registros encontrados: {len(df)}")
         st.caption(f"{TEXT_PERIODO}{periodo_label}")
-    dataframe_liviano(df)
+    render_descarga_dataframe(df, "descargar_incidentes_completos", "incidentes", periodo_label)
+    dataframe_paginado(
+        df,
+        "vista_incidentes_tabla",
+        reset_token=(periodo_label, filtro_estado, filtro_tipificacion, filtro_servicio, filtro_alerta, len(df)),
+    )
 
 
 def vista_seguimiento_incidentes():
