@@ -5211,6 +5211,181 @@ def render_kpi_casos_cliente_externo(df, mes_dashboard=None):
         dataframe_liviano(visible)
 
 
+def valor_foco_kpi_casos(resumen_focos, foco, columna=TEXT_CANTIDAD):
+    filas = resumen_focos[resumen_focos["Foco"] == foco]
+    if filas.empty:
+        return 0
+    return filas.iloc[0].get(columna, 0)
+
+
+def fila_kpi_casos_rango(df, etiqueta, fecha_inicio, fecha_fin):
+    datos = filtrar_rango_dashboard(df, fecha_inicio, fecha_fin)
+    base, metricas = preparar_kpi_casos_cliente_externo(datos)
+    if base.empty:
+        return {
+            "Periodo": etiqueta,
+            "Rango": etiqueta_rango_fechas(fecha_inicio, fecha_fin),
+            TEXT_TOTAL: 0,
+            TEXT_CERRADOS: 0,
+            TEXT_ABIERTOS: 0,
+            "SLA %": 0,
+            "Cumple SLA": 0,
+            "No cumple SLA": 0,
+            COL_PROM_HORAS: 0,
+            "Token fisico": 0,
+            "Token virtual": 0,
+            "Envio agenda": 0,
+            "Clientes": 0,
+        }
+
+    focos = resumen_focos_destacados_kpi_casos(base)
+    clientes = base[TEXT_CUENTA].apply(cliente_visible_caso) if TEXT_CUENTA in base.columns else pd.Series(dtype=TEXT_OBJECT)
+    clientes_validos = clientes[clientes != SIN_CUENTA]
+    return {
+        "Periodo": etiqueta,
+        "Rango": etiqueta_rango_fechas(fecha_inicio, fecha_fin),
+        TEXT_TOTAL: metricas["total"],
+        TEXT_CERRADOS: metricas["cerrados"],
+        TEXT_ABIERTOS: metricas["abiertos"],
+        "SLA %": metricas["cumplimiento_sla"],
+        "Cumple SLA": metricas["cumple_sla"],
+        "No cumple SLA": metricas["no_cumple_sla"],
+        COL_PROM_HORAS: metricas["promedio"],
+        "Token fisico": int(valor_foco_kpi_casos(focos, "Token fisico")),
+        "Token virtual": int(valor_foco_kpi_casos(focos, "Token virtual")),
+        "Envio agenda": int(valor_foco_kpi_casos(focos, "Envio agenda")),
+        "Clientes": int(clientes_validos.nunique()) if not clientes_validos.empty else 0,
+    }
+
+
+def tabla_kpi_casos_comparativo_rangos(df, rangos):
+    filas = [
+        fila_kpi_casos_rango(df, etiqueta, fecha_inicio, fecha_fin)
+        for etiqueta, fecha_inicio, fecha_fin in rangos
+    ]
+    return pd.DataFrame(filas)
+
+
+def valor_periodo_kpi_casos(tabla, periodo, columna):
+    filas = tabla[tabla["Periodo"] == periodo]
+    if filas.empty:
+        return 0
+    return filas.iloc[0].get(columna, 0)
+
+
+def tabla_variacion_kpi_casos(tabla):
+    if tabla.empty:
+        return pd.DataFrame()
+    base = tabla[tabla["Periodo"] == "Base"]
+    comparado = tabla[tabla["Periodo"] == "Comparado"]
+    if base.empty or comparado.empty:
+        return pd.DataFrame()
+    base = base.iloc[0]
+    comparado = comparado.iloc[0]
+    filas = []
+    for metrica in [TEXT_TOTAL, TEXT_CERRADOS, TEXT_ABIERTOS, "SLA %", COL_PROM_HORAS, "Token fisico", "Token virtual", "Envio agenda", "Clientes"]:
+        filas.append(
+            {
+                "Metrica": metrica,
+                "Base": base.get(metrica, 0),
+                "Comparado": comparado.get(metrica, 0),
+                "Diferencia": round(float(comparado.get(metrica, 0)) - float(base.get(metrica, 0)), 2),
+                "Variacion %": variacion_porcentual(comparado.get(metrica, 0), base.get(metrica, 0)),
+            }
+        )
+    return pd.DataFrame(filas)
+
+
+def render_tarjetas_kpi_casos_comparativo(tabla):
+    total_base = valor_periodo_kpi_casos(tabla, "Base", TEXT_TOTAL)
+    total_comparado = valor_periodo_kpi_casos(tabla, "Comparado", TEXT_TOTAL)
+    sla_base = valor_periodo_kpi_casos(tabla, "Base", "SLA %")
+    sla_comparado = valor_periodo_kpi_casos(tabla, "Comparado", "SLA %")
+    render_tarjetas(
+        [
+            ("Casos base", total_base),
+            ("Casos comparado", total_comparado),
+            ("Var casos", f"{int(total_comparado - total_base):+d}"),
+            ("SLA base", f"{sla_base}%"),
+            ("SLA comparado", f"{sla_comparado}%"),
+            ("Var SLA p.p.", f"{round(float(sla_comparado) - float(sla_base), 2):+g}"),
+        ]
+    )
+
+
+def render_graficas_kpi_casos_comparativo(tabla):
+    col_total, col_focos = st.columns(2)
+    with col_total:
+        fig = px.bar(
+            tabla,
+            x="Periodo",
+            y=TEXT_TOTAL,
+            text=TEXT_TOTAL,
+            color="Periodo",
+            color_discrete_sequence=[UI_PALETTE[TEXT_PRIMARY], UI_PALETTE[TEXT_LAVENDER]],
+        )
+        fig.update_traces(textposition=TEXT_OUTSIDE)
+        st.plotly_chart(aplicar_estilo_figura(fig, "Total de casos por rango"), use_container_width=True)
+
+    with col_focos:
+        focos = tabla.melt(
+            id_vars=["Periodo"],
+            value_vars=["Token fisico", "Token virtual", "Envio agenda"],
+            var_name="Foco",
+            value_name=TEXT_CANTIDAD,
+        )
+        fig = px.bar(
+            focos,
+            x="Foco",
+            y=TEXT_CANTIDAD,
+            color="Periodo",
+            barmode="group",
+            text=TEXT_CANTIDAD,
+            color_discrete_sequence=[UI_PALETTE[TEXT_PRIMARY], UI_PALETTE[TEXT_LAVENDER]],
+        )
+        fig.update_traces(textposition=TEXT_OUTSIDE)
+        st.plotly_chart(aplicar_estilo_figura(fig, "Focos operativos por rango"), use_container_width=True)
+
+
+def render_kpi_casos_cliente_externo_comparativo():
+    st.subheader("Comparativo KPI Casos Cliente Externo")
+    with st.spinner("Cargando casos para comparativo KPI..."):
+        df = cargar_casos_soporte_cache()
+    if df.empty:
+        st.info("No hay casos cargados para comparar.")
+        return
+
+    df = preparar_fechas_dashboard(df)
+    fecha_min, fecha_max = fechas_disponibles_comparativo_rango(df)
+    if not fecha_min or not fecha_max:
+        st.info("No hay fechas validas para construir el comparativo de casos.")
+        return
+
+    rangos = selector_rangos_kpi_comparativo(fecha_min, fecha_max, key_prefix="kpi_casos_comparativo")
+    if not rangos:
+        return
+
+    tabla = tabla_kpi_casos_comparativo_rangos(df, rangos)
+    render_tarjetas_kpi_casos_comparativo(tabla)
+    st.caption(
+        f"Base: {valor_periodo_kpi_casos(tabla, 'Base', 'Rango')} | "
+        f"Comparado: {valor_periodo_kpi_casos(tabla, 'Comparado', 'Rango')}"
+    )
+    render_graficas_kpi_casos_comparativo(tabla)
+
+    st.divider()
+    st.subheader("Resumen comparativo")
+    variacion = tabla_variacion_kpi_casos(tabla)
+    if not variacion.empty:
+        variacion["Variacion %"] = variacion["Variacion %"].apply(
+            lambda valor: "Sin base" if pd.isna(valor) else formato_porcentaje_presentacion(valor)
+        )
+    st.dataframe(variacion, use_container_width=True, hide_index=True)
+
+    with st.expander("Ver metricas por rango"):
+        st.dataframe(tabla, use_container_width=True, hide_index=True)
+
+
 def segmento_incidente(valor):
     if valor == TIPIFICACION_INCIDENTE_CLIENTE_EXTERNO:
         return "Cliente externo"
@@ -6865,20 +7040,21 @@ def dashboard_casos():
 
 
 def dashboard_kpi_casos_cliente_externo():
-    anio, mes, periodo_label = selector_periodo_sql("cases", "kpi_casos_cliente_externo_periodo")
-    if not periodo_sql_valido(anio, "casos"):
-        return
-    df = cargar_casos_soporte_filtrados_cache(anio, mes)
-    if df.empty:
-        st.info(f"No hay casos cargados para {periodo_label}.")
-        return
-
-    df = preparar_fechas_dashboard(df)
-    if df.empty:
-        st.info(f"No hay casos cargados para {periodo_label}.")
-        return
-
-    render_kpi_casos_cliente_externo(df, periodo_label)
+    tab_actual, tab_comparativo = st.tabs(["KPI actual", "Comparativo por rango"])
+    with tab_actual:
+        anio, mes, periodo_label = selector_periodo_sql("cases", "kpi_casos_cliente_externo_periodo")
+        if periodo_sql_valido(anio, "casos"):
+            df = cargar_casos_soporte_filtrados_cache(anio, mes)
+            if df.empty:
+                st.info(f"No hay casos cargados para {periodo_label}.")
+            else:
+                df = preparar_fechas_dashboard(df)
+                if df.empty:
+                    st.info(f"No hay casos cargados para {periodo_label}.")
+                else:
+                    render_kpi_casos_cliente_externo(df, periodo_label)
+    with tab_comparativo:
+        render_kpi_casos_cliente_externo_comparativo()
 
 
 def dashboard_kpi_incidentes():
@@ -7365,7 +7541,7 @@ def etiqueta_rango_fechas(fecha_inicio, fecha_fin):
     return f"{pd.Timestamp(fecha_inicio).date().isoformat()} a {pd.Timestamp(fecha_fin).date().isoformat()}"
 
 
-def selector_rangos_kpi_comparativo(fecha_min, fecha_max):
+def selector_rangos_kpi_comparativo(fecha_min, fecha_max, key_prefix="kpi_comparativo"):
     rango_base_default, rango_comparado_default = rangos_default_comparativo(fecha_min, fecha_max)
     col_base, col_comparado = st.columns(2)
     with col_base:
@@ -7374,7 +7550,7 @@ def selector_rangos_kpi_comparativo(fecha_min, fecha_max):
             value=rango_base_default,
             min_value=fecha_min,
             max_value=fecha_max,
-            key="kpi_comparativo_rango_base",
+            key=f"{key_prefix}_rango_base",
         )
     with col_comparado:
         rango_comparado = st.date_input(
@@ -7382,7 +7558,7 @@ def selector_rangos_kpi_comparativo(fecha_min, fecha_max):
             value=rango_comparado_default,
             min_value=fecha_min,
             max_value=fecha_max,
-            key="kpi_comparativo_rango_comparado",
+            key=f"{key_prefix}_rango_comparado",
         )
 
     rango_base = normalizar_rango_fecha_input(rango_base)
