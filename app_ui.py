@@ -6904,6 +6904,15 @@ def filtrar_anio_dashboard(df, anio, columna_dt=TEXT_CREADO_DT_DASHBOARD):
     return df[df[columna_dt].dt.year == int(anio)].copy()
 
 
+def filtrar_rango_dashboard(df, fecha_inicio, fecha_fin, columna_dt=TEXT_CREADO_DT_DASHBOARD):
+    if df.empty or columna_dt not in df.columns:
+        return df.copy()
+    inicio = pd.Timestamp(fecha_inicio).normalize()
+    fin = pd.Timestamp(fecha_fin).normalize() + pd.Timedelta(days=1) - pd.Timedelta(microseconds=1)
+    fechas = df[columna_dt]
+    return df[(fechas >= inicio) & (fechas <= fin)].copy()
+
+
 def anios_disponibles_kpi_comparativo(*tablas):
     anios = {2025, 2026}
     for tabla in tablas:
@@ -7056,6 +7065,89 @@ def tabla_metricas_kpi_comparativo(base_casos, base_incidentes, anios):
     return pd.DataFrame(filas)
 
 
+def metricas_casos_comparativo_rango(base, etiqueta, fecha_inicio, fecha_fin):
+    datos = filtrar_rango_dashboard(base, fecha_inicio, fecha_fin)
+    if datos.empty:
+        return {
+            "Registro": TEXT_CASOS,
+            "Periodo": etiqueta,
+            TEXT_TOTAL: 0,
+            TEXT_CERRADOS: 0,
+            TEXT_ABIERTOS: 0,
+            "SLA %": 0,
+            "Cumple SLA": 0,
+            "No cumple SLA": 0,
+            COL_PROM_HORAS: 0,
+        }
+
+    cerrados = int(datos[TEXT_CERRADO_2].sum()) if TEXT_CERRADO_2 in datos.columns else 0
+    cerrados_sla = datos[datos[TEXT_CERRADO_2]].copy() if TEXT_CERRADO_2 in datos.columns else pd.DataFrame()
+    tiempos = pd.to_numeric(
+        cerrados_sla.get("_tiempo_eval_sla_h", pd.Series(dtype=TEXT_FLOAT)),
+        errors=TEXT_COERCE,
+    ).dropna()
+    cumple = int((tiempos <= SLA_CASOS_HORAS).sum())
+    no_cumple = len(tiempos) - cumple
+    return {
+        "Registro": TEXT_CASOS,
+        "Periodo": etiqueta,
+        TEXT_TOTAL: len(datos),
+        TEXT_CERRADOS: cerrados,
+        TEXT_ABIERTOS: len(datos) - cerrados,
+        "SLA %": porcentaje(cumple, len(tiempos)),
+        "Cumple SLA": cumple,
+        "No cumple SLA": no_cumple,
+        COL_PROM_HORAS: round(tiempos.mean(), 2) if not tiempos.empty else 0,
+    }
+
+
+def metricas_incidentes_comparativo_rango(base, etiqueta, fecha_inicio, fecha_fin):
+    datos = filtrar_rango_dashboard(base, fecha_inicio, fecha_fin)
+    if datos.empty:
+        return {
+            "Registro": TEXT_INCIDENTES,
+            "Periodo": etiqueta,
+            TEXT_TOTAL: 0,
+            TEXT_CERRADOS: 0,
+            TEXT_ABIERTOS: 0,
+            "SLA %": 0,
+            "Cumple SLA": 0,
+            "No cumple SLA": 0,
+            COL_PROM_HORAS: 0,
+            "Reincidentes": 0,
+        }
+
+    cerrados = int(datos[TEXT_CERRADO_2].sum()) if TEXT_CERRADO_2 in datos.columns else 0
+    cerrados_sla = datos[
+        datos.get(TEXT_CERRADO_2, pd.Series(False, index=datos.index))
+        & datos[TEXT_ESTADO_SLA].isin([ESTADO_SLA_CUMPLE, ESTADO_SLA_NO_CUMPLE])
+    ]
+    cumple = int((cerrados_sla[TEXT_ESTADO_SLA] == ESTADO_SLA_CUMPLE).sum())
+    no_cumple = int((cerrados_sla[TEXT_ESTADO_SLA] == ESTADO_SLA_NO_CUMPLE).sum())
+    tiempos = pd.to_numeric(datos.get(TEXT_DURACION_HORAS_NUM, pd.Series(dtype=TEXT_FLOAT)), errors=TEXT_COERCE).dropna()
+    reincidentes = int(datos.get(TEXT_REINCIDENTE, pd.Series(False, index=datos.index)).sum())
+    return {
+        "Registro": TEXT_INCIDENTES,
+        "Periodo": etiqueta,
+        TEXT_TOTAL: len(datos),
+        TEXT_CERRADOS: cerrados,
+        TEXT_ABIERTOS: len(datos) - cerrados,
+        "SLA %": porcentaje(cumple, cumple + no_cumple),
+        "Cumple SLA": cumple,
+        "No cumple SLA": no_cumple,
+        COL_PROM_HORAS: round(tiempos.mean(), 2) if not tiempos.empty else 0,
+        "Reincidentes": reincidentes,
+    }
+
+
+def tabla_metricas_kpi_comparativo_rangos(base_casos, base_incidentes, rangos):
+    filas = []
+    for etiqueta, fecha_inicio, fecha_fin in rangos:
+        filas.append(metricas_casos_comparativo_rango(base_casos, etiqueta, fecha_inicio, fecha_fin))
+        filas.append(metricas_incidentes_comparativo_rango(base_incidentes, etiqueta, fecha_inicio, fecha_fin))
+    return pd.DataFrame(filas)
+
+
 def variacion_porcentual(actual, base):
     if not base:
         return None
@@ -7097,6 +7189,218 @@ def tabla_comparativo_anios(metricas, anio_base, anio_comparado):
             }
         )
     return pd.DataFrame(filas)
+
+
+def tabla_comparativo_rangos(metricas, periodo_base, periodo_comparado):
+    filas = []
+    for registro in [TEXT_CASOS, TEXT_INCIDENTES]:
+        base = metricas[(metricas["Registro"] == registro) & (metricas["Periodo"] == periodo_base)]
+        actual = metricas[(metricas["Registro"] == registro) & (metricas["Periodo"] == periodo_comparado)]
+        if base.empty or actual.empty:
+            continue
+        base = base.iloc[0]
+        actual = actual.iloc[0]
+        filas.append(
+            {
+                "Registro": registro,
+                "Total base": int(base[TEXT_TOTAL]),
+                "Total comparado": int(actual[TEXT_TOTAL]),
+                "Diferencia total": int(actual[TEXT_TOTAL] - base[TEXT_TOTAL]),
+                "Variacion total %": variacion_porcentual(actual[TEXT_TOTAL], base[TEXT_TOTAL]),
+                "SLA base %": base["SLA %"],
+                "SLA comparado %": actual["SLA %"],
+                "Diferencia SLA p.p.": round(actual["SLA %"] - base["SLA %"], 2),
+                "Abiertos base": int(base[TEXT_ABIERTOS]),
+                "Abiertos comparado": int(actual[TEXT_ABIERTOS]),
+                "Lectura": texto_variacion(actual[TEXT_TOTAL], base[TEXT_TOTAL]),
+            }
+        )
+    return pd.DataFrame(filas)
+
+
+def valor_comparativo_rango(comparativo, registro, columna):
+    filas = comparativo[comparativo["Registro"] == registro]
+    return filas.iloc[0][columna] if not filas.empty else 0
+
+
+def render_tarjetas_kpi_comparativo_rangos(comparativo):
+    render_tarjetas(
+        [
+            ("Casos base", valor_comparativo_rango(comparativo, TEXT_CASOS, "Total base")),
+            ("Casos comparado", valor_comparativo_rango(comparativo, TEXT_CASOS, "Total comparado")),
+            ("Var casos", f"{valor_comparativo_rango(comparativo, TEXT_CASOS, 'Diferencia total'):+g}"),
+            ("Incidentes base", valor_comparativo_rango(comparativo, TEXT_INCIDENTES, "Total base")),
+            ("Incidentes comparado", valor_comparativo_rango(comparativo, TEXT_INCIDENTES, "Total comparado")),
+            ("Var incidentes", f"{valor_comparativo_rango(comparativo, TEXT_INCIDENTES, 'Diferencia total'):+g}"),
+        ]
+    )
+
+
+def tendencia_diaria_kpi_rango(base, tipo, rangos):
+    columnas = ["Periodo", "Dia", "Fecha", "Tipo", TEXT_CANTIDAD]
+    if base.empty or TEXT_CREADO_DT_DASHBOARD not in base.columns:
+        return pd.DataFrame(columns=columnas)
+
+    filas = []
+    for etiqueta, fecha_inicio, fecha_fin in rangos:
+        inicio = pd.Timestamp(fecha_inicio).normalize()
+        fin = pd.Timestamp(fecha_fin).normalize()
+        datos = filtrar_rango_dashboard(base, inicio, fin)
+        conteo = (
+            datos.groupby(datos[TEXT_CREADO_DT_DASHBOARD].dt.normalize()).size()
+            if not datos.empty
+            else pd.Series(dtype=TEXT_FLOAT)
+        )
+        for fecha in pd.date_range(inicio, fin, freq="D"):
+            filas.append(
+                {
+                    "Periodo": etiqueta,
+                    "Dia": int((fecha - inicio).days) + 1,
+                    "Fecha": fecha.date().isoformat(),
+                    "Tipo": tipo,
+                    TEXT_CANTIDAD: int(conteo.get(fecha, 0)),
+                }
+            )
+    return pd.DataFrame(filas, columns=columnas)
+
+
+def render_graficas_kpi_comparativo_rangos(metricas, tendencia):
+    col_totales, col_sla = st.columns(2)
+    with col_totales:
+        if metricas.empty:
+            st.info("No hay metricas para graficar.")
+        else:
+            fig = px.bar(
+                metricas,
+                x="Registro",
+                y=TEXT_TOTAL,
+                color="Periodo",
+                barmode="group",
+                text=TEXT_TOTAL,
+                color_discrete_sequence=[UI_PALETTE[TEXT_PRIMARY], UI_PALETTE[TEXT_LAVENDER]],
+            )
+            fig.update_traces(textposition=TEXT_OUTSIDE)
+            st.plotly_chart(aplicar_estilo_figura(fig, "Total por rango"), use_container_width=True)
+
+    with col_sla:
+        if metricas.empty:
+            st.info("No hay SLA para graficar.")
+        else:
+            fig = px.bar(
+                metricas,
+                x="Registro",
+                y="SLA %",
+                color="Periodo",
+                barmode="group",
+                text="SLA %",
+                color_discrete_sequence=[UI_PALETTE[TEXT_PRIMARY], UI_PALETTE[TEXT_LAVENDER]],
+            )
+            fig.update_traces(textposition=TEXT_OUTSIDE)
+            fig.update_yaxes(range=[0, 100])
+            st.plotly_chart(aplicar_estilo_figura(fig, "Cumplimiento SLA por rango"), use_container_width=True)
+
+    st.divider()
+    st.subheader("Tendencia diaria comparativa")
+    if tendencia.empty:
+        st.info("No hay registros diarios para los rangos seleccionados.")
+        return
+    for tipo in [TEXT_CASOS, TEXT_INCIDENTES]:
+        datos_tipo = tendencia[tendencia["Tipo"] == tipo].copy()
+        if datos_tipo.empty:
+            st.info(f"No hay datos diarios de {tipo.lower()}.")
+            continue
+        fig = px.line(
+            datos_tipo,
+            x="Dia",
+            y=TEXT_CANTIDAD,
+            color="Periodo",
+            markers=True,
+            hover_data={"Fecha": True, TEXT_CANTIDAD: True, "Dia": True},
+            color_discrete_sequence=[UI_PALETTE[TEXT_PRIMARY], UI_PALETTE[TEXT_LAVENDER]],
+        )
+        st.plotly_chart(aplicar_estilo_figura(fig, f"{tipo} por dia del rango"), use_container_width=True)
+
+
+def fechas_disponibles_comparativo_rango(*tablas):
+    fechas = []
+    for tabla in tablas:
+        if tabla.empty or TEXT_CREADO_DT_DASHBOARD not in tabla.columns:
+            continue
+        serie = tabla[TEXT_CREADO_DT_DASHBOARD].dropna()
+        if not serie.empty:
+            fechas.append(serie.min())
+            fechas.append(serie.max())
+    if not fechas:
+        return None, None
+    return min(fechas).date(), max(fechas).date()
+
+
+def rangos_default_comparativo(fecha_min, fecha_max):
+    inicio_global = pd.Timestamp(fecha_min).normalize()
+    fin_global = pd.Timestamp(fecha_max).normalize()
+    total_dias = max(int((fin_global - inicio_global).days) + 1, 1)
+    ventana = max(1, min(30, total_dias // 2 or 1))
+
+    comparado_fin = fin_global
+    comparado_inicio = max(inicio_global, comparado_fin - pd.Timedelta(days=ventana - 1))
+    base_fin = comparado_inicio - pd.Timedelta(days=1)
+    if base_fin < inicio_global:
+        base_fin = comparado_inicio
+    base_inicio = max(inicio_global, base_fin - pd.Timedelta(days=ventana - 1))
+    return (
+        (base_inicio.date(), base_fin.date()),
+        (comparado_inicio.date(), comparado_fin.date()),
+    )
+
+
+def normalizar_rango_fecha_input(rango):
+    if isinstance(rango, tuple) and len(rango) == 2:
+        return rango[0], rango[1]
+    if isinstance(rango, list) and len(rango) == 2:
+        return rango[0], rango[1]
+    return None
+
+
+def etiqueta_rango_fechas(fecha_inicio, fecha_fin):
+    return f"{pd.Timestamp(fecha_inicio).date().isoformat()} a {pd.Timestamp(fecha_fin).date().isoformat()}"
+
+
+def selector_rangos_kpi_comparativo(fecha_min, fecha_max):
+    rango_base_default, rango_comparado_default = rangos_default_comparativo(fecha_min, fecha_max)
+    col_base, col_comparado = st.columns(2)
+    with col_base:
+        rango_base = st.date_input(
+            "Rango base",
+            value=rango_base_default,
+            min_value=fecha_min,
+            max_value=fecha_max,
+            key="kpi_comparativo_rango_base",
+        )
+    with col_comparado:
+        rango_comparado = st.date_input(
+            "Rango comparado",
+            value=rango_comparado_default,
+            min_value=fecha_min,
+            max_value=fecha_max,
+            key="kpi_comparativo_rango_comparado",
+        )
+
+    rango_base = normalizar_rango_fecha_input(rango_base)
+    rango_comparado = normalizar_rango_fecha_input(rango_comparado)
+    if not rango_base or not rango_comparado:
+        st.warning("Selecciona fecha inicial y final para ambos rangos.")
+        return None
+
+    base_inicio, base_fin = rango_base
+    comparado_inicio, comparado_fin = rango_comparado
+    if pd.Timestamp(base_inicio) > pd.Timestamp(base_fin) or pd.Timestamp(comparado_inicio) > pd.Timestamp(comparado_fin):
+        st.warning("La fecha inicial debe ser menor o igual a la fecha final en cada rango.")
+        return None
+
+    return [
+        ("Base", base_inicio, base_fin),
+        ("Comparado", comparado_inicio, comparado_fin),
+    ]
 
 
 def tendencia_mensual_kpi(base, tipo, anios):
@@ -7483,7 +7787,7 @@ def dashboard_kpi_comparativo_anual_legacy():
         st.dataframe(tabla, use_container_width=True, hide_index=True)
 
 
-def dashboard_kpi_comparativo_anual():
+def dashboard_ans_incidentes_anual():
     st.subheader("ANS de incidentes 2025 vs 2026")
     st.caption(
         "Reporte ejecutivo solo con incidentes reales. Para 2026 se muestran exclusivamente marzo, abril y mayo."
@@ -7544,6 +7848,72 @@ def dashboard_kpi_comparativo_anual():
             f"{sin_dato_ans} incidentes cerrados/resueltos no tienen datos suficientes para evaluar ANS "
             "y no se incluyen en el porcentaje."
         )
+
+
+def dashboard_kpi_comparativo_rango():
+    st.subheader("Comparativo KPI por rango de fechas")
+    st.caption("Compara casos e incidentes entre dos rangos definidos manualmente.")
+
+    with st.spinner("Cargando casos e incidentes para el comparativo por rango..."):
+        casos = cargar_casos_cache()
+        incidentes = cargar_incidentes_cache()
+
+    if casos.empty and incidentes.empty:
+        st.info("No hay casos ni incidentes cargados para comparar.")
+        return
+
+    with st.spinner("Preparando metricas KPI por fecha..."):
+        base_casos, base_incidentes = preparar_bases_kpi_comparativo(casos, incidentes)
+
+    fecha_min, fecha_max = fechas_disponibles_comparativo_rango(base_casos, base_incidentes)
+    if not fecha_min or not fecha_max:
+        st.info("No hay fechas validas para construir el comparativo.")
+        return
+
+    rangos = selector_rangos_kpi_comparativo(fecha_min, fecha_max)
+    if not rangos:
+        return
+
+    etiqueta_base = etiqueta_rango_fechas(rangos[0][1], rangos[0][2])
+    etiqueta_comparado = etiqueta_rango_fechas(rangos[1][1], rangos[1][2])
+    rangos_metricas = [
+        (etiqueta_base, rangos[0][1], rangos[0][2]),
+        (etiqueta_comparado, rangos[1][1], rangos[1][2]),
+    ]
+
+    metricas = tabla_metricas_kpi_comparativo_rangos(base_casos, base_incidentes, rangos_metricas)
+    comparativo = tabla_comparativo_rangos(metricas, etiqueta_base, etiqueta_comparado)
+    tendencia = pd.concat(
+        [
+            tendencia_diaria_kpi_rango(base_casos, TEXT_CASOS, rangos_metricas),
+            tendencia_diaria_kpi_rango(base_incidentes, TEXT_INCIDENTES, rangos_metricas),
+        ],
+        ignore_index=True,
+    )
+
+    render_tarjetas_kpi_comparativo_rangos(comparativo)
+    st.caption(f"Base: {etiqueta_base} | Comparado: {etiqueta_comparado}")
+    render_graficas_kpi_comparativo_rangos(metricas, tendencia)
+
+    st.divider()
+    st.subheader("Tabla comparativa")
+    tabla_visible = comparativo.copy()
+    if not tabla_visible.empty:
+        tabla_visible["Variacion total %"] = tabla_visible["Variacion total %"].apply(
+            lambda valor: "Sin base" if pd.isna(valor) else formato_porcentaje_presentacion(valor)
+        )
+    st.dataframe(tabla_visible, use_container_width=True, hide_index=True)
+
+    with st.expander("Ver metricas base por rango"):
+        st.dataframe(metricas, use_container_width=True, hide_index=True)
+
+
+def dashboard_kpi_comparativo_anual():
+    tab_rango, tab_anual = st.tabs(["Rango de fechas", "ANS 2025 vs 2026"])
+    with tab_rango:
+        dashboard_kpi_comparativo_rango()
+    with tab_anual:
+        dashboard_ans_incidentes_anual()
 
 
 def opciones_filtro_reincidencias(base, columna):
