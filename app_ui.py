@@ -7105,8 +7105,17 @@ def dashboard_casos():
 
 
 def dashboard_kpi_casos_cliente_externo():
-    tab_actual, tab_comparativo = st.tabs(["KPI actual", "Comparativo por mes"])
-    with tab_actual:
+    vista = st.radio(
+        "Vista",
+        ["KPI actual", "Comparativo por mes"],
+        horizontal=True,
+        key="kpi_casos_cliente_externo_vista",
+    )
+    if vista == "Comparativo por mes":
+        render_kpi_casos_cliente_externo_comparativo()
+        return
+
+    if vista == "KPI actual":
         anio, mes, periodo_label = selector_periodo_sql("cases", "kpi_casos_cliente_externo_periodo")
         if periodo_sql_valido(anio, "casos"):
             df = cargar_casos_soporte_filtrados_cache(anio, mes)
@@ -7118,8 +7127,6 @@ def dashboard_kpi_casos_cliente_externo():
                     st.info(f"No hay casos cargados para {periodo_label}.")
                 else:
                     render_kpi_casos_cliente_externo(df, periodo_label)
-    with tab_comparativo:
-        render_kpi_casos_cliente_externo_comparativo()
 
 
 def dashboard_kpi_incidentes():
