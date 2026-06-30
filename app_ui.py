@@ -4151,6 +4151,11 @@ def render_distribucion_productos_soporte(df, periodo_label):
 
     datos = resumen.copy()
     datos["Etiqueta %"] = datos["% participacion"].apply(formato_porcentaje_es)
+    principal_idx = int(datos["% participacion"].to_numpy().argmax())
+    datos["Etiqueta torta"] = [
+        "" if indice == principal_idx else etiqueta
+        for indice, etiqueta in enumerate(datos["Etiqueta %"].tolist())
+    ]
     col_grafico, col_tabla = st.columns([1.05, 1])
 
     with col_grafico:
@@ -4159,15 +4164,19 @@ def render_distribucion_productos_soporte(df, periodo_label):
             values=TEXT_CANTIDAD,
             names="Producto",
             color_discrete_sequence=PRODUCT_PIE_COLORS,
+            custom_data=["Etiqueta %"],
         )
         fig.update_traces(
             sort=False,
             direction="clockwise",
-            text=datos["Etiqueta %"],
+            text=datos["Etiqueta torta"],
             texttemplate="%{text}",
             textposition=TEXT_OUTSIDE,
+            textfont={"size": 22, "color": "#111827", "family": "Arial, sans-serif"},
+            pull=[0 if indice == principal_idx else 0.035 for indice in range(len(datos))],
+            automargin=True,
             marker={"line": {"color": "#ffffff", "width": 2}},
-            hovertemplate="<b>%{label}</b><br>Cantidad: %{value}<br>Participacion: %{text}<extra></extra>",
+            hovertemplate="<b>%{label}</b><br>Cantidad: %{value}<br>Participacion: %{customdata[0]}<extra></extra>",
         )
         principal = float(datos["% participacion"].max())
         if principal >= 45:
@@ -4176,19 +4185,20 @@ def render_distribucion_productos_soporte(df, periodo_label):
                 x=0.5,
                 y=0.48,
                 showarrow=False,
-                font={"size": 32, "color": "#ffffff", "family": "Arial, sans-serif"},
+                font={"size": 44, "color": "#ffffff", "family": "Arial, sans-serif"},
             )
         fig.update_layout(
             showlegend=False,
-            height=440,
-            margin={"l": 8, "r": 8, "t": 18, "b": 0},
+            height=520,
+            margin={"l": 82, "r": 82, "t": 26, "b": 36},
             paper_bgcolor="rgba(255,255,255,0)",
-            font={"color": UI_PALETTE["text"], "size": 15, "family": "Arial, sans-serif"},
+            font={"color": UI_PALETTE["text"], "size": 18, "family": "Arial, sans-serif"},
+            uniformtext={"minsize": 18, "mode": "show"},
         )
         st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
         st.markdown(
             f"""
-            <div style="text-align:center; margin-top:-18px; color:#0b1f3a;">
+            <div style="text-align:center; margin-top:-10px; color:#0b1f3a;">
                 <div style="font-weight:900; font-size:18px;">TOTAL: {formato_entero_es(total)}</div>
                 <div style="font-size:15px;">Tickets de soporte</div>
             </div>
@@ -4198,6 +4208,263 @@ def render_distribucion_productos_soporte(df, periodo_label):
 
     with col_tabla:
         render_tabla_productos_soporte(datos)
+
+
+def conic_gradient_productos(resumen):
+    total = int(resumen[TEXT_CANTIDAD].sum())
+    if total <= 0:
+        return "#f1f3f5 0% 100%"
+    partes = []
+    inicio = 0.0
+    for indice, row in resumen.iterrows():
+        porcentaje_segmento = (float(row[TEXT_CANTIDAD]) / total) * 100
+        fin = inicio + porcentaje_segmento
+        color = PRODUCT_PIE_COLORS[indice % len(PRODUCT_PIE_COLORS)]
+        partes.append(f"{color} {inicio:.4f}% {fin:.4f}%")
+        inicio = fin
+    return ", ".join(partes)
+
+
+def slide_product_distribution_html(df, periodo_label):
+    resumen = resumen_productos_soporte(df)
+    if resumen.empty:
+        return (
+            '<div class="slide-panel">'
+            '<div class="slide-panel-title">Distribucion por producto</div>'
+            '<div class="kpi-ranking-empty">Sin productos para mostrar.</div>'
+            "</div>"
+        )
+
+    total = int(resumen[TEXT_CANTIDAD].sum())
+    principal = resumen.iloc[0]
+    gradient = conic_gradient_productos(resumen)
+    filas = []
+    etiquetas = []
+    for indice, row in resumen.iterrows():
+        color = PRODUCT_PIE_COLORS[indice % len(PRODUCT_PIE_COLORS)]
+        porcentaje_texto = formato_porcentaje_es(row["% participacion"])
+        etiquetas.append(
+            '<div class="slide-product-label">'
+            f'<span style="background:{color};"></span>'
+            f'<strong>{html.escape(porcentaje_texto)}</strong>'
+            f'<em>{html.escape(str(row["Producto"]))}</em>'
+            "</div>"
+        )
+        filas.append(
+            "<tr>"
+            '<td><div class="slide-product-name">'
+            f'<span style="background:{color};"></span>'
+            f"{html.escape(str(row['Producto']))}"
+            "</div></td>"
+            f"<td>{formato_entero_es(row[TEXT_CANTIDAD])}</td>"
+            f"<td>{porcentaje_texto}</td>"
+            "</tr>"
+        )
+    filas.append(
+        '<tr class="slide-product-total">'
+        "<td>TOTAL</td>"
+        f"<td>{formato_entero_es(total)}</td>"
+        "<td>100,0%</td>"
+        "</tr>"
+    )
+    return f"""
+    <style>
+    .slide-product-panel {{
+        padding: 14px 16px;
+    }}
+    .slide-product-title {{
+        color: #0b1f3a;
+        font-size: 1.26rem;
+        font-weight: 900;
+        line-height: 1.1;
+        text-align: center;
+        text-transform: uppercase;
+    }}
+    .slide-product-subtitle {{
+        color: #4b5563;
+        font-size: 0.86rem;
+        font-weight: 900;
+        line-height: 1.1;
+        margin-top: 4px;
+        text-align: center;
+        text-transform: uppercase;
+    }}
+    .slide-product-content {{
+        display: grid;
+        grid-template-columns: minmax(260px, 0.88fr) minmax(330px, 1.12fr);
+        gap: 18px;
+        align-items: center;
+        margin-top: 12px;
+        min-height: 0;
+    }}
+    .slide-product-pie-wrap {{
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        min-width: 0;
+    }}
+    .slide-product-pie {{
+        width: min(100%, 320px);
+        aspect-ratio: 1 / 1;
+        border-radius: 50%;
+        background: conic-gradient({gradient});
+        border: 3px solid #ffffff;
+        box-shadow: 0 8px 18px rgba(20, 20, 20, 0.13);
+        display: grid;
+        place-items: center;
+        position: relative;
+    }}
+    .slide-product-pie::after {{
+        content: "";
+        position: absolute;
+        inset: 0;
+        border-radius: inherit;
+        box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.78);
+        pointer-events: none;
+    }}
+    .slide-product-center {{
+        color: #ffffff;
+        font-size: 2.15rem;
+        font-weight: 900;
+        line-height: 1;
+        text-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+        z-index: 1;
+    }}
+    .slide-product-labels {{
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 6px 8px;
+        margin-top: 12px;
+        width: 100%;
+    }}
+    .slide-product-label {{
+        display: grid;
+        grid-template-columns: 10px auto;
+        grid-template-areas:
+            "dot pct"
+            "dot name";
+        column-gap: 6px;
+        align-items: center;
+        min-width: 0;
+    }}
+    .slide-product-label span {{
+        grid-area: dot;
+        width: 10px;
+        height: 10px;
+        border-radius: 999px;
+    }}
+    .slide-product-label strong {{
+        grid-area: pct;
+        color: #0b1f3a;
+        font-size: 1rem;
+        font-weight: 900;
+        line-height: 1;
+    }}
+    .slide-product-label em {{
+        grid-area: name;
+        color: #4b5563;
+        font-size: 0.68rem;
+        font-style: normal;
+        font-weight: 800;
+        line-height: 1.08;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }}
+    .slide-product-total-caption {{
+        color: #0b1f3a;
+        font-size: 1.05rem;
+        font-weight: 900;
+        margin-top: 8px;
+        text-align: center;
+    }}
+    .slide-product-total-caption span {{
+        color: #4b5563;
+        display: block;
+        font-size: 0.78rem;
+        font-weight: 700;
+        margin-top: 2px;
+    }}
+    .slide-product-table {{
+        border: 1px solid #d9dee6;
+        border-radius: 8px;
+        overflow: hidden;
+        min-width: 0;
+    }}
+    .slide-product-table table {{
+        width: 100%;
+        border-collapse: collapse;
+        table-layout: fixed;
+    }}
+    .slide-product-table th {{
+        background: #0b2b5c;
+        color: #ffffff;
+        font-size: 0.76rem;
+        font-weight: 900;
+        padding: 9px 8px;
+        text-align: center;
+    }}
+    .slide-product-table td {{
+        border-top: 1px solid #d9dee6;
+        color: #0b1f3a;
+        font-size: 0.82rem;
+        font-weight: 750;
+        padding: 8px 8px;
+        text-align: center;
+    }}
+    .slide-product-table th:first-child,
+    .slide-product-table td:first-child {{
+        text-align: left;
+    }}
+    .slide-product-name {{
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+    }}
+    .slide-product-name span {{
+        width: 11px;
+        min-width: 11px;
+        height: 11px;
+        border-radius: 999px;
+    }}
+    .slide-product-name {{
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }}
+    .slide-product-total td {{
+        background: #edf2f7;
+        color: #0b1f3a;
+        font-size: 0.91rem;
+        font-weight: 900;
+    }}
+    </style>
+    <div class="slide-panel slide-product-panel">
+        <div class="slide-product-title">Tickets de soporte - {html.escape(str(periodo_label).upper())}</div>
+        <div class="slide-product-subtitle">Distribucion por producto</div>
+        <div class="slide-product-content">
+            <div class="slide-product-pie-wrap">
+                <div class="slide-product-pie">
+                    <div class="slide-product-center">{formato_porcentaje_es(principal["% participacion"])}</div>
+                </div>
+                <div class="slide-product-labels">{"".join(etiquetas)}</div>
+                <div class="slide-product-total-caption">
+                    TOTAL: {formato_entero_es(total)}
+                    <span>Tickets de soporte</span>
+                </div>
+            </div>
+            <div class="slide-product-table">
+                <table>
+                    <thead>
+                        <tr><th>PRODUCTO</th><th>CANTIDAD</th><th>%</th></tr>
+                    </thead>
+                    <tbody>{"".join(filas)}</tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    """
 
 
 def resumen_otras_tipificaciones(base, top_n=3):
@@ -4306,15 +4573,8 @@ def render_slide_kpi_casos_cliente_externo(base, metricas, mes_dashboard):
         f"Tiempo promedio: {metricas['promedio']} h | "
         f"Cumplen SLA: {metricas['cumple_sla']} | No cumplen: {metricas['no_cumple_sla']}"
     )
-    tipificaciones = resumen_tipologias_soporte_casos(base)
     lineas = lineas_lectura_kpi_casos(metricas, base)
-    izquierda = slide_ranking_html(
-        tipificaciones,
-        TEXT_TIPOLOGIA_SOPORTE,
-        TEXT_CANTIDAD,
-        "Tipologias de casos",
-        top_n=4,
-    )
+    izquierda = slide_product_distribution_html(base, mes_dashboard or TEXT_TODOS)
     derecha = slide_note_html("Lectura", lineas)
     render_slide_frame_kpi(
         "KPI Casos Cliente Externo",
