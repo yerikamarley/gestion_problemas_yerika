@@ -5273,6 +5273,50 @@ def valor_periodo_kpi_casos(tabla, periodo, columna):
     return filas.iloc[0].get(columna, 0)
 
 
+def etiqueta_mes_periodo_key(periodo):
+    anio, mes = parse_mes_periodo(periodo)
+    return etiqueta_mes_periodo(anio, mes)
+
+
+def rango_mes_periodo_key(periodo):
+    anio, mes = parse_mes_periodo(periodo)
+    inicio = pd.Timestamp(year=anio, month=mes, day=1)
+    fin = inicio + pd.offsets.MonthEnd(0)
+    return inicio.date(), fin.date()
+
+
+def selector_meses_kpi_casos_comparativo():
+    meses = cargar_meses_disponibles_cache("cases")
+    if not meses:
+        st.info("No hay meses disponibles para comparar casos.")
+        return None
+
+    indice_base = max(len(meses) - 2, 0)
+    indice_comparado = len(meses) - 1
+    col_base, col_comparado = st.columns(2)
+    with col_base:
+        mes_base = st.selectbox(
+            "Mes base",
+            meses,
+            index=indice_base,
+            format_func=etiqueta_mes_periodo_key,
+            key="kpi_casos_comparativo_mes_base",
+        )
+    with col_comparado:
+        mes_comparado = st.selectbox(
+            "Mes comparado",
+            meses,
+            index=indice_comparado,
+            format_func=etiqueta_mes_periodo_key,
+            key="kpi_casos_comparativo_mes_comparado",
+        )
+
+    if mes_base == mes_comparado:
+        st.warning("Selecciona dos meses diferentes para comparar.")
+        return None
+    return mes_base, mes_comparado
+
+
 def tabla_variacion_kpi_casos(tabla):
     if tabla.empty:
         return pd.DataFrame()
@@ -5325,7 +5369,7 @@ def render_graficas_kpi_casos_comparativo(tabla):
             color_discrete_sequence=[UI_PALETTE[TEXT_PRIMARY], UI_PALETTE[TEXT_LAVENDER]],
         )
         fig.update_traces(textposition=TEXT_OUTSIDE)
-        st.plotly_chart(aplicar_estilo_figura(fig, "Total de casos por rango"), use_container_width=True)
+        st.plotly_chart(aplicar_estilo_figura(fig, "Total de casos por mes"), use_container_width=True)
 
     with col_focos:
         focos = tabla.melt(
@@ -5344,11 +5388,23 @@ def render_graficas_kpi_casos_comparativo(tabla):
             color_discrete_sequence=[UI_PALETTE[TEXT_PRIMARY], UI_PALETTE[TEXT_LAVENDER]],
         )
         fig.update_traces(textposition=TEXT_OUTSIDE)
-        st.plotly_chart(aplicar_estilo_figura(fig, "Focos operativos por rango"), use_container_width=True)
+        st.plotly_chart(aplicar_estilo_figura(fig, "Focos operativos por mes"), use_container_width=True)
+
+
+def render_bloque_mes_kpi_casos_comparativo(df, periodo_key, titulo):
+    anio, mes = parse_mes_periodo(periodo_key)
+    etiqueta = etiqueta_mes_periodo(anio, mes)
+    datos = filtrar_anio_mes_dashboard(df, anio, mes)
+    st.markdown(f"### {html.escape(titulo)} - {html.escape(etiqueta)}")
+    if datos.empty:
+        st.info(f"No hay casos cargados para {etiqueta}.")
+        return
+    render_distribucion_productos_soporte(datos, etiqueta)
+    render_focos_operativos_kpi_casos(datos)
 
 
 def render_kpi_casos_cliente_externo_comparativo():
-    st.subheader("Comparativo KPI Casos Cliente Externo")
+    st.subheader("Comparativo KPI Casos Cliente Externo por mes")
     with st.spinner("Cargando casos para comparativo KPI..."):
         df = cargar_casos_soporte_cache()
     if df.empty:
@@ -5356,22 +5412,31 @@ def render_kpi_casos_cliente_externo_comparativo():
         return
 
     df = preparar_fechas_dashboard(df)
-    fecha_min, fecha_max = fechas_disponibles_comparativo_rango(df)
-    if not fecha_min or not fecha_max:
-        st.info("No hay fechas validas para construir el comparativo de casos.")
+    meses = selector_meses_kpi_casos_comparativo()
+    if not meses:
         return
 
-    rangos = selector_rangos_kpi_comparativo(fecha_min, fecha_max, key_prefix="kpi_casos_comparativo")
-    if not rangos:
-        return
+    mes_base, mes_comparado = meses
+    base_inicio, base_fin = rango_mes_periodo_key(mes_base)
+    comparado_inicio, comparado_fin = rango_mes_periodo_key(mes_comparado)
+    rangos = [
+        ("Base", base_inicio, base_fin),
+        ("Comparado", comparado_inicio, comparado_fin),
+    ]
 
     tabla = tabla_kpi_casos_comparativo_rangos(df, rangos)
     render_tarjetas_kpi_casos_comparativo(tabla)
     st.caption(
-        f"Base: {valor_periodo_kpi_casos(tabla, 'Base', 'Rango')} | "
-        f"Comparado: {valor_periodo_kpi_casos(tabla, 'Comparado', 'Rango')}"
+        f"Base: {etiqueta_mes_periodo_key(mes_base)} | "
+        f"Comparado: {etiqueta_mes_periodo_key(mes_comparado)}"
     )
     render_graficas_kpi_casos_comparativo(tabla)
+
+    st.divider()
+    render_bloque_mes_kpi_casos_comparativo(df, mes_base, "Mes base")
+
+    st.divider()
+    render_bloque_mes_kpi_casos_comparativo(df, mes_comparado, "Mes comparado")
 
     st.divider()
     st.subheader("Resumen comparativo")
@@ -5382,7 +5447,7 @@ def render_kpi_casos_cliente_externo_comparativo():
         )
     st.dataframe(variacion, use_container_width=True, hide_index=True)
 
-    with st.expander("Ver metricas por rango"):
+    with st.expander("Ver metricas por mes"):
         st.dataframe(tabla, use_container_width=True, hide_index=True)
 
 
@@ -7040,7 +7105,7 @@ def dashboard_casos():
 
 
 def dashboard_kpi_casos_cliente_externo():
-    tab_actual, tab_comparativo = st.tabs(["KPI actual", "Comparativo por rango"])
+    tab_actual, tab_comparativo = st.tabs(["KPI actual", "Comparativo por mes"])
     with tab_actual:
         anio, mes, periodo_label = selector_periodo_sql("cases", "kpi_casos_cliente_externo_periodo")
         if periodo_sql_valido(anio, "casos"):
