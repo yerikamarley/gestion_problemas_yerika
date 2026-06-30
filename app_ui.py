@@ -467,6 +467,8 @@ COL_SLA_OBJETIVO = "SLA objetivo"
 COL_SLA_OBJETIVO_H = "SLA objetivo h"
 COL_MAX_HORAS = "Max. horas"
 COL_MAX_DIAS = "Max. dias"
+COL_CLIENTES_DISTINTOS = "Clientes"
+COL_PRINCIPALES_CLIENTES = "Principales clientes"
 COL_FIRMA_REINCIDENCIA = "Firma reincidencia"
 COL_INCIDENTES_REINCIDENTES = "Incidentes reincidentes"
 COL_REINCIDENTE = "Reincidente"
@@ -4008,32 +4010,86 @@ def formato_porcentaje_es(valor, decimales=1):
     return f"{float(valor):.{decimales}f}%".replace(".", ",")
 
 
+def producto_visible_caso(valor):
+    return valor_limpio(valor) or "Sin producto"
+
+
+def cliente_visible_caso(valor):
+    return valor_limpio(valor) or SIN_CUENTA
+
+
+def resumen_clientes_producto(grupo, top_n=3):
+    if TEXT_CUENTA not in grupo.columns:
+        return pd.Series(
+            {
+                COL_CLIENTES_DISTINTOS: 0,
+                COL_PRINCIPALES_CLIENTES: SIN_DATO,
+            }
+        )
+
+    clientes = grupo[TEXT_CUENTA].apply(cliente_visible_caso)
+    clientes_validos = clientes[clientes != SIN_CUENTA]
+    if clientes_validos.empty:
+        return pd.Series(
+            {
+                COL_CLIENTES_DISTINTOS: 0,
+                COL_PRINCIPALES_CLIENTES: SIN_DATO,
+            }
+        )
+
+    conteo_clientes = clientes_validos.value_counts(dropna=False)
+    principales = ", ".join(
+        f"{cliente} ({formato_entero_es(cantidad)})"
+        for cliente, cantidad in conteo_clientes.head(top_n).items()
+    )
+    return pd.Series(
+        {
+            COL_CLIENTES_DISTINTOS: int(clientes_validos.nunique()),
+            COL_PRINCIPALES_CLIENTES: principales or SIN_DATO,
+        }
+    )
+
+
 def resumen_productos_soporte(df, top_n=5):
-    columnas = ["Producto", TEXT_CANTIDAD, "% participacion"]
+    columnas = ["Producto", TEXT_CANTIDAD, "% participacion", COL_CLIENTES_DISTINTOS, COL_PRINCIPALES_CLIENTES]
     if df.empty or TEXT_PRODUCTO not in df.columns:
         return pd.DataFrame(columns=columnas)
 
-    productos = df[TEXT_PRODUCTO].apply(lambda valor: valor_limpio(valor) or "Sin producto")
-    conteo = productos.value_counts(dropna=False)
+    trabajo = df.copy()
+    trabajo["Producto"] = trabajo[TEXT_PRODUCTO].apply(producto_visible_caso)
+    conteo = trabajo["Producto"].value_counts(dropna=False)
     total = int(conteo.sum())
     if total <= 0:
         return pd.DataFrame(columns=columnas)
 
-    filas = [
-        {
-            "Producto": producto,
-            TEXT_CANTIDAD: int(cantidad),
-            "% participacion": round((int(cantidad) / total) * 100, 1),
-        }
-        for producto, cantidad in conteo.head(top_n).items()
-    ]
-    otros = int(conteo.iloc[top_n:].sum())
-    if otros > 0:
+    filas = []
+    productos_top = conteo.head(top_n).index.tolist()
+    for producto in productos_top:
+        grupo = trabajo[trabajo["Producto"] == producto]
+        clientes = resumen_clientes_producto(grupo)
+        cantidad = int(len(grupo))
+        filas.append(
+            {
+                "Producto": producto,
+                TEXT_CANTIDAD: cantidad,
+                "% participacion": round((cantidad / total) * 100, 1),
+                COL_CLIENTES_DISTINTOS: int(clientes[COL_CLIENTES_DISTINTOS]),
+                COL_PRINCIPALES_CLIENTES: clientes[COL_PRINCIPALES_CLIENTES],
+            }
+        )
+
+    otros_productos = conteo.iloc[top_n:].index.tolist()
+    if otros_productos:
+        grupo = trabajo[trabajo["Producto"].isin(otros_productos)]
+        clientes = resumen_clientes_producto(grupo)
+        otros = int(len(grupo))
         filas.append(
             {
                 "Producto": "Otros productos",
                 TEXT_CANTIDAD: otros,
                 "% participacion": round((otros / total) * 100, 1),
+                COL_CLIENTES_DISTINTOS: int(clientes[COL_CLIENTES_DISTINTOS]),
+                COL_PRINCIPALES_CLIENTES: clientes[COL_PRINCIPALES_CLIENTES],
             }
         )
     return pd.DataFrame(filas, columns=columnas)
@@ -4088,6 +4144,13 @@ def render_tabla_productos_soporte(resumen):
         font-weight: 700;
         white-space: nowrap;
     }}
+    .product-share-clients {{
+        color: {UI_PALETTE["text"]};
+        font-size: 13px;
+        font-weight: 650;
+        line-height: 1.25;
+        word-break: break-word;
+    }}
     .product-share-total td {{
         background: #edf2f7;
         color: #0b1f3a;
@@ -4108,6 +4171,8 @@ def render_tabla_productos_soporte(resumen):
             "</div></td>"
             f'<td class="product-share-number">{formato_entero_es(row[TEXT_CANTIDAD])}</td>'
             f'<td class="product-share-number">{formato_porcentaje_es(row["% participacion"])}</td>'
+            f'<td class="product-share-number">{formato_entero_es(row[COL_CLIENTES_DISTINTOS])}</td>'
+            f'<td class="product-share-clients">{html.escape(str(row[COL_PRINCIPALES_CLIENTES]))}</td>'
             "</tr>"
         )
     filas.append(
@@ -4115,12 +4180,19 @@ def render_tabla_productos_soporte(resumen):
         "<td class=\"product-share-number\">TOTAL</td>"
         f'<td class="product-share-number">{formato_entero_es(total)}</td>'
         '<td class="product-share-number">100,0%</td>'
+        '<td class="product-share-number">-</td>'
+        '<td class="product-share-clients">-</td>'
         "</tr>"
     )
     tabla = (
         estilos
         + '<div class="product-share-table"><table>'
-        "<thead><tr><th>PRODUCTO</th><th>CANTIDAD</th><th>% PARTICIPACION</th></tr></thead>"
+        "<colgroup>"
+        "<col style=\"width:28%\"><col style=\"width:14%\"><col style=\"width:16%\">"
+        "<col style=\"width:13%\"><col style=\"width:29%\">"
+        "</colgroup>"
+        "<thead><tr><th>PRODUCTO</th><th>CANTIDAD</th><th>% PARTICIPACION</th>"
+        "<th>CLIENTES</th><th>PRINCIPALES CLIENTES</th></tr></thead>"
         f"<tbody>{''.join(filas)}</tbody>"
         "</table></div>"
     )
@@ -4142,7 +4214,7 @@ def render_distribucion_productos_soporte(df, periodo_label):
                 TICKETS DE SOPORTE - {html.escape(titulo_periodo)}
             </div>
             <div style="font-size:18px; font-weight:700; color:#4b5563; margin-top:4px;">
-                DISTRIBUCION POR PRODUCTO
+                DISTRIBUCION POR PRODUCTO Y CLIENTE
             </div>
         </div>
         """,
@@ -4164,7 +4236,7 @@ def render_distribucion_productos_soporte(df, periodo_label):
             values=TEXT_CANTIDAD,
             names="Producto",
             color_discrete_sequence=PRODUCT_PIE_COLORS,
-            custom_data=["Etiqueta %"],
+            custom_data=["Etiqueta %", COL_CLIENTES_DISTINTOS, COL_PRINCIPALES_CLIENTES],
         )
         fig.update_traces(
             sort=False,
@@ -4176,7 +4248,10 @@ def render_distribucion_productos_soporte(df, periodo_label):
             pull=[0 if indice == principal_idx else 0.035 for indice in range(len(datos))],
             automargin=True,
             marker={"line": {"color": "#ffffff", "width": 2}},
-            hovertemplate="<b>%{label}</b><br>Cantidad: %{value}<br>Participacion: %{customdata[0]}<extra></extra>",
+            hovertemplate=(
+                "<b>%{label}</b><br>Cantidad: %{value}<br>Participacion: %{customdata[0]}"
+                "<br>Clientes: %{customdata[1]}<br>Principales clientes: %{customdata[2]}<extra></extra>"
+            ),
         )
         principal = float(datos["% participacion"].max())
         if principal >= 45:
@@ -4258,6 +4333,8 @@ def slide_product_distribution_html(df, periodo_label):
             "</div></td>"
             f"<td>{formato_entero_es(row[TEXT_CANTIDAD])}</td>"
             f"<td>{porcentaje_texto}</td>"
+            f"<td>{formato_entero_es(row[COL_CLIENTES_DISTINTOS])}</td>"
+            f"<td>{html.escape(str(row[COL_PRINCIPALES_CLIENTES]))}</td>"
             "</tr>"
         )
     filas.append(
@@ -4265,6 +4342,8 @@ def slide_product_distribution_html(df, periodo_label):
         "<td>TOTAL</td>"
         f"<td>{formato_entero_es(total)}</td>"
         "<td>100,0%</td>"
+        "<td>-</td>"
+        "<td>-</td>"
         "</tr>"
     )
     return f"""
@@ -4291,7 +4370,7 @@ def slide_product_distribution_html(df, periodo_label):
     }}
     .slide-product-content {{
         display: grid;
-        grid-template-columns: minmax(260px, 0.88fr) minmax(330px, 1.12fr);
+        grid-template-columns: minmax(230px, 0.78fr) minmax(420px, 1.22fr);
         gap: 18px;
         align-items: center;
         margin-top: 12px;
@@ -4304,7 +4383,7 @@ def slide_product_distribution_html(df, periodo_label):
         min-width: 0;
     }}
     .slide-product-pie {{
-        width: min(100%, 320px);
+        width: min(100%, 292px);
         aspect-ratio: 1 / 1;
         border-radius: 50%;
         background: conic-gradient({gradient});
@@ -4407,13 +4486,19 @@ def slide_product_distribution_html(df, periodo_label):
     .slide-product-table td {{
         border-top: 1px solid #d9dee6;
         color: #0b1f3a;
-        font-size: 0.82rem;
+        font-size: 0.72rem;
         font-weight: 750;
-        padding: 8px 8px;
+        padding: 7px 7px;
         text-align: center;
+        line-height: 1.15;
+        overflow-wrap: anywhere;
     }}
     .slide-product-table th:first-child,
     .slide-product-table td:first-child {{
+        text-align: left;
+    }}
+    .slide-product-table th:nth-child(5),
+    .slide-product-table td:nth-child(5) {{
         text-align: left;
     }}
     .slide-product-name {{
@@ -4442,7 +4527,7 @@ def slide_product_distribution_html(df, periodo_label):
     </style>
     <div class="slide-panel slide-product-panel">
         <div class="slide-product-title">Tickets de soporte - {html.escape(str(periodo_label).upper())}</div>
-        <div class="slide-product-subtitle">Distribucion por producto</div>
+        <div class="slide-product-subtitle">Distribucion por producto y cliente</div>
         <div class="slide-product-content">
             <div class="slide-product-pie-wrap">
                 <div class="slide-product-pie">
@@ -4456,8 +4541,15 @@ def slide_product_distribution_html(df, periodo_label):
             </div>
             <div class="slide-product-table">
                 <table>
+                    <colgroup>
+                        <col style="width:25%">
+                        <col style="width:13%">
+                        <col style="width:11%">
+                        <col style="width:12%">
+                        <col style="width:39%">
+                    </colgroup>
                     <thead>
-                        <tr><th>PRODUCTO</th><th>CANTIDAD</th><th>%</th></tr>
+                        <tr><th>PRODUCTO</th><th>CANT.</th><th>%</th><th>CLIENTES</th><th>PRINCIPALES CLIENTES</th></tr>
                     </thead>
                     <tbody>{"".join(filas)}</tbody>
                 </table>
