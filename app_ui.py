@@ -5403,6 +5403,97 @@ def render_bloque_mes_kpi_casos_comparativo(df, periodo_key, titulo):
     render_focos_operativos_kpi_casos(datos)
 
 
+def bloque_mes_kpi_casos_comparativo_html(df, periodo_key, titulo):
+    anio, mes = parse_mes_periodo(periodo_key)
+    etiqueta = etiqueta_mes_periodo(anio, mes)
+    datos = filtrar_anio_mes_dashboard(df, anio, mes)
+    encabezado = (
+        '<div class="kpi-month-compare-heading">'
+        f"{html.escape(str(titulo))} - {html.escape(str(etiqueta))}"
+        "</div>"
+    )
+    if datos.empty:
+        contenido = f"""
+        <div class="slide-panel slide-product-panel">
+            <div class="slide-product-title">Tickets de soporte - {html.escape(str(etiqueta).upper())}</div>
+            <div class="slide-product-subtitle">Distribucion por producto y cliente</div>
+            <div class="kpi-month-compare-empty">No hay casos cargados para este mes.</div>
+        </div>
+        """
+    else:
+        contenido = slide_product_distribution_html(datos, etiqueta)
+    return f'<div class="kpi-month-compare-card">{encabezado}{contenido}</div>'
+
+
+def render_comparativo_visual_meses_kpi_casos(df, mes_base, mes_comparado):
+    base_html = bloque_mes_kpi_casos_comparativo_html(df, mes_base, "Mes base")
+    comparado_html = bloque_mes_kpi_casos_comparativo_html(df, mes_comparado, "Mes comparado")
+    st.markdown(
+        f"""
+        <style>
+        .kpi-month-compare-grid {{
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 14px;
+            align-items: start;
+            margin: 8px 0 4px;
+            width: 100%;
+        }}
+        .kpi-month-compare-card {{
+            min-width: 0;
+        }}
+        .kpi-month-compare-heading {{
+            color: #0b1f3a;
+            font-size: 1rem;
+            font-weight: 900;
+            line-height: 1.15;
+            margin: 0 0 8px;
+        }}
+        .kpi-month-compare-grid .slide-product-panel {{
+            min-height: 560px;
+        }}
+        .kpi-month-compare-grid .slide-product-content {{
+            grid-template-columns: minmax(138px, 0.56fr) minmax(250px, 1.44fr);
+            gap: 10px;
+        }}
+        .kpi-month-compare-grid .slide-product-pie {{
+            width: min(100%, 170px);
+        }}
+        .kpi-month-compare-grid .slide-product-labels {{
+            display: none;
+        }}
+        .kpi-month-compare-grid .slide-product-table td,
+        .kpi-month-compare-grid .slide-product-table th {{
+            overflow-wrap: anywhere;
+        }}
+        .kpi-month-compare-empty {{
+            border: 1px dashed {UI_PALETTE["border"]};
+            border-radius: 8px;
+            color: {UI_PALETTE["muted"]};
+            font-size: 0.9rem;
+            font-weight: 800;
+            margin-top: 18px;
+            padding: 26px 14px;
+            text-align: center;
+        }}
+        @media (max-width: 1040px) {{
+            .kpi-month-compare-grid {{
+                grid-template-columns: 1fr;
+            }}
+            .kpi-month-compare-grid .slide-product-panel {{
+                min-height: auto;
+            }}
+        }}
+        </style>
+        <div class="kpi-month-compare-grid kpi-ce-slide" style="padding:0;">
+            {base_html}
+            {comparado_html}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def render_kpi_casos_cliente_externo_comparativo():
     st.subheader("Comparativo KPI Casos Cliente Externo por mes")
     with st.spinner("Cargando casos para comparativo KPI..."):
@@ -5433,10 +5524,7 @@ def render_kpi_casos_cliente_externo_comparativo():
     render_graficas_kpi_casos_comparativo(tabla)
 
     st.divider()
-    render_bloque_mes_kpi_casos_comparativo(df, mes_base, "Mes base")
-
-    st.divider()
-    render_bloque_mes_kpi_casos_comparativo(df, mes_comparado, "Mes comparado")
+    render_comparativo_visual_meses_kpi_casos(df, mes_base, mes_comparado)
 
     st.divider()
     st.subheader("Resumen comparativo")
