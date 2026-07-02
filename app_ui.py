@@ -2,6 +2,7 @@ import html
 import json
 import re
 from io import BytesIO
+from textwrap import dedent
 
 import pandas as pd
 import plotly.express as px
@@ -4016,6 +4017,10 @@ def formato_porcentaje_es(valor, decimales=1):
     return f"{float(valor):.{decimales}f}%".replace(".", ",")
 
 
+def html_streamlit(texto):
+    return "\n".join(line.lstrip() for line in dedent(texto).strip().splitlines())
+
+
 def producto_visible_caso(valor):
     return valor_limpio(valor) or "Sin producto"
 
@@ -5489,7 +5494,7 @@ def torta_producto_comparativo_html(comparativo, titulo, columna_cantidad, colum
             f'<em>{html.escape(str(row["Producto"]))}</em>'
             "</div>"
         )
-    return f"""
+    return dedent(f"""
     <div class="kpi-product-compare-pie-card">
         <div class="kpi-product-compare-period">{html.escape(str(titulo))}</div>
         <div class="kpi-product-compare-pie" style="background: conic-gradient({gradient});">
@@ -5501,7 +5506,7 @@ def torta_producto_comparativo_html(comparativo, titulo, columna_cantidad, colum
             <span>Tickets de soporte</span>
         </div>
     </div>
-    """
+    """).strip()
 
 
 def tabla_productos_comparativo_html(comparativo, etiqueta_base, etiqueta_comparado):
@@ -5543,7 +5548,7 @@ def tabla_productos_comparativo_html(comparativo, etiqueta_base, etiqueta_compar
         "<td>-</td><td>-</td>"
         "</tr>"
     )
-    return f"""
+    return dedent(f"""
     <div class="kpi-product-compare-table">
         <table>
             <colgroup>
@@ -5567,7 +5572,7 @@ def tabla_productos_comparativo_html(comparativo, etiqueta_base, etiqueta_compar
             <tbody>{"".join(filas)}</tbody>
         </table>
     </div>
-    """
+    """).strip()
 
 
 def focos_comparativo_html(datos_base, datos_comparado):
@@ -5647,37 +5652,38 @@ def render_comparativo_visual_meses_kpi_casos(df, mes_base, mes_comparado):
     tabla_html = tabla_productos_comparativo_html(comparativo, "Base", "Comparado")
     focos_html = focos_comparativo_html(datos_base, datos_comparado)
     st.markdown(
-        f"""
+        html_streamlit(f"""
         <style>
         .kpi-product-compare-panel {{
             background: #ffffff;
-            border: 1px solid {UI_PALETTE["border"]};
+            border: 2px solid {UI_PALETTE["border"]};
             border-radius: 8px;
-            padding: 14px 16px;
+            box-shadow: 0 14px 34px rgba(20, 20, 20, 0.08);
+            padding: 26px 30px 28px;
             width: 100%;
             overflow: hidden;
         }}
         .kpi-product-compare-title {{
             color: #0b1f3a;
-            font-size: 1.42rem;
+            font-size: 2.45rem;
             font-weight: 900;
-            line-height: 1.08;
+            line-height: 1.05;
             text-align: center;
             text-transform: uppercase;
         }}
         .kpi-product-compare-subtitle {{
             color: #4b5563;
-            font-size: 0.9rem;
+            font-size: 1.35rem;
             font-weight: 900;
-            margin-top: 4px;
+            margin-top: 8px;
             text-align: center;
             text-transform: uppercase;
         }}
         .kpi-product-compare-pies {{
             display: grid;
             grid-template-columns: repeat(2, minmax(0, 1fr));
-            gap: 18px;
-            margin-top: 16px;
+            gap: 34px;
+            margin-top: 28px;
             align-items: start;
         }}
         .kpi-product-compare-pie-card {{
@@ -5688,17 +5694,17 @@ def render_comparativo_visual_meses_kpi_casos(df, mes_base, mes_comparado):
         }}
         .kpi-product-compare-period {{
             color: #0b1f3a;
-            font-size: 0.92rem;
+            font-size: 1.35rem;
             font-weight: 900;
-            margin-bottom: 8px;
+            margin-bottom: 14px;
             text-align: center;
         }}
         .kpi-product-compare-pie {{
-            width: min(100%, 236px);
+            width: min(100%, 350px);
             aspect-ratio: 1 / 1;
-            border: 3px solid #ffffff;
+            border: 4px solid #ffffff;
             border-radius: 50%;
-            box-shadow: 0 8px 18px rgba(20, 20, 20, 0.13);
+            box-shadow: 0 14px 30px rgba(20, 20, 20, 0.18);
             display: grid;
             place-items: center;
             position: relative;
@@ -5713,7 +5719,7 @@ def render_comparativo_visual_meses_kpi_casos(df, mes_base, mes_comparado):
         }}
         .kpi-product-compare-center {{
             color: #ffffff;
-            font-size: 2rem;
+            font-size: 3.25rem;
             font-weight: 900;
             line-height: 1;
             text-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
@@ -5721,48 +5727,48 @@ def render_comparativo_visual_meses_kpi_casos(df, mes_base, mes_comparado):
         }}
         .kpi-product-compare-total {{
             color: #0b1f3a;
-            font-size: 1rem;
+            font-size: 1.35rem;
             font-weight: 900;
-            margin-top: 8px;
+            margin-top: 12px;
             text-align: center;
         }}
         .kpi-product-compare-labels {{
             display: grid;
             grid-template-columns: repeat(2, minmax(0, 1fr));
-            gap: 6px 8px;
-            margin-top: 10px;
-            width: min(100%, 330px);
+            gap: 10px 16px;
+            margin-top: 16px;
+            width: min(100%, 430px);
         }}
         .kpi-product-compare-label {{
             display: grid;
-            grid-template-columns: 9px minmax(0, 1fr);
+            grid-template-columns: 15px minmax(0, 1fr);
             grid-template-areas:
                 "dot pct"
                 "dot name";
-            column-gap: 6px;
+            column-gap: 9px;
             min-width: 0;
         }}
         .kpi-product-compare-label span {{
             grid-area: dot;
-            width: 9px;
-            height: 9px;
+            width: 15px;
+            height: 15px;
             border-radius: 999px;
-            margin-top: 2px;
+            margin-top: 3px;
         }}
         .kpi-product-compare-label strong {{
             grid-area: pct;
             color: #0b1f3a;
-            font-size: 0.76rem;
+            font-size: 1.05rem;
             font-weight: 900;
             line-height: 1;
         }}
         .kpi-product-compare-label em {{
             grid-area: name;
             color: #4b5563;
-            font-size: 0.56rem;
+            font-size: 0.88rem;
             font-style: normal;
             font-weight: 800;
-            line-height: 1.05;
+            line-height: 1.08;
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
@@ -5770,14 +5776,14 @@ def render_comparativo_visual_meses_kpi_casos(df, mes_base, mes_comparado):
         .kpi-product-compare-total span {{
             color: #4b5563;
             display: block;
-            font-size: 0.74rem;
+            font-size: 1rem;
             font-weight: 700;
-            margin-top: 2px;
+            margin-top: 4px;
         }}
         .kpi-product-compare-table {{
             border: 1px solid #d9dee6;
             border-radius: 8px;
-            margin-top: 18px;
+            margin-top: 26px;
             overflow: hidden;
         }}
         .kpi-product-compare-table table {{
@@ -5788,18 +5794,18 @@ def render_comparativo_visual_meses_kpi_casos(df, mes_base, mes_comparado):
         .kpi-product-compare-table th {{
             background: #0b2b5c;
             color: #ffffff;
-            font-size: 0.7rem;
+            font-size: 1.02rem;
             font-weight: 900;
-            padding: 8px 6px;
+            padding: 13px 10px;
             text-align: center;
         }}
         .kpi-product-compare-table td {{
             border-top: 1px solid #d9dee6;
             color: #0b1f3a;
-            font-size: 0.76rem;
+            font-size: 1.02rem;
             font-weight: 750;
-            line-height: 1.14;
-            padding: 7px 6px;
+            line-height: 1.2;
+            padding: 12px 10px;
             text-align: center;
             vertical-align: middle;
             overflow-wrap: anywhere;
@@ -5813,13 +5819,13 @@ def render_comparativo_visual_meses_kpi_casos(df, mes_base, mes_comparado):
         .kpi-product-compare-name {{
             display: flex;
             align-items: center;
-            gap: 7px;
+            gap: 10px;
             min-width: 0;
         }}
         .kpi-product-compare-name span {{
-            width: 10px;
-            min-width: 10px;
-            height: 10px;
+            width: 14px;
+            min-width: 14px;
+            height: 14px;
             border-radius: 999px;
         }}
         .kpi-product-compare-number,
@@ -5831,9 +5837,9 @@ def render_comparativo_visual_meses_kpi_casos(df, mes_base, mes_comparado):
         .kpi-product-compare-total-row small {{
             color: #4b5563;
             display: block;
-            font-size: 0.62rem;
+            font-size: 0.8rem;
             font-weight: 900;
-            margin-top: 2px;
+            margin-top: 4px;
         }}
         .kpi-product-compare-diff.positive {{
             color: {UI_PALETTE[TEXT_PRIMARY]};
@@ -5842,46 +5848,46 @@ def render_comparativo_visual_meses_kpi_casos(df, mes_base, mes_comparado):
             color: #0b3a78;
         }}
         .kpi-product-compare-clients {{
-            font-size: 0.66rem;
+            font-size: 0.86rem;
             font-weight: 800;
-            line-height: 1.1;
+            line-height: 1.18;
         }}
         .kpi-product-compare-total-row td {{
             background: #edf2f7;
             color: #0b1f3a;
-            font-size: 0.82rem;
+            font-size: 1.1rem;
             font-weight: 900;
         }}
         .kpi-product-compare-focus-strip {{
             border: 1px solid #d7c5f8;
             border-radius: 8px;
-            margin-top: 14px;
+            margin-top: 18px;
             overflow: hidden;
         }}
         .kpi-product-compare-focus-title {{
             color: {UI_PALETTE[TEXT_PURPLE]};
-            font-size: 0.74rem;
+            font-size: 1.02rem;
             font-weight: 900;
             line-height: 1;
-            padding: 8px 10px 0;
+            padding: 12px 12px 0;
             text-align: center;
             text-transform: uppercase;
         }}
         .kpi-product-compare-focus-grid {{
             display: grid;
             grid-template-columns: repeat(4, minmax(0, 1fr));
-            gap: 7px;
-            padding: 8px 10px 10px;
+            gap: 10px;
+            padding: 12px 14px 14px;
         }}
         .kpi-product-compare-focus-card {{
             border: 1px solid #d7c5f8;
             border-radius: 8px;
             display: grid;
-            grid-template-columns: 31px minmax(0, 1fr);
-            gap: 6px;
+            grid-template-columns: 46px minmax(0, 1fr);
+            gap: 9px;
             align-items: center;
-            min-height: 82px;
-            padding: 7px;
+            min-height: 110px;
+            padding: 10px;
         }}
         .kpi-product-compare-focus-card.important {{
             border-color: {UI_PALETTE[TEXT_PRIMARY]};
@@ -5893,14 +5899,14 @@ def render_comparativo_visual_meses_kpi_casos(df, mes_base, mes_comparado):
             text-align: center;
         }}
         .kpi-product-compare-focus-icon {{
-            width: 29px;
-            height: 29px;
+            width: 42px;
+            height: 42px;
             border: 1.5px solid #0b3a78;
             border-radius: 999px;
             color: #0b3a78;
             display: grid;
             place-items: center;
-            font-size: 0.52rem;
+            font-size: 0.72rem;
             font-weight: 900;
             line-height: 1;
         }}
@@ -5910,7 +5916,7 @@ def render_comparativo_visual_meses_kpi_casos(df, mes_base, mes_comparado):
         }}
         .kpi-product-compare-focus-label {{
             color: #0b3a78;
-            font-size: 0.52rem;
+            font-size: 0.74rem;
             font-weight: 900;
             line-height: 1.05;
         }}
@@ -5926,7 +5932,7 @@ def render_comparativo_visual_meses_kpi_casos(df, mes_base, mes_comparado):
         .kpi-product-compare-focus-values em {{
             color: #4b5563;
             display: block;
-            font-size: 0.46rem;
+            font-size: 0.62rem;
             font-style: normal;
             font-weight: 900;
             line-height: 1;
@@ -5935,7 +5941,7 @@ def render_comparativo_visual_meses_kpi_casos(df, mes_base, mes_comparado):
         .kpi-product-compare-focus-values strong {{
             color: #0b3a78;
             display: block;
-            font-size: 1rem;
+            font-size: 1.35rem;
             font-weight: 900;
             line-height: 1;
             margin-top: 2px;
@@ -5943,16 +5949,16 @@ def render_comparativo_visual_meses_kpi_casos(df, mes_base, mes_comparado):
         .kpi-product-compare-focus-values small {{
             color: {UI_PALETTE[TEXT_PURPLE]};
             display: block;
-            font-size: 0.46rem;
+            font-size: 0.62rem;
             font-weight: 900;
             line-height: 1;
             margin-top: 2px;
         }}
         .kpi-product-compare-focus-diff {{
             color: {UI_PALETTE[TEXT_PRIMARY]};
-            font-size: 0.7rem;
+            font-size: 0.95rem;
             font-weight: 900;
-            margin-top: 4px;
+            margin-top: 6px;
         }}
         @media (max-width: 900px) {{
             .kpi-product-compare-pies,
@@ -5963,7 +5969,7 @@ def render_comparativo_visual_meses_kpi_casos(df, mes_base, mes_comparado):
                 overflow-x: auto;
             }}
             .kpi-product-compare-table table {{
-                min-width: 820px;
+                min-width: 1120px;
             }}
         }}
         </style>
@@ -5980,7 +5986,7 @@ def render_comparativo_visual_meses_kpi_casos(df, mes_base, mes_comparado):
             {tabla_html}
             {focos_html}
         </div>
-        """,
+        """),
         unsafe_allow_html=True,
     )
 
