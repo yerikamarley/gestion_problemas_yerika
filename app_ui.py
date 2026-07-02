@@ -5357,40 +5357,6 @@ def render_tarjetas_kpi_casos_comparativo(tabla):
     )
 
 
-def render_graficas_kpi_casos_comparativo(tabla):
-    col_total, col_focos = st.columns(2)
-    with col_total:
-        fig = px.bar(
-            tabla,
-            x="Periodo",
-            y=TEXT_TOTAL,
-            text=TEXT_TOTAL,
-            color="Periodo",
-            color_discrete_sequence=[UI_PALETTE[TEXT_PRIMARY], UI_PALETTE[TEXT_LAVENDER]],
-        )
-        fig.update_traces(textposition=TEXT_OUTSIDE)
-        st.plotly_chart(aplicar_estilo_figura(fig, "Total de casos por mes"), use_container_width=True)
-
-    with col_focos:
-        focos = tabla.melt(
-            id_vars=["Periodo"],
-            value_vars=["Token fisico", "Token virtual", "Envio agenda"],
-            var_name="Foco",
-            value_name=TEXT_CANTIDAD,
-        )
-        fig = px.bar(
-            focos,
-            x="Foco",
-            y=TEXT_CANTIDAD,
-            color="Periodo",
-            barmode="group",
-            text=TEXT_CANTIDAD,
-            color_discrete_sequence=[UI_PALETTE[TEXT_PRIMARY], UI_PALETTE[TEXT_LAVENDER]],
-        )
-        fig.update_traces(textposition=TEXT_OUTSIDE)
-        st.plotly_chart(aplicar_estilo_figura(fig, "Focos operativos por mes"), use_container_width=True)
-
-
 def render_bloque_mes_kpi_casos_comparativo(df, periodo_key, titulo):
     anio, mes = parse_mes_periodo(periodo_key)
     etiqueta = etiqueta_mes_periodo(anio, mes)
@@ -5403,91 +5369,616 @@ def render_bloque_mes_kpi_casos_comparativo(df, periodo_key, titulo):
     render_focos_operativos_kpi_casos(datos)
 
 
-def bloque_mes_kpi_casos_comparativo_html(df, periodo_key, titulo):
-    anio, mes = parse_mes_periodo(periodo_key)
-    etiqueta = etiqueta_mes_periodo(anio, mes)
-    datos = filtrar_anio_mes_dashboard(df, anio, mes)
-    encabezado = (
-        '<div class="kpi-month-compare-heading">'
-        f"{html.escape(str(titulo))} - {html.escape(str(etiqueta))}"
+def normalizar_productos_para_comparativo(df):
+    trabajo = df.copy()
+    if TEXT_PRODUCTO not in trabajo.columns:
+        trabajo[TEXT_PRODUCTO] = ""
+    trabajo["_producto_comparativo"] = trabajo[TEXT_PRODUCTO].apply(producto_visible_caso)
+    return trabajo
+
+
+def resumen_periodo_productos_comparativo(trabajo, productos_top, etiquetas):
+    total = int(len(trabajo))
+    resumen = {}
+    for etiqueta in etiquetas:
+        if etiqueta == "Otros productos":
+            grupo = trabajo[~trabajo["_producto_comparativo"].isin(productos_top)]
+        else:
+            grupo = trabajo[trabajo["_producto_comparativo"] == etiqueta]
+        cantidad = int(len(grupo))
+        clientes = resumen_clientes_producto(grupo) if cantidad else pd.Series(
+            {COL_CLIENTES_DISTINTOS: 0, COL_PRINCIPALES_CLIENTES: SIN_DATO}
+        )
+        resumen[etiqueta] = {
+            TEXT_CANTIDAD: cantidad,
+            "% participacion": round((cantidad / total) * 100, 1) if total else 0,
+            COL_CLIENTES_DISTINTOS: int(clientes[COL_CLIENTES_DISTINTOS]),
+            COL_PRINCIPALES_CLIENTES: clientes[COL_PRINCIPALES_CLIENTES],
+        }
+    return resumen
+
+
+def tabla_productos_comparativo_soporte(datos_base, datos_comparado, top_n=5):
+    columnas = [
+        "Producto",
+        "Color",
+        "Cantidad base",
+        "% base",
+        "Clientes base",
+        "Principales clientes base",
+        "Cantidad comparado",
+        "% comparado",
+        "Clientes comparado",
+        "Principales clientes comparado",
+        "Diferencia",
+        "Diferencia p.p.",
+    ]
+    base = normalizar_productos_para_comparativo(datos_base)
+    comparado = normalizar_productos_para_comparativo(datos_comparado)
+    productos = pd.concat(
+        [base["_producto_comparativo"], comparado["_producto_comparativo"]],
+        ignore_index=True,
+    )
+    productos = productos[productos.astype(str).str.len() > 0]
+    if productos.empty:
+        return pd.DataFrame(columns=columnas)
+
+    productos_top = productos.value_counts(dropna=False).head(top_n).index.tolist()
+    tiene_otros = bool(
+        (~base["_producto_comparativo"].isin(productos_top)).any()
+        or (~comparado["_producto_comparativo"].isin(productos_top)).any()
+    )
+    etiquetas = productos_top + (["Otros productos"] if tiene_otros else [])
+    resumen_base = resumen_periodo_productos_comparativo(base, productos_top, etiquetas)
+    resumen_comparado = resumen_periodo_productos_comparativo(comparado, productos_top, etiquetas)
+
+    filas = []
+    for indice, producto in enumerate(etiquetas):
+        base_producto = resumen_base[producto]
+        comparado_producto = resumen_comparado[producto]
+        filas.append(
+            {
+                "Producto": producto,
+                "Color": PRODUCT_PIE_COLORS[indice % len(PRODUCT_PIE_COLORS)],
+                "Cantidad base": base_producto[TEXT_CANTIDAD],
+                "% base": base_producto["% participacion"],
+                "Clientes base": base_producto[COL_CLIENTES_DISTINTOS],
+                "Principales clientes base": base_producto[COL_PRINCIPALES_CLIENTES],
+                "Cantidad comparado": comparado_producto[TEXT_CANTIDAD],
+                "% comparado": comparado_producto["% participacion"],
+                "Clientes comparado": comparado_producto[COL_CLIENTES_DISTINTOS],
+                "Principales clientes comparado": comparado_producto[COL_PRINCIPALES_CLIENTES],
+                "Diferencia": comparado_producto[TEXT_CANTIDAD] - base_producto[TEXT_CANTIDAD],
+                "Diferencia p.p.": round(
+                    comparado_producto["% participacion"] - base_producto["% participacion"],
+                    1,
+                ),
+            }
+        )
+    return pd.DataFrame(filas, columns=columnas)
+
+
+def conic_gradient_comparativo_productos(comparativo, columna_cantidad):
+    total = int(comparativo[columna_cantidad].sum()) if not comparativo.empty else 0
+    if total <= 0:
+        return "#f1f3f5 0% 100%"
+    partes = []
+    inicio = 0.0
+    for _, row in comparativo.iterrows():
+        cantidad = int(row[columna_cantidad])
+        if cantidad <= 0:
+            continue
+        fin = inicio + ((cantidad / total) * 100)
+        partes.append(f"{row['Color']} {inicio:.4f}% {fin:.4f}%")
+        inicio = fin
+    return ", ".join(partes) if partes else "#f1f3f5 0% 100%"
+
+
+def torta_producto_comparativo_html(comparativo, titulo, columna_cantidad, columna_porcentaje):
+    total = int(comparativo[columna_cantidad].sum()) if not comparativo.empty else 0
+    principal = float(comparativo[columna_porcentaje].max()) if total and not comparativo.empty else 0
+    gradient = conic_gradient_comparativo_productos(comparativo, columna_cantidad)
+    etiquetas = []
+    for _, row in comparativo.iterrows():
+        if int(row[columna_cantidad]) <= 0:
+            continue
+        etiquetas.append(
+            '<div class="kpi-product-compare-label">'
+            f'<span style="background:{row["Color"]};"></span>'
+            f'<strong>{formato_porcentaje_es(row[columna_porcentaje])}</strong>'
+            f'<em>{html.escape(str(row["Producto"]))}</em>'
+            "</div>"
+        )
+    return f"""
+    <div class="kpi-product-compare-pie-card">
+        <div class="kpi-product-compare-period">{html.escape(str(titulo))}</div>
+        <div class="kpi-product-compare-pie" style="background: conic-gradient({gradient});">
+            <div class="kpi-product-compare-center">{formato_porcentaje_es(principal)}</div>
+        </div>
+        <div class="kpi-product-compare-labels">{"".join(etiquetas)}</div>
+        <div class="kpi-product-compare-total">
+            TOTAL: {formato_entero_es(total)}
+            <span>Tickets de soporte</span>
+        </div>
+    </div>
+    """
+
+
+def tabla_productos_comparativo_html(comparativo, etiqueta_base, etiqueta_comparado):
+    filas = []
+    total_base = int(comparativo["Cantidad base"].sum()) if not comparativo.empty else 0
+    total_comparado = int(comparativo["Cantidad comparado"].sum()) if not comparativo.empty else 0
+    for _, row in comparativo.iterrows():
+        diferencia = int(row["Diferencia"])
+        clase_diferencia = "positive" if diferencia > 0 else ("negative" if diferencia < 0 else "neutral")
+        clientes = f"{formato_entero_es(row['Clientes base'])} -> {formato_entero_es(row['Clientes comparado'])}"
+        principales = row["Principales clientes comparado"]
+        if principales == SIN_DATO:
+            principales = row["Principales clientes base"]
+        filas.append(
+            "<tr>"
+            '<td><div class="kpi-product-compare-name">'
+            f'<span style="background:{row["Color"]};"></span>'
+            f"{html.escape(str(row['Producto']))}"
+            "</div></td>"
+            '<td class="kpi-product-compare-number">'
+            f"{formato_entero_es(row['Cantidad base'])}<small>{formato_porcentaje_es(row['% base'])}</small>"
+            "</td>"
+            '<td class="kpi-product-compare-number">'
+            f"{formato_entero_es(row['Cantidad comparado'])}<small>{formato_porcentaje_es(row['% comparado'])}</small>"
+            "</td>"
+            f'<td class="kpi-product-compare-diff {clase_diferencia}">'
+            f"{diferencia:+d}<small>{row['Diferencia p.p.']:+.1f} p.p.</small>"
+            "</td>"
+            f'<td class="kpi-product-compare-number">{html.escape(clientes)}</td>'
+            f'<td class="kpi-product-compare-clients">{html.escape(str(principales))}</td>'
+            "</tr>"
+        )
+    filas.append(
+        '<tr class="kpi-product-compare-total-row">'
+        "<td>TOTAL</td>"
+        f"<td>{formato_entero_es(total_base)}<small>100,0%</small></td>"
+        f"<td>{formato_entero_es(total_comparado)}<small>100,0%</small></td>"
+        f"<td>{total_comparado - total_base:+d}</td>"
+        "<td>-</td><td>-</td>"
+        "</tr>"
+    )
+    return f"""
+    <div class="kpi-product-compare-table">
+        <table>
+            <colgroup>
+                <col style="width:24%">
+                <col style="width:13%">
+                <col style="width:13%">
+                <col style="width:12%">
+                <col style="width:12%">
+                <col style="width:26%">
+            </colgroup>
+            <thead>
+                <tr>
+                    <th>PRODUCTO</th>
+                    <th>{html.escape(str(etiqueta_base).upper())}</th>
+                    <th>{html.escape(str(etiqueta_comparado).upper())}</th>
+                    <th>DIF.</th>
+                    <th>CLIENTES</th>
+                    <th>PRINCIPALES CLIENTES</th>
+                </tr>
+            </thead>
+            <tbody>{"".join(filas)}</tbody>
+        </table>
+    </div>
+    """
+
+
+def focos_comparativo_html(datos_base, datos_comparado):
+    focos_base = resumen_focos_destacados_kpi_casos(datos_base)
+    focos_comparado = resumen_focos_destacados_kpi_casos(datos_comparado)
+    if focos_base.empty and focos_comparado.empty:
+        return ""
+
+    base_por_foco = {row["Foco"]: row for _, row in focos_base.iterrows()}
+    comparado_por_foco = {row["Foco"]: row for _, row in focos_comparado.iterrows()}
+    orden = ["Token fisico", "Token virtual", "Envio agenda"]
+    tarjetas = []
+    for foco in orden:
+        base = base_por_foco.get(foco, {})
+        comparado = comparado_por_foco.get(foco, {})
+        icono = base.get("Icono") or comparado.get("Icono") or ""
+        destacado = bool(base.get("Destacado", False) or comparado.get("Destacado", False))
+        cantidad_base = int(base.get(TEXT_CANTIDAD, 0))
+        cantidad_comparado = int(comparado.get(TEXT_CANTIDAD, 0))
+        porcentaje_base = float(base.get("% casos", 0))
+        porcentaje_comparado = float(comparado.get("% casos", 0))
+        clase = " important" if destacado else ""
+        tarjetas.append(
+            f'<div class="kpi-product-compare-focus-card{clase}">'
+            f'<div class="kpi-product-compare-focus-icon">{html.escape(str(icono))}</div>'
+            '<div class="kpi-product-compare-focus-body">'
+            f'<div class="kpi-product-compare-focus-label">{html.escape(str(foco).upper())}</div>'
+            '<div class="kpi-product-compare-focus-values">'
+            f'<span><em>Base</em><strong>{formato_entero_es(cantidad_base)}</strong>'
+            f'<small>{formato_porcentaje_es(porcentaje_base)}</small></span>'
+            f'<span><em>Comp.</em><strong>{formato_entero_es(cantidad_comparado)}</strong>'
+            f'<small>{formato_porcentaje_es(porcentaje_comparado)}</small></span>'
+            "</div>"
+            f'<div class="kpi-product-compare-focus-diff">{cantidad_comparado - cantidad_base:+d}</div>'
+            "</div></div>"
+        )
+
+    total_base = len(datos_base)
+    total_comparado = len(datos_comparado)
+    tarjetas.append(
+        '<div class="kpi-product-compare-focus-card total">'
+        '<div class="kpi-product-compare-focus-label">TOTAL TICKETS</div>'
+        '<div class="kpi-product-compare-focus-values">'
+        f'<span><em>Base</em><strong>{formato_entero_es(total_base)}</strong><small>100,0%</small></span>'
+        f'<span><em>Comp.</em><strong>{formato_entero_es(total_comparado)}</strong><small>100,0%</small></span>'
+        "</div>"
+        f'<div class="kpi-product-compare-focus-diff">{total_comparado - total_base:+d}</div>'
         "</div>"
     )
-    if datos.empty:
-        contenido = f"""
-        <div class="slide-panel slide-product-panel">
-            <div class="slide-product-title">Tickets de soporte - {html.escape(str(etiqueta).upper())}</div>
-            <div class="slide-product-subtitle">Distribucion por producto y cliente</div>
-            <div class="kpi-month-compare-empty">No hay casos cargados para este mes.</div>
-        </div>
-        """
-    else:
-        contenido = slide_product_distribution_html(datos, etiqueta)
-    return f'<div class="kpi-month-compare-card">{encabezado}{contenido}</div>'
+    return (
+        '<div class="kpi-product-compare-focus-strip">'
+        '<div class="kpi-product-compare-focus-title">Focos operativos sobre el total de tickets</div>'
+        f'<div class="kpi-product-compare-focus-grid">{"".join(tarjetas)}</div>'
+        "</div>"
+    )
 
 
 def render_comparativo_visual_meses_kpi_casos(df, mes_base, mes_comparado):
-    base_html = bloque_mes_kpi_casos_comparativo_html(df, mes_base, "Mes base")
-    comparado_html = bloque_mes_kpi_casos_comparativo_html(df, mes_comparado, "Mes comparado")
+    anio_base, mes_base_num = parse_mes_periodo(mes_base)
+    anio_comparado, mes_comparado_num = parse_mes_periodo(mes_comparado)
+    etiqueta_base = etiqueta_mes_periodo(anio_base, mes_base_num)
+    etiqueta_comparado = etiqueta_mes_periodo(anio_comparado, mes_comparado_num)
+    datos_base = filtrar_anio_mes_dashboard(df, anio_base, mes_base_num)
+    datos_comparado = filtrar_anio_mes_dashboard(df, anio_comparado, mes_comparado_num)
+    comparativo = tabla_productos_comparativo_soporte(datos_base, datos_comparado)
+    if comparativo.empty:
+        st.info("No hay productos para calcular la distribucion comparativa de tickets de soporte.")
+        return
+
+    torta_base = torta_producto_comparativo_html(comparativo, f"Mes base - {etiqueta_base}", "Cantidad base", "% base")
+    torta_comparado = torta_producto_comparativo_html(
+        comparativo,
+        f"Mes comparado - {etiqueta_comparado}",
+        "Cantidad comparado",
+        "% comparado",
+    )
+    tabla_html = tabla_productos_comparativo_html(comparativo, "Base", "Comparado")
+    focos_html = focos_comparativo_html(datos_base, datos_comparado)
     st.markdown(
         f"""
         <style>
-        .kpi-month-compare-grid {{
+        .kpi-product-compare-panel {{
+            background: #ffffff;
+            border: 1px solid {UI_PALETTE["border"]};
+            border-radius: 8px;
+            padding: 14px 16px;
+            width: 100%;
+            overflow: hidden;
+        }}
+        .kpi-product-compare-title {{
+            color: #0b1f3a;
+            font-size: 1.42rem;
+            font-weight: 900;
+            line-height: 1.08;
+            text-align: center;
+            text-transform: uppercase;
+        }}
+        .kpi-product-compare-subtitle {{
+            color: #4b5563;
+            font-size: 0.9rem;
+            font-weight: 900;
+            margin-top: 4px;
+            text-align: center;
+            text-transform: uppercase;
+        }}
+        .kpi-product-compare-pies {{
             display: grid;
             grid-template-columns: repeat(2, minmax(0, 1fr));
-            gap: 14px;
+            gap: 18px;
+            margin-top: 16px;
             align-items: start;
-            margin: 8px 0 4px;
-            width: 100%;
         }}
-        .kpi-month-compare-card {{
+        .kpi-product-compare-pie-card {{
+            display: flex;
+            flex-direction: column;
+            align-items: center;
             min-width: 0;
         }}
-        .kpi-month-compare-heading {{
+        .kpi-product-compare-period {{
+            color: #0b1f3a;
+            font-size: 0.92rem;
+            font-weight: 900;
+            margin-bottom: 8px;
+            text-align: center;
+        }}
+        .kpi-product-compare-pie {{
+            width: min(100%, 236px);
+            aspect-ratio: 1 / 1;
+            border: 3px solid #ffffff;
+            border-radius: 50%;
+            box-shadow: 0 8px 18px rgba(20, 20, 20, 0.13);
+            display: grid;
+            place-items: center;
+            position: relative;
+        }}
+        .kpi-product-compare-pie::after {{
+            content: "";
+            position: absolute;
+            inset: 0;
+            border-radius: inherit;
+            box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.78);
+            pointer-events: none;
+        }}
+        .kpi-product-compare-center {{
+            color: #ffffff;
+            font-size: 2rem;
+            font-weight: 900;
+            line-height: 1;
+            text-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+            z-index: 1;
+        }}
+        .kpi-product-compare-total {{
             color: #0b1f3a;
             font-size: 1rem;
             font-weight: 900;
-            line-height: 1.15;
-            margin: 0 0 8px;
-        }}
-        .kpi-month-compare-grid .slide-product-panel {{
-            min-height: 560px;
-        }}
-        .kpi-month-compare-grid .slide-product-content {{
-            grid-template-columns: minmax(138px, 0.56fr) minmax(250px, 1.44fr);
-            gap: 10px;
-        }}
-        .kpi-month-compare-grid .slide-product-pie {{
-            width: min(100%, 170px);
-        }}
-        .kpi-month-compare-grid .slide-product-labels {{
-            display: none;
-        }}
-        .kpi-month-compare-grid .slide-product-table td,
-        .kpi-month-compare-grid .slide-product-table th {{
-            overflow-wrap: anywhere;
-        }}
-        .kpi-month-compare-empty {{
-            border: 1px dashed {UI_PALETTE["border"]};
-            border-radius: 8px;
-            color: {UI_PALETTE["muted"]};
-            font-size: 0.9rem;
-            font-weight: 800;
-            margin-top: 18px;
-            padding: 26px 14px;
+            margin-top: 8px;
             text-align: center;
         }}
-        @media (max-width: 1040px) {{
-            .kpi-month-compare-grid {{
+        .kpi-product-compare-labels {{
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 6px 8px;
+            margin-top: 10px;
+            width: min(100%, 330px);
+        }}
+        .kpi-product-compare-label {{
+            display: grid;
+            grid-template-columns: 9px minmax(0, 1fr);
+            grid-template-areas:
+                "dot pct"
+                "dot name";
+            column-gap: 6px;
+            min-width: 0;
+        }}
+        .kpi-product-compare-label span {{
+            grid-area: dot;
+            width: 9px;
+            height: 9px;
+            border-radius: 999px;
+            margin-top: 2px;
+        }}
+        .kpi-product-compare-label strong {{
+            grid-area: pct;
+            color: #0b1f3a;
+            font-size: 0.76rem;
+            font-weight: 900;
+            line-height: 1;
+        }}
+        .kpi-product-compare-label em {{
+            grid-area: name;
+            color: #4b5563;
+            font-size: 0.56rem;
+            font-style: normal;
+            font-weight: 800;
+            line-height: 1.05;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }}
+        .kpi-product-compare-total span {{
+            color: #4b5563;
+            display: block;
+            font-size: 0.74rem;
+            font-weight: 700;
+            margin-top: 2px;
+        }}
+        .kpi-product-compare-table {{
+            border: 1px solid #d9dee6;
+            border-radius: 8px;
+            margin-top: 18px;
+            overflow: hidden;
+        }}
+        .kpi-product-compare-table table {{
+            width: 100%;
+            border-collapse: collapse;
+            table-layout: fixed;
+        }}
+        .kpi-product-compare-table th {{
+            background: #0b2b5c;
+            color: #ffffff;
+            font-size: 0.7rem;
+            font-weight: 900;
+            padding: 8px 6px;
+            text-align: center;
+        }}
+        .kpi-product-compare-table td {{
+            border-top: 1px solid #d9dee6;
+            color: #0b1f3a;
+            font-size: 0.76rem;
+            font-weight: 750;
+            line-height: 1.14;
+            padding: 7px 6px;
+            text-align: center;
+            vertical-align: middle;
+            overflow-wrap: anywhere;
+        }}
+        .kpi-product-compare-table th:first-child,
+        .kpi-product-compare-table td:first-child,
+        .kpi-product-compare-table th:last-child,
+        .kpi-product-compare-table td:last-child {{
+            text-align: left;
+        }}
+        .kpi-product-compare-name {{
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            min-width: 0;
+        }}
+        .kpi-product-compare-name span {{
+            width: 10px;
+            min-width: 10px;
+            height: 10px;
+            border-radius: 999px;
+        }}
+        .kpi-product-compare-number,
+        .kpi-product-compare-diff {{
+            font-variant-numeric: tabular-nums;
+        }}
+        .kpi-product-compare-number small,
+        .kpi-product-compare-diff small,
+        .kpi-product-compare-total-row small {{
+            color: #4b5563;
+            display: block;
+            font-size: 0.62rem;
+            font-weight: 900;
+            margin-top: 2px;
+        }}
+        .kpi-product-compare-diff.positive {{
+            color: {UI_PALETTE[TEXT_PRIMARY]};
+        }}
+        .kpi-product-compare-diff.negative {{
+            color: #0b3a78;
+        }}
+        .kpi-product-compare-clients {{
+            font-size: 0.66rem;
+            font-weight: 800;
+            line-height: 1.1;
+        }}
+        .kpi-product-compare-total-row td {{
+            background: #edf2f7;
+            color: #0b1f3a;
+            font-size: 0.82rem;
+            font-weight: 900;
+        }}
+        .kpi-product-compare-focus-strip {{
+            border: 1px solid #d7c5f8;
+            border-radius: 8px;
+            margin-top: 14px;
+            overflow: hidden;
+        }}
+        .kpi-product-compare-focus-title {{
+            color: {UI_PALETTE[TEXT_PURPLE]};
+            font-size: 0.74rem;
+            font-weight: 900;
+            line-height: 1;
+            padding: 8px 10px 0;
+            text-align: center;
+            text-transform: uppercase;
+        }}
+        .kpi-product-compare-focus-grid {{
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 7px;
+            padding: 8px 10px 10px;
+        }}
+        .kpi-product-compare-focus-card {{
+            border: 1px solid #d7c5f8;
+            border-radius: 8px;
+            display: grid;
+            grid-template-columns: 31px minmax(0, 1fr);
+            gap: 6px;
+            align-items: center;
+            min-height: 82px;
+            padding: 7px;
+        }}
+        .kpi-product-compare-focus-card.important {{
+            border-color: {UI_PALETTE[TEXT_PRIMARY]};
+        }}
+        .kpi-product-compare-focus-card.total {{
+            background: #f2eaf8;
+            border-color: #f2eaf8;
+            display: block;
+            text-align: center;
+        }}
+        .kpi-product-compare-focus-icon {{
+            width: 29px;
+            height: 29px;
+            border: 1.5px solid #0b3a78;
+            border-radius: 999px;
+            color: #0b3a78;
+            display: grid;
+            place-items: center;
+            font-size: 0.52rem;
+            font-weight: 900;
+            line-height: 1;
+        }}
+        .kpi-product-compare-focus-card.important .kpi-product-compare-focus-icon {{
+            border-color: {UI_PALETTE[TEXT_PRIMARY]};
+            color: {UI_PALETTE[TEXT_PRIMARY]};
+        }}
+        .kpi-product-compare-focus-label {{
+            color: #0b3a78;
+            font-size: 0.52rem;
+            font-weight: 900;
+            line-height: 1.05;
+        }}
+        .kpi-product-compare-focus-values {{
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 5px;
+            margin-top: 4px;
+        }}
+        .kpi-product-compare-focus-values span {{
+            min-width: 0;
+        }}
+        .kpi-product-compare-focus-values em {{
+            color: #4b5563;
+            display: block;
+            font-size: 0.46rem;
+            font-style: normal;
+            font-weight: 900;
+            line-height: 1;
+            text-transform: uppercase;
+        }}
+        .kpi-product-compare-focus-values strong {{
+            color: #0b3a78;
+            display: block;
+            font-size: 1rem;
+            font-weight: 900;
+            line-height: 1;
+            margin-top: 2px;
+        }}
+        .kpi-product-compare-focus-values small {{
+            color: {UI_PALETTE[TEXT_PURPLE]};
+            display: block;
+            font-size: 0.46rem;
+            font-weight: 900;
+            line-height: 1;
+            margin-top: 2px;
+        }}
+        .kpi-product-compare-focus-diff {{
+            color: {UI_PALETTE[TEXT_PRIMARY]};
+            font-size: 0.7rem;
+            font-weight: 900;
+            margin-top: 4px;
+        }}
+        @media (max-width: 900px) {{
+            .kpi-product-compare-pies,
+            .kpi-product-compare-focus-grid {{
                 grid-template-columns: 1fr;
             }}
-            .kpi-month-compare-grid .slide-product-panel {{
-                min-height: auto;
+            .kpi-product-compare-table {{
+                overflow-x: auto;
+            }}
+            .kpi-product-compare-table table {{
+                min-width: 820px;
             }}
         }}
         </style>
-        <div class="kpi-month-compare-grid kpi-ce-slide" style="padding:0;">
-            {base_html}
-            {comparado_html}
+        <div class="kpi-product-compare-panel">
+            <div class="kpi-product-compare-title">Tickets de soporte - comparativo</div>
+            <div class="kpi-product-compare-subtitle">
+                {html.escape(str(etiqueta_base))} vs {html.escape(str(etiqueta_comparado))} |
+                Distribucion por producto y cliente
+            </div>
+            <div class="kpi-product-compare-pies">
+                {torta_base}
+                {torta_comparado}
+            </div>
+            {tabla_html}
+            {focos_html}
         </div>
         """,
         unsafe_allow_html=True,
@@ -5521,7 +6012,6 @@ def render_kpi_casos_cliente_externo_comparativo():
         f"Base: {etiqueta_mes_periodo_key(mes_base)} | "
         f"Comparado: {etiqueta_mes_periodo_key(mes_comparado)}"
     )
-    render_graficas_kpi_casos_comparativo(tabla)
 
     st.divider()
     render_comparativo_visual_meses_kpi_casos(df, mes_base, mes_comparado)
