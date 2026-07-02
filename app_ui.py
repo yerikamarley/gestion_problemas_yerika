@@ -5301,7 +5301,7 @@ def selector_meses_kpi_casos_comparativo():
     col_base, col_comparado = st.columns(2)
     with col_base:
         mes_base = st.selectbox(
-            "Mes base",
+            "Primer mes",
             meses,
             index=indice_base,
             format_func=etiqueta_mes_periodo_key,
@@ -5309,7 +5309,7 @@ def selector_meses_kpi_casos_comparativo():
         )
     with col_comparado:
         mes_comparado = st.selectbox(
-            "Mes comparado",
+            "Segundo mes",
             meses,
             index=indice_comparado,
             format_func=etiqueta_mes_periodo_key,
@@ -5317,7 +5317,7 @@ def selector_meses_kpi_casos_comparativo():
         )
 
     if mes_base == mes_comparado:
-        st.warning("Selecciona dos meses diferentes para comparar.")
+        st.warning("Selecciona dos meses diferentes.")
         return None
     return mes_base, mes_comparado
 
@@ -5345,19 +5345,19 @@ def tabla_variacion_kpi_casos(tabla):
     return pd.DataFrame(filas)
 
 
-def render_tarjetas_kpi_casos_comparativo(tabla):
+def render_tarjetas_kpi_casos_comparativo(tabla, etiqueta_base, etiqueta_comparado):
     total_base = valor_periodo_kpi_casos(tabla, "Base", TEXT_TOTAL)
     total_comparado = valor_periodo_kpi_casos(tabla, "Comparado", TEXT_TOTAL)
     sla_base = valor_periodo_kpi_casos(tabla, "Base", "SLA %")
     sla_comparado = valor_periodo_kpi_casos(tabla, "Comparado", "SLA %")
     render_tarjetas(
         [
-            ("Casos base", total_base),
-            ("Casos comparado", total_comparado),
-            ("Var casos", f"{int(total_comparado - total_base):+d}"),
-            ("SLA base", f"{sla_base}%"),
-            ("SLA comparado", f"{sla_comparado}%"),
-            ("Var SLA p.p.", f"{round(float(sla_comparado) - float(sla_base), 2):+g}"),
+            (f"Casos {etiqueta_base}", total_base),
+            (f"Casos {etiqueta_comparado}", total_comparado),
+            ("Diferencia casos", f"{int(total_comparado - total_base):+d}"),
+            (f"SLA {etiqueta_base}", f"{sla_base}%"),
+            (f"SLA {etiqueta_comparado}", f"{sla_comparado}%"),
+            ("Diferencia SLA p.p.", f"{round(float(sla_comparado) - float(sla_base), 2):+g}"),
         ]
     )
 
@@ -5575,12 +5575,19 @@ def tabla_productos_comparativo_html(comparativo, etiqueta_base, etiqueta_compar
     """).strip()
 
 
-def focos_comparativo_html(datos_base, datos_comparado):
+def nombre_mes_corto(etiqueta_periodo):
+    partes = str(etiqueta_periodo).split()
+    return partes[0] if partes else str(etiqueta_periodo)
+
+
+def focos_comparativo_html(datos_base, datos_comparado, etiqueta_base, etiqueta_comparado):
     focos_base = resumen_focos_destacados_kpi_casos(datos_base)
     focos_comparado = resumen_focos_destacados_kpi_casos(datos_comparado)
     if focos_base.empty and focos_comparado.empty:
         return ""
 
+    mes_base_corto = nombre_mes_corto(etiqueta_base)
+    mes_comparado_corto = nombre_mes_corto(etiqueta_comparado)
     base_por_foco = {row["Foco"]: row for _, row in focos_base.iterrows()}
     comparado_por_foco = {row["Foco"]: row for _, row in focos_comparado.iterrows()}
     orden = ["Token fisico", "Token virtual", "Envio agenda"]
@@ -5601,9 +5608,9 @@ def focos_comparativo_html(datos_base, datos_comparado):
             '<div class="kpi-product-compare-focus-body">'
             f'<div class="kpi-product-compare-focus-label">{html.escape(str(foco).upper())}</div>'
             '<div class="kpi-product-compare-focus-values">'
-            f'<span><em>Base</em><strong>{formato_entero_es(cantidad_base)}</strong>'
+            f'<span><em>{html.escape(mes_base_corto)}</em><strong>{formato_entero_es(cantidad_base)}</strong>'
             f'<small>{formato_porcentaje_es(porcentaje_base)}</small></span>'
-            f'<span><em>Comp.</em><strong>{formato_entero_es(cantidad_comparado)}</strong>'
+            f'<span><em>{html.escape(mes_comparado_corto)}</em><strong>{formato_entero_es(cantidad_comparado)}</strong>'
             f'<small>{formato_porcentaje_es(porcentaje_comparado)}</small></span>'
             "</div>"
             f'<div class="kpi-product-compare-focus-diff">{cantidad_comparado - cantidad_base:+d}</div>'
@@ -5616,8 +5623,8 @@ def focos_comparativo_html(datos_base, datos_comparado):
         '<div class="kpi-product-compare-focus-card total">'
         '<div class="kpi-product-compare-focus-label">TOTAL TICKETS</div>'
         '<div class="kpi-product-compare-focus-values">'
-        f'<span><em>Base</em><strong>{formato_entero_es(total_base)}</strong><small>100,0%</small></span>'
-        f'<span><em>Comp.</em><strong>{formato_entero_es(total_comparado)}</strong><small>100,0%</small></span>'
+        f'<span><em>{html.escape(mes_base_corto)}</em><strong>{formato_entero_es(total_base)}</strong><small>100,0%</small></span>'
+        f'<span><em>{html.escape(mes_comparado_corto)}</em><strong>{formato_entero_es(total_comparado)}</strong><small>100,0%</small></span>'
         "</div>"
         f'<div class="kpi-product-compare-focus-diff">{total_comparado - total_base:+d}</div>'
         "</div>"
@@ -5639,18 +5646,18 @@ def render_comparativo_visual_meses_kpi_casos(df, mes_base, mes_comparado):
     datos_comparado = filtrar_anio_mes_dashboard(df, anio_comparado, mes_comparado_num)
     comparativo = tabla_productos_comparativo_soporte(datos_base, datos_comparado)
     if comparativo.empty:
-        st.info("No hay productos para calcular la distribucion comparativa de tickets de soporte.")
+        st.info("No hay productos para calcular la distribucion de tickets de soporte por mes.")
         return
 
-    torta_base = torta_producto_comparativo_html(comparativo, f"Mes base - {etiqueta_base}", "Cantidad base", "% base")
+    torta_base = torta_producto_comparativo_html(comparativo, etiqueta_base, "Cantidad base", "% base")
     torta_comparado = torta_producto_comparativo_html(
         comparativo,
-        f"Mes comparado - {etiqueta_comparado}",
+        etiqueta_comparado,
         "Cantidad comparado",
         "% comparado",
     )
-    tabla_html = tabla_productos_comparativo_html(comparativo, "Base", "Comparado")
-    focos_html = focos_comparativo_html(datos_base, datos_comparado)
+    tabla_html = tabla_productos_comparativo_html(comparativo, etiqueta_base, etiqueta_comparado)
+    focos_html = focos_comparativo_html(datos_base, datos_comparado, etiqueta_base, etiqueta_comparado)
     st.markdown(
         html_streamlit(f"""
         <style>
@@ -5974,9 +5981,10 @@ def render_comparativo_visual_meses_kpi_casos(df, mes_base, mes_comparado):
         }}
         </style>
         <div class="kpi-product-compare-panel">
-            <div class="kpi-product-compare-title">Tickets de soporte - comparativo</div>
+            <div class="kpi-product-compare-title">
+                Tickets de soporte - {html.escape(str(etiqueta_base))} / {html.escape(str(etiqueta_comparado))}
+            </div>
             <div class="kpi-product-compare-subtitle">
-                {html.escape(str(etiqueta_base))} vs {html.escape(str(etiqueta_comparado))} |
                 Distribucion por producto y cliente
             </div>
             <div class="kpi-product-compare-pies">
@@ -5992,11 +6000,11 @@ def render_comparativo_visual_meses_kpi_casos(df, mes_base, mes_comparado):
 
 
 def render_kpi_casos_cliente_externo_comparativo():
-    st.subheader("Comparativo KPI Casos Cliente Externo por mes")
-    with st.spinner("Cargando casos para comparativo KPI..."):
+    st.subheader("KPI Casos Cliente Externo por mes")
+    with st.spinner("Cargando casos por mes..."):
         df = cargar_casos_soporte_cache()
     if df.empty:
-        st.info("No hay casos cargados para comparar.")
+        st.info("No hay casos cargados para los meses seleccionados.")
         return
 
     df = preparar_fechas_dashboard(df)
@@ -6005,6 +6013,8 @@ def render_kpi_casos_cliente_externo_comparativo():
         return
 
     mes_base, mes_comparado = meses
+    etiqueta_base = etiqueta_mes_periodo_key(mes_base)
+    etiqueta_comparado = etiqueta_mes_periodo_key(mes_comparado)
     base_inicio, base_fin = rango_mes_periodo_key(mes_base)
     comparado_inicio, comparado_fin = rango_mes_periodo_key(mes_comparado)
     rangos = [
@@ -6013,26 +6023,28 @@ def render_kpi_casos_cliente_externo_comparativo():
     ]
 
     tabla = tabla_kpi_casos_comparativo_rangos(df, rangos)
-    render_tarjetas_kpi_casos_comparativo(tabla)
-    st.caption(
-        f"Base: {etiqueta_mes_periodo_key(mes_base)} | "
-        f"Comparado: {etiqueta_mes_periodo_key(mes_comparado)}"
-    )
+    render_tarjetas_kpi_casos_comparativo(tabla, etiqueta_base, etiqueta_comparado)
+    st.caption(f"{etiqueta_base} | {etiqueta_comparado}")
 
     st.divider()
     render_comparativo_visual_meses_kpi_casos(df, mes_base, mes_comparado)
 
     st.divider()
-    st.subheader("Resumen comparativo")
+    st.subheader("Resumen por mes")
     variacion = tabla_variacion_kpi_casos(tabla)
     if not variacion.empty:
         variacion["Variacion %"] = variacion["Variacion %"].apply(
-            lambda valor: "Sin base" if pd.isna(valor) else formato_porcentaje_presentacion(valor)
+            lambda valor: f"Sin {etiqueta_base}" if pd.isna(valor) else formato_porcentaje_presentacion(valor)
         )
+        variacion = variacion.rename(columns={"Base": etiqueta_base, "Comparado": etiqueta_comparado})
     st.dataframe(variacion, use_container_width=True, hide_index=True)
 
     with st.expander("Ver metricas por mes"):
-        st.dataframe(tabla, use_container_width=True, hide_index=True)
+        tabla_visible = tabla.copy()
+        tabla_visible["Periodo"] = tabla_visible["Periodo"].replace(
+            {"Base": etiqueta_base, "Comparado": etiqueta_comparado}
+        )
+        st.dataframe(tabla_visible, use_container_width=True, hide_index=True)
 
 
 def segmento_incidente(valor):
@@ -7691,11 +7703,11 @@ def dashboard_casos():
 def dashboard_kpi_casos_cliente_externo():
     vista = st.radio(
         "Vista",
-        ["KPI actual", "Comparativo por mes"],
+        ["KPI actual", "Por mes"],
         horizontal=True,
         key="kpi_casos_cliente_externo_vista",
     )
-    if vista == "Comparativo por mes":
+    if vista == "Por mes":
         render_kpi_casos_cliente_externo_comparativo()
         return
 
