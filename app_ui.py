@@ -8176,92 +8176,36 @@ def render_graficas_kpi_comparativo_rangos(metricas, tendencia):
             )
             st.plotly_chart(fig, use_container_width=True)
     
-    # Gráficos de Cumplimiento SLA
+    # Tarjetas de Cumplimiento SLA
     st.markdown("---")
-    st.markdown("<h2 style='text-align: center; color: #f35b04;'>✅ Cumplimiento SLA</h2>", unsafe_allow_html=True)
-    col_sla_casos, col_sla_incidentes = st.columns(2)
     
-    with col_sla_casos:
-        st.markdown("<h3 style='text-align: center;'>SLA Casos</h3>", unsafe_allow_html=True)
-        datos_casos = metricas[metricas["Registro"] == TEXT_CASOS].copy()
-        if not datos_casos.empty:
-            # Crear datos para pie de SLA: Cumple vs No cumple
-            sla_data = []
-            for _, row in datos_casos.iterrows():
-                cumple = row.get("Cumple SLA", 0)
-                no_cumple = row.get("No cumple SLA", 0)
-                periodo = row["Periodo"]
-                if cumple > 0:
-                    sla_data.append({"Periodo": periodo, "Estado": "Cumple", "Cantidad": cumple})
-                if no_cumple > 0:
-                    sla_data.append({"Periodo": periodo, "Estado": "No cumple", "Cantidad": no_cumple})
-            
-            if sla_data:
-                sla_df = pd.DataFrame(sla_data)
-                colors_sla = ["#2ecc71", "#e74c3c"]
-                fig = px.pie(
-                    sla_df,
-                    values="Cantidad",
-                    names="Estado",
-                    color_discrete_sequence=colors_sla,
-                    hole=0.35,
-                )
-                fig.update_traces(
-                    textposition="inside", 
-                    textinfo="label+value+percent",
-                    textfont=dict(size=12, color="white"),
-                    hovertemplate="<b>%{label}</b><br>Cantidad: %{value}<br>Porcentaje: %{percent}<extra></extra>"
-                )
-                fig.update_layout(
-                    height=450,
-                    showlegend=True,
-                    font=dict(size=11),
-                    margin=dict(t=20, b=20, l=20, r=20),
-                    paper_bgcolor="rgba(0,0,0,0)",
-                    plot_bgcolor="rgba(0,0,0,0)",
-                )
-                st.plotly_chart(fig, use_container_width=True)
+    # Calcular porcentajes de SLA
+    tarjetas_sla = []
     
-    with col_sla_incidentes:
-        st.markdown("<h3 style='text-align: center;'>SLA Incidentes</h3>", unsafe_allow_html=True)
-        datos_incidentes = metricas[metricas["Registro"] == TEXT_INCIDENTES].copy()
-        if not datos_incidentes.empty:
-            # Crear datos para pie de SLA: Cumple vs No cumple
-            sla_data = []
-            for _, row in datos_incidentes.iterrows():
-                cumple = row.get("Cumple SLA", 0)
-                no_cumple = row.get("No cumple SLA", 0)
-                periodo = row["Periodo"]
-                if cumple > 0:
-                    sla_data.append({"Periodo": periodo, "Estado": "Cumple", "Cantidad": cumple})
-                if no_cumple > 0:
-                    sla_data.append({"Periodo": periodo, "Estado": "No cumple", "Cantidad": no_cumple})
-            
-            if sla_data:
-                sla_df = pd.DataFrame(sla_data)
-                colors_sla = ["#2ecc71", "#e74c3c"]
-                fig = px.pie(
-                    sla_df,
-                    values="Cantidad",
-                    names="Estado",
-                    color_discrete_sequence=colors_sla,
-                    hole=0.35,
-                )
-                fig.update_traces(
-                    textposition="inside", 
-                    textinfo="label+value+percent",
-                    textfont=dict(size=12, color="white"),
-                    hovertemplate="<b>%{label}</b><br>Cantidad: %{value}<br>Porcentaje: %{percent}<extra></extra>"
-                )
-                fig.update_layout(
-                    height=450,
-                    showlegend=True,
-                    font=dict(size=11),
-                    margin=dict(t=20, b=20, l=20, r=20),
-                    paper_bgcolor="rgba(0,0,0,0)",
-                    plot_bgcolor="rgba(0,0,0,0)",
-                )
-                st.plotly_chart(fig, use_container_width=True)
+    # SLA Casos
+    datos_casos = metricas[metricas["Registro"] == TEXT_CASOS].copy()
+    if not datos_casos.empty:
+        for _, row in datos_casos.iterrows():
+            cumple = row.get("Cumple SLA", 0)
+            no_cumple = row.get("No cumple SLA", 0)
+            total = cumple + no_cumple
+            sla_pct = (cumple / total * 100) if total > 0 else 0
+            periodo = row["Periodo"]
+            tarjetas_sla.append((f"SLA Casos {periodo}", f"{sla_pct:.1f}%"))
+    
+    # SLA Incidentes
+    datos_incidentes = metricas[metricas["Registro"] == TEXT_INCIDENTES].copy()
+    if not datos_incidentes.empty:
+        for _, row in datos_incidentes.iterrows():
+            cumple = row.get("Cumple SLA", 0)
+            no_cumple = row.get("No cumple SLA", 0)
+            total = cumple + no_cumple
+            sla_pct = (cumple / total * 100) if total > 0 else 0
+            periodo = row["Periodo"]
+            tarjetas_sla.append((f"SLA Incidentes {periodo}", f"{sla_pct:.1f}%"))
+    
+    if tarjetas_sla:
+        render_tarjetas(tarjetas_sla)
 
     st.divider()
     st.subheader("Tendencia diaria comparativa")
