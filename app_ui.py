@@ -9763,7 +9763,7 @@ def render_resumen_disponibilidad_rpost(resumen):
                 <div class="rpost-sla-value">{disponibilidad:.2f}%</div>
                 <div class="rpost-sla-footer">
                     <span class="rpost-sla-status {estado_clase}">{html.escape(estado)}</span>
-                    <span class="rpost-sla-caption">Caidas del mes<br><strong>{caidas}</strong></span>
+                    <span class="rpost-sla-caption">Incidentes con caida<br><strong>{caidas}</strong></span>
                 </div>
             </section>
             <section class="rpost-sla-panel">
