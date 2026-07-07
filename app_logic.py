@@ -3566,7 +3566,11 @@ def resumir_cumplimiento_sla_incidentes(incidentes_df, filtro_mes=None):
     Returns:
         DataFrame con métricas de cumplimiento SLA
     """
-    trabajo = agregar_campos_sla_respuesta(incidentes_df.copy())
+    trabajo = incidentes_df.copy()
+    
+    # Agregar campos de SLA
+    trabajo = agregar_campos_sla_incidentes(trabajo)
+    trabajo = agregar_campos_sla_respuesta(trabajo)
     
     if filtro_mes is not None:
         trabajo["creado_dt"] = pd.to_datetime(
