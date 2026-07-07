@@ -3458,6 +3458,7 @@ def calcular_disponibilidad_mes(incidentes_df, mes_dt):
     Basado en: ((Tiempo total del mes - tiempo de indisponibilidad) / Tiempo total del mes) * 100
     
     Considera incidentes críticos y de alto impacto como tiempo de indisponibilidad.
+    Si un incidente está abierto, cuenta desde su creación hasta fin del mes.
     """
     if incidentes_df.empty:
         return 100.0
@@ -3472,6 +3473,9 @@ def calcular_disponibilidad_mes(incidentes_df, mes_dt):
         ultimo_dia = pd.Timestamp(year=mes_dt.year + 1, month=1, day=1) - pd.Timedelta(days=1)
     else:
         ultimo_dia = pd.Timestamp(year=mes_dt.year, month=mes_dt.month + 1, day=1) - pd.Timedelta(days=1)
+    
+    # Agregar fin de día a ultimo_dia
+    ultimo_dia = ultimo_dia.replace(hour=23, minute=59, second=59)
     
     # Tiempo total del mes en horas (24 horas * días del mes)
     dias_mes = (ultimo_dia - primer_dia).days + 1
@@ -3494,12 +3498,15 @@ def calcular_disponibilidad_mes(incidentes_df, mes_dt):
         return 100.0
     
     # Filtrar por prioridad crítica o alto (causantes de indisponibilidad)
-    prioridades_impacto = ["Critico", "Alto"]
+    prioridades_impacto = ["Critico", "Alto", "Critical", "High"]
     incidentes_impacto = incidentes_mes[
         incidentes_mes["prioridad"].apply(
             lambda x: normalizar_prioridad_incidente(x) in prioridades_impacto
         )
     ]
+    
+    if incidentes_impacto.empty:
+        return 100.0
     
     # Calcular tiempo total de indisponibilidad
     tiempo_indisponibilidad_horas = 0
@@ -3508,12 +3515,26 @@ def calcular_disponibilidad_mes(incidentes_df, mes_dt):
         creado = pd.to_datetime(normalizar_fecha(valor_fila(incidente, "creado")), errors="coerce")
         cerrado = pd.to_datetime(normalizar_fecha(valor_fila(incidente, "cerrado")), errors="coerce")
         
-        if pd.notna(creado) and pd.notna(cerrado) and cerrado >= creado:
+        # Si existe duracion_horas, usarla directamente
+        duracion_existente = safe_float(valor_fila(incidente, "duracion_horas"))
+        
+        if duracion_existente is not None:
+            # Usar duración calculada
+            tiempo_indisponibilidad_horas += duracion_existente
+        elif pd.notna(creado) and pd.notna(cerrado) and cerrado >= creado:
+            # Calcular duración si no existe
             duracion_horas = (cerrado - creado).total_seconds() / 3600
+            tiempo_indisponibilidad_horas += duracion_horas
+        elif pd.notna(creado) and pd.isna(cerrado):
+            # Si está abierto, contar desde creado hasta fin del mes
+            duracion_horas = (ultimo_dia - creado).total_seconds() / 3600
             tiempo_indisponibilidad_horas += duracion_horas
     
     # Calcular disponibilidad
-    disponibilidad = ((tiempo_total_horas - tiempo_indisponibilidad_horas) / tiempo_total_horas) * 100
+    if tiempo_total_horas > 0:
+        disponibilidad = ((tiempo_total_horas - tiempo_indisponibilidad_horas) / tiempo_total_horas) * 100
+    else:
+        disponibilidad = 100.0
     
     return round(max(0, min(100, disponibilidad)), 2)
 
