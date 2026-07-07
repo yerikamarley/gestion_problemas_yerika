@@ -9640,32 +9640,9 @@ def render_detalle_incidentes_seguimiento_rpost(incidentes):
     dataframe_liviano(tabla)
 
 
-def formato_tiempo_indisponibilidad(horas):
-    minutos_totales = int(round(float(horas or 0) * 60))
-    if minutos_totales <= 0:
-        return "0 h"
-
-    dias, resto = divmod(minutos_totales, 24 * 60)
-    horas_valor, minutos = divmod(resto, 60)
-    partes = []
-    if dias:
-        partes.append(f"{dias} d")
-    if horas_valor:
-        partes.append(f"{horas_valor} h")
-    if minutos:
-        partes.append(f"{minutos} min")
-    return " ".join(partes) if partes else "0 h"
-
-
-def formato_horas_resumen(horas):
-    valor = round(float(horas or 0), 2)
-    return f"{valor:,.2f} h".replace(",", "X").replace(".", ",").replace("X", ".")
-
-
 def render_resumen_disponibilidad_rpost(resumen):
     disponibilidad = float(resumen.get("disponibilidad", 100.0) or 100.0)
     caidas = int(resumen.get("caidas", 0) or 0)
-    tiempo_horas = float(resumen.get("tiempo_indisponibilidad_horas", 0) or 0)
     cumple_sla = bool(resumen.get("cumple_sla", True))
     estado = "Cumple SLA" if cumple_sla else "No cumple SLA"
     estado_clase = "ok" if cumple_sla else "bad"
@@ -9675,7 +9652,8 @@ def render_resumen_disponibilidad_rpost(resumen):
         <style>
         .rpost-sla-grid {{
             display: grid;
-            grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+            grid-template-columns: minmax(0, 760px);
+            justify-content: center;
             gap: 1rem;
             margin: 0.3rem 0 0.6rem;
         }}
@@ -9705,10 +9683,6 @@ def render_resumen_disponibilidad_rpost(resumen):
             line-height: 1;
             font-variant-numeric: tabular-nums;
             overflow-wrap: anywhere;
-        }}
-        .rpost-sla-value.time {{
-            color: var(--text);
-            font-size: 2.45rem;
         }}
         .rpost-sla-footer {{
             display: flex;
@@ -9752,9 +9726,6 @@ def render_resumen_disponibilidad_rpost(resumen):
             .rpost-sla-value {{
                 font-size: 2.65rem;
             }}
-            .rpost-sla-value.time {{
-                font-size: 2.05rem;
-            }}
         }}
         </style>
         <div class="rpost-sla-grid">
@@ -9764,14 +9735,6 @@ def render_resumen_disponibilidad_rpost(resumen):
                 <div class="rpost-sla-footer">
                     <span class="rpost-sla-status {estado_clase}">{html.escape(estado)}</span>
                     <span class="rpost-sla-caption">Incidentes con caida<br><strong>{caidas}</strong></span>
-                </div>
-            </section>
-            <section class="rpost-sla-panel">
-                <div class="rpost-sla-eyebrow">Tiempo indisponible</div>
-                <div class="rpost-sla-value time">{html.escape(formato_tiempo_indisponibilidad(tiempo_horas))}</div>
-                <div class="rpost-sla-footer">
-                    <span class="rpost-sla-status bad">Indisponibilidad</span>
-                    <span class="rpost-sla-caption">Horas acumuladas<br><strong>{html.escape(formato_horas_resumen(tiempo_horas))}</strong></span>
                 </div>
             </section>
         </div>
