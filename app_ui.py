@@ -9700,6 +9700,50 @@ def dashboard_seguimiento_rpost():
         st.dataframe(resumen, use_container_width=True, hide_index=True)
 
     st.divider()
+    st.subheader("📊 Disponibilidad y SLA de Incidentes")
+    
+    if not incidentes.empty:
+        # Calcular disponibilidad
+        mes_ts = pd.Timestamp(year=anio, month=mes, day=1)
+        disponibilidad = calcular_disponibilidad_mes(incidentes, mes_ts)
+        
+        # Calcular cumplimiento SLA
+        cumplimiento_sla = resumir_cumplimiento_sla_incidentes(incidentes, mes_ts)
+        
+        if not cumplimiento_sla.empty:
+            sla_respuesta = cumplimiento_sla["Pct_Cumple_Respuesta"].values[0]
+            sla_solucion = cumplimiento_sla["Pct_Cumple_Solucion"].values[0]
+        else:
+            sla_respuesta = 0
+            sla_solucion = 0
+        
+        # Mostrar tarjetas de métricas
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric(
+                "Disponibilidad del Servicio",
+                f"{disponibilidad:.2f}%",
+                delta="✓ Cumple SLA" if disponibilidad >= 99.8 else "✗ No cumple SLA",
+                delta_color="off"
+            )
+        with col2:
+            st.metric(
+                "Cumplimiento SLA Respuesta",
+                f"{sla_respuesta:.1f}%",
+                delta="✓ Cumple" if sla_respuesta >= 95 else "✗ No cumple",
+                delta_color="off"
+            )
+        with col3:
+            st.metric(
+                "Cumplimiento SLA Solución",
+                f"{sla_solucion:.1f}%",
+                delta="✓ Cumple" if sla_solucion >= 95 else "✗ No cumple",
+                delta_color="off"
+            )
+    else:
+        st.info("No hay incidentes para calcular disponibilidad y SLA.")
+
+    st.divider()
     render_graficas_seguimiento_rpost(casos, incidentes)
 
     st.divider()
