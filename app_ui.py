@@ -1,4 +1,4 @@
-import html
+﻿import html
 import json
 import re
 from io import BytesIO
@@ -15,7 +15,6 @@ from app_logic import (
     agregar_campos_sla_respuesta,
     analizar_reincidencias_y_problemas,
     autenticar_usuario,
-    calcular_disponibilidad_mes,
     calcular_disponibilidad_por_mes,
     contar_incidentes,
     eliminar_usuario,
@@ -34,7 +33,7 @@ from app_logic import (
     load_incidentes_filtrados,
     obtener_meses_disponibles,
     obtener_ultimo_mes_disponible,
-    resumir_cumplimiento_sla_incidentes,
+    resumir_disponibilidad_mes,
     duracion_sla_horas_incidente,
     estado_sla_incidente,
     familia_sla_incidente,
@@ -409,7 +408,7 @@ CLIENTE_SICOV = "SICOV"
 CLIENTE_TELEFONICA = "TELEFONICA"
 CLIENTE_TUYA = "TUYA"
 CLIENTE_SUFI_BANCOLOMBIA = "SUFI BANCOLOMBIA"
-CLIENTE_RCI_COLOMBIA = "RCI COLOMBIA S.A COMPAÑÍA DE FINANCIAMIENTO"
+CLIENTE_RCI_COLOMBIA = "RCI COLOMBIA S.A COMPAÃ‘ÃA DE FINANCIAMIENTO"
 CLIENTE_PORVENIR = "PORVENIR"
 CLIENTE_MIBANCO = "MIBANCO S.A."
 CLIENTE_BBVA = "BBVA"
@@ -539,17 +538,17 @@ def periodo_key_sql(anio, mes):
     return TEXT_TODOS
 
 
-def selector_periodo_sql(tabla, key, label_anio="Año", label_mes="Mes"):
+def selector_periodo_sql(tabla, key, label_anio="AÃ±o", label_mes="Mes"):
     meses = cargar_meses_disponibles_cache(tabla)
     return selector_periodo_desde_meses(meses, key, label_anio, label_mes)
 
 
-def selector_periodo_multi_sql(tablas, key, label_anio="Año", label_mes="Mes"):
+def selector_periodo_multi_sql(tablas, key, label_anio="AÃ±o", label_mes="Mes"):
     meses = cargar_meses_disponibles_multi_cache(tuple(tablas))
     return selector_periodo_desde_meses(meses, key, label_anio, label_mes)
 
 
-def selector_periodo_desde_meses(meses, key, label_anio="Año", label_mes="Mes"):
+def selector_periodo_desde_meses(meses, key, label_anio="AÃ±o", label_mes="Mes"):
     if not meses:
         st.caption("No hay fechas validas para filtrar por periodo.")
         return None, None, TEXT_TODOS
@@ -1157,7 +1156,7 @@ CLIENTES_CLAVE = [
 
 CLIENTES_CLAVE_ALIASES = {
     CLIENTE_SICOV: [CLIENTE_SICOV],
-    CLIENTE_TELEFONICA: [CLIENTE_TELEFONICA, "TELEFÓNICA", "MOVISTAR"],
+    CLIENTE_TELEFONICA: [CLIENTE_TELEFONICA, "TELEFÃ“NICA", "MOVISTAR"],
     CLIENTE_TUYA: [CLIENTE_TUYA, "TUYA S.A"],
     CLIENTE_SUFI_BANCOLOMBIA: [CLIENTE_SUFI_BANCOLOMBIA, "SUFI"],
     CLIENTE_RCI_COLOMBIA: [
@@ -2020,7 +2019,7 @@ def estilos_login():
             border: 1px solid var(--border);
         }
 
-        /* Título */
+        /* TÃ­tulo */
         .login-title {
             font-size: 28px;
             font-weight: 800;
@@ -2029,7 +2028,7 @@ def estilos_login():
             text-align: left;
         }
 
-        /* Subtítulo */
+        /* SubtÃ­tulo */
         .login-subtitle {
             font-size: 14px;
             color: var(--muted);
@@ -2051,7 +2050,7 @@ def estilos_login():
             outline: none;
         }
 
-        /* Botón */
+        /* BotÃ³n */
         div.stButton > button {
             width: 100%;
             border-radius: 8px;
@@ -8117,17 +8116,17 @@ def render_graficas_kpi_comparativo_rangos(metricas, tendencia):
         st.info("No hay metricas para graficar.")
         return
     
-    # Obtener los periodos únicos
+    # Obtener los periodos Ãºnicos
     periodos = metricas["Periodo"].unique().tolist()
     
-    # Gráficos de Total por rango
+    # GrÃ¡ficos de Total por rango
     st.markdown("---")
-    st.markdown("<h2 style='text-align: center; color: #f35b04;'>📊 Análisis de Casos e Incidentes</h2>", unsafe_allow_html=True)
+    st.markdown("<h2 style='text-align: center; color: #f35b04;'>ðŸ“Š AnÃ¡lisis de Casos e Incidentes</h2>", unsafe_allow_html=True)
     
     col_casos, col_incidentes = st.columns(2)
     
     with col_casos:
-        st.markdown("<h3 style='text-align: center;'>Distribución de Casos</h3>", unsafe_allow_html=True)
+        st.markdown("<h3 style='text-align: center;'>DistribuciÃ³n de Casos</h3>", unsafe_allow_html=True)
         datos_casos = metricas[metricas["Registro"] == TEXT_CASOS].copy()
         if not datos_casos.empty:
             fig = px.pie(
@@ -8154,7 +8153,7 @@ def render_graficas_kpi_comparativo_rangos(metricas, tendencia):
             st.plotly_chart(fig, use_container_width=True)
     
     with col_incidentes:
-        st.markdown("<h3 style='text-align: center;'>Distribución de Incidentes</h3>", unsafe_allow_html=True)
+        st.markdown("<h3 style='text-align: center;'>DistribuciÃ³n de Incidentes</h3>", unsafe_allow_html=True)
         datos_incidentes = metricas[metricas["Registro"] == TEXT_INCIDENTES].copy()
         if not datos_incidentes.empty:
             fig = px.pie(
@@ -8284,15 +8283,15 @@ def etiqueta_rango_fechas(fecha_inicio, fecha_fin):
     anio_inicio = ts_inicio.year
     anio_fin = ts_fin.year
     
-    # Si es el mismo mes y año
+    # Si es el mismo mes y aÃ±o
     if ts_inicio.month == ts_fin.month and anio_inicio == anio_fin:
         return f"{mes_inicio} {anio_inicio}"
     
-    # Si es el mismo año pero diferente mes
+    # Si es el mismo aÃ±o pero diferente mes
     if anio_inicio == anio_fin:
         return f"{mes_inicio} - {mes_fin} {anio_fin}"
     
-    # Si son años diferentes
+    # Si son aÃ±os diferentes
     return f"{mes_inicio} {anio_inicio} - {mes_fin} {anio_fin}"
 
 
@@ -8479,7 +8478,7 @@ def render_grafico_estado_anual(metricas, registro, anios):
         color=TEXT_ESTADO_2,
         text=TEXT_CANTIDAD,
         barmode="stack",
-        labels={"Anio": "Año"},
+        labels={"Anio": "AÃ±o"},
         color_discrete_map={
             TEXT_ABIERTOS: UI_PALETTE[TEXT_PRIMARY],
             TEXT_CERRADOS: UI_PALETTE[TEXT_LAVENDER],
@@ -8673,21 +8672,21 @@ def dashboard_kpi_comparativo_anual_legacy():
     col_base, col_comparado = st.columns(2)
     with col_base:
         anio_base = st.selectbox(
-            "Año base",
+            "AÃ±o base",
             anios_disponibles,
             index=anios_disponibles.index(2025) if 2025 in anios_disponibles else 0,
             key="kpi_comp_anio_base",
         )
     with col_comparado:
         anio_comparado = st.selectbox(
-            "Año comparado",
+            "AÃ±o comparado",
             anios_disponibles,
             index=anios_disponibles.index(2026) if 2026 in anios_disponibles else len(anios_disponibles) - 1,
             key="kpi_comp_anio_comparado",
         )
 
     if anio_base == anio_comparado:
-        st.warning("Selecciona dos años diferentes para comparar.")
+        st.warning("Selecciona dos aÃ±os diferentes para comparar.")
         return
 
     anios = [anio_base, anio_comparado]
@@ -8696,7 +8695,7 @@ def dashboard_kpi_comparativo_anual_legacy():
         incidentes = cargar_incidentes_anios_cache(tuple(anios))
 
     if casos.empty and incidentes.empty:
-        st.info("No hay casos ni incidentes cargados para los años seleccionados.")
+        st.info("No hay casos ni incidentes cargados para los aÃ±os seleccionados.")
         return
 
     with st.spinner("Preparando resumen anual..."):
@@ -8714,7 +8713,7 @@ def dashboard_kpi_comparativo_anual_legacy():
 
     with st.expander("Ver tabla resumen"):
         columnas = ["Anio", "Registro", TEXT_TOTAL, TEXT_ABIERTOS, TEXT_CERRADOS]
-        tabla = metricas[[col for col in columnas if col in metricas.columns]].rename(columns={"Anio": "Año"})
+        tabla = metricas[[col for col in columnas if col in metricas.columns]].rename(columns={"Anio": "AÃ±o"})
         st.dataframe(tabla, use_container_width=True, hide_index=True)
 
 
@@ -9641,6 +9640,146 @@ def render_detalle_incidentes_seguimiento_rpost(incidentes):
     dataframe_liviano(tabla)
 
 
+def formato_tiempo_indisponibilidad(horas):
+    minutos_totales = int(round(float(horas or 0) * 60))
+    if minutos_totales <= 0:
+        return "0 h"
+
+    dias, resto = divmod(minutos_totales, 24 * 60)
+    horas_valor, minutos = divmod(resto, 60)
+    partes = []
+    if dias:
+        partes.append(f"{dias} d")
+    if horas_valor:
+        partes.append(f"{horas_valor} h")
+    if minutos:
+        partes.append(f"{minutos} min")
+    return " ".join(partes) if partes else "0 h"
+
+
+def formato_horas_resumen(horas):
+    valor = round(float(horas or 0), 2)
+    return f"{valor:,.2f} h".replace(",", "X").replace(".", ",").replace("X", ".")
+
+
+def render_resumen_disponibilidad_rpost(resumen):
+    disponibilidad = float(resumen.get("disponibilidad", 100.0) or 100.0)
+    caidas = int(resumen.get("caidas", 0) or 0)
+    tiempo_horas = float(resumen.get("tiempo_indisponibilidad_horas", 0) or 0)
+    cumple_sla = bool(resumen.get("cumple_sla", True))
+    estado = "Cumple SLA" if cumple_sla else "No cumple SLA"
+    estado_clase = "ok" if cumple_sla else "bad"
+
+    st.markdown(
+        f"""
+        <style>
+        .rpost-sla-grid {{
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+            gap: 1rem;
+            margin: 0.3rem 0 0.6rem;
+        }}
+        .rpost-sla-panel {{
+            min-height: 178px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: var(--surface);
+            box-shadow: 0 10px 24px rgba(20, 20, 20, 0.06);
+            padding: 22px 24px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }}
+        .rpost-sla-eyebrow {{
+            color: var(--muted);
+            font-size: 0.82rem;
+            font-weight: 900;
+            line-height: 1.2;
+            text-transform: uppercase;
+            letter-spacing: 0;
+        }}
+        .rpost-sla-value {{
+            color: var(--primary);
+            font-size: 3.25rem;
+            font-weight: 900;
+            line-height: 1;
+            font-variant-numeric: tabular-nums;
+            overflow-wrap: anywhere;
+        }}
+        .rpost-sla-value.time {{
+            color: var(--text);
+            font-size: 2.45rem;
+        }}
+        .rpost-sla-footer {{
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.75rem;
+            border-top: 1px solid rgba(20, 20, 20, 0.1);
+            padding-top: 14px;
+        }}
+        .rpost-sla-status {{
+            border-radius: 999px;
+            padding: 6px 10px;
+            font-size: 0.82rem;
+            font-weight: 900;
+            white-space: nowrap;
+        }}
+        .rpost-sla-status.ok {{
+            background: rgba(22, 163, 74, 0.1);
+            color: #166534;
+        }}
+        .rpost-sla-status.bad {{
+            background: rgba(220, 38, 38, 0.1);
+            color: #991b1b;
+        }}
+        .rpost-sla-caption {{
+            color: var(--muted);
+            font-size: 0.9rem;
+            font-weight: 800;
+            text-align: right;
+        }}
+        .rpost-sla-caption strong {{
+            color: var(--text);
+            font-size: 1.35rem;
+            font-weight: 900;
+            font-variant-numeric: tabular-nums;
+        }}
+        @media (max-width: 760px) {{
+            .rpost-sla-grid {{
+                grid-template-columns: 1fr;
+            }}
+            .rpost-sla-value {{
+                font-size: 2.65rem;
+            }}
+            .rpost-sla-value.time {{
+                font-size: 2.05rem;
+            }}
+        }}
+        </style>
+        <div class="rpost-sla-grid">
+            <section class="rpost-sla-panel">
+                <div class="rpost-sla-eyebrow">SLA disponibilidad</div>
+                <div class="rpost-sla-value">{disponibilidad:.2f}%</div>
+                <div class="rpost-sla-footer">
+                    <span class="rpost-sla-status {estado_clase}">{html.escape(estado)}</span>
+                    <span class="rpost-sla-caption">Caidas del mes<br><strong>{caidas}</strong></span>
+                </div>
+            </section>
+            <section class="rpost-sla-panel">
+                <div class="rpost-sla-eyebrow">Tiempo indisponible</div>
+                <div class="rpost-sla-value time">{html.escape(formato_tiempo_indisponibilidad(tiempo_horas))}</div>
+                <div class="rpost-sla-footer">
+                    <span class="rpost-sla-status bad">Indisponibilidad</span>
+                    <span class="rpost-sla-caption">Horas acumuladas<br><strong>{html.escape(formato_horas_resumen(tiempo_horas))}</strong></span>
+                </div>
+            </section>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def dashboard_seguimiento_rpost():
     st.subheader(MENU_SEGUIMIENTO_RPOST)
     anio, mes, periodo_label = selector_periodo_multi_sql(
@@ -9700,48 +9839,14 @@ def dashboard_seguimiento_rpost():
         st.dataframe(resumen, use_container_width=True, hide_index=True)
 
     st.divider()
-    st.subheader("📊 Disponibilidad y SLA de Incidentes")
+    st.subheader("Disponibilidad RPost")
     
     if not incidentes.empty:
-        # Calcular disponibilidad
         mes_ts = pd.Timestamp(year=anio, month=mes, day=1)
-        disponibilidad = calcular_disponibilidad_mes(incidentes, mes_ts)
+        render_resumen_disponibilidad_rpost(resumir_disponibilidad_mes(incidentes, mes_ts))
         
-        # Calcular cumplimiento SLA
-        cumplimiento_sla = resumir_cumplimiento_sla_incidentes(incidentes, mes_ts)
-        
-        if not cumplimiento_sla.empty:
-            sla_respuesta = cumplimiento_sla["Pct_Cumple_Respuesta"].values[0]
-            sla_solucion = cumplimiento_sla["Pct_Cumple_Solucion"].values[0]
-        else:
-            sla_respuesta = 0
-            sla_solucion = 0
-        
-        # Mostrar tarjetas de métricas
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.metric(
-                "Disponibilidad del Servicio",
-                f"{disponibilidad:.2f}%",
-                delta="✓ Cumple SLA" if disponibilidad >= 99.8 else "✗ No cumple SLA",
-                delta_color="off"
-            )
-        with col2:
-            st.metric(
-                "Cumplimiento SLA Respuesta",
-                f"{sla_respuesta:.1f}%",
-                delta="✓ Cumple" if sla_respuesta >= 95 else "✗ No cumple",
-                delta_color="off"
-            )
-        with col3:
-            st.metric(
-                "Cumplimiento SLA Solución",
-                f"{sla_solucion:.1f}%",
-                delta="✓ Cumple" if sla_solucion >= 95 else "✗ No cumple",
-                delta_color="off"
-            )
     else:
-        st.info("No hay incidentes para calcular disponibilidad y SLA.")
+        st.info("No hay incidentes para calcular disponibilidad.")
 
     st.divider()
     render_graficas_seguimiento_rpost(casos, incidentes)

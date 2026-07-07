@@ -3626,14 +3626,7 @@ def unir_intervalos_disponibilidad(intervalos):
     return unidos
 
 
-def calcular_disponibilidad_mes(incidentes_df, mes_dt):
-    """
-    Calcula disponibilidad mensual contando caidas, indisponibilidad y
-    ventanas de mantenimiento como tiempo no disponible.
-    """
-    if incidentes_df.empty:
-        return 100.0
-
+def rango_mes_disponibilidad(mes_dt):
     if isinstance(mes_dt, str):
         mes_dt = pd.to_datetime(mes_dt)
 
@@ -3642,18 +3635,32 @@ def calcular_disponibilidad_mes(incidentes_df, mes_dt):
         fin_mes = pd.Timestamp(year=mes_dt.year + 1, month=1, day=1)
     else:
         fin_mes = pd.Timestamp(year=mes_dt.year, month=mes_dt.month + 1, day=1)
+    return inicio_mes, fin_mes
+
+
+def resumir_disponibilidad_mes(incidentes_df, mes_dt):
+    inicio_mes, fin_mes = rango_mes_disponibilidad(mes_dt)
 
     tiempo_total_horas = (fin_mes - inicio_mes).total_seconds() / 3600
-    if tiempo_total_horas <= 0:
-        return 100.0
+    resumen = {
+        "disponibilidad": 100.0,
+        "caidas": 0,
+        "tiempo_indisponibilidad_horas": 0.0,
+        "intervalos_indisponibilidad": 0,
+        "tiempo_total_horas": round(tiempo_total_horas, 2),
+        "cumple_sla": True,
+    }
+    if incidentes_df.empty or tiempo_total_horas <= 0:
+        return resumen
 
     incidentes_impacto = incidentes_df[
         incidentes_df.apply(es_incidente_indisponibilidad, axis=1)
     ].copy()
     if incidentes_impacto.empty:
-        return 100.0
+        return resumen
 
     intervalos = []
+    caidas = 0
     for _, incidente in incidentes_impacto.iterrows():
         creado = pd.to_datetime(normalizar_fecha(valor_fila(incidente, "creado")), errors="coerce")
         if pd.isna(creado):
@@ -3667,13 +3674,33 @@ def calcular_disponibilidad_mes(incidentes_df, mes_dt):
         fin_traslape = min(fin_incidente, fin_mes)
         if fin_traslape > inicio_traslape:
             intervalos.append((inicio_traslape, fin_traslape))
+            caidas += 1
 
+    intervalos_unidos = unir_intervalos_disponibilidad(intervalos)
     tiempo_indisponibilidad_horas = sum(
         (fin - inicio).total_seconds() / 3600
-        for inicio, fin in unir_intervalos_disponibilidad(intervalos)
+        for inicio, fin in intervalos_unidos
     )
     disponibilidad = ((tiempo_total_horas - tiempo_indisponibilidad_horas) / tiempo_total_horas) * 100
-    return round(max(0, min(100, disponibilidad)), 2)
+    disponibilidad = round(max(0, min(100, disponibilidad)), 2)
+    resumen.update(
+        {
+            "disponibilidad": disponibilidad,
+            "caidas": caidas,
+            "tiempo_indisponibilidad_horas": round(tiempo_indisponibilidad_horas, 2),
+            "intervalos_indisponibilidad": len(intervalos_unidos),
+            "cumple_sla": disponibilidad >= SLA_DISPONIBILIDAD_MINIMO,
+        }
+    )
+    return resumen
+
+
+def calcular_disponibilidad_mes(incidentes_df, mes_dt):
+    """
+    Calcula disponibilidad mensual contando caidas, indisponibilidad y
+    ventanas de mantenimiento como tiempo no disponible.
+    """
+    return resumir_disponibilidad_mes(incidentes_df, mes_dt)["disponibilidad"]
 
 
 def calcular_disponibilidad_por_mes(incidentes_df, mes_inicio, mes_fin):
