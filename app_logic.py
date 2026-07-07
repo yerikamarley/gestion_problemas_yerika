@@ -422,6 +422,17 @@ SLA_RESOLUCION_HORAS = {
     },
 }
 
+# SLAs de Tiempo de Respuesta por Prioridad (en minutos)
+SLA_TIEMPO_RESPUESTA_MINUTOS = {
+    "Critico": 30,      # 30 minutos
+    "Alto": 45,         # 45 minutos
+    "Moderado": 60,     # 1 hora
+    "Bajo": 120,        # 2 horas
+}
+
+# SLAs de Disponibilidad
+SLA_DISPONIBILIDAD_MINIMO = 99.8  # 99.8% mensual
+
 CASE_USAGE_KEYWORDS = [
     "contrasena",
     "password",
@@ -3375,3 +3386,221 @@ def analizar_reincidencias_y_problemas(casos_df, incidentes_df, filtros=None):
     reincidencias_cliente = resumir_reincidencias_cliente(base)
     problemas_sugeridos = construir_problemas_sugeridos(base, None)
     return base, reincidencias_cliente, problemas_sugeridos
+
+
+# ============================================================================
+# FUNCIONES DE DISPONIBILIDAD Y SLA DE INCIDENTES
+# ============================================================================
+
+def calcular_tiempo_respuesta_minutos(row):
+    """Calcula el tiempo de respuesta en minutos desde creación hasta primera respuesta."""
+    creado = pd.to_datetime(normalizar_fecha(valor_fila(row, "creado")), errors="coerce")
+    
+    # Intentar obtener fecha de respuesta de varios campos posibles
+    fecha_respuesta = pd.to_datetime(
+        normalizar_fecha(valor_fila(row, "tiempo_respuesta") or 
+                        valor_fila(row, "fecha_respuesta") or 
+                        valor_fila(row, "actualizado")), 
+        errors="coerce"
+    )
+    
+    if pd.isna(creado) or pd.isna(fecha_respuesta) or fecha_respuesta < creado:
+        return None
+    
+    return round((fecha_respuesta - creado).total_seconds() / 60, 2)
+
+
+def obtener_sla_respuesta_minutos(row):
+    """Obtiene el SLA de tiempo de respuesta según la prioridad."""
+    prioridad = normalizar_prioridad_incidente(valor_fila(row, "prioridad"))
+    return SLA_TIEMPO_RESPUESTA_MINUTOS.get(prioridad, 120)
+
+
+def evaluar_cumplimiento_sla_respuesta(row):
+    """Evalúa si se cumple el SLA de tiempo de respuesta."""
+    tiempo_respuesta = calcular_tiempo_respuesta_minutos(row)
+    sla_objetivo = obtener_sla_respuesta_minutos(row)
+    
+    if tiempo_respuesta is None:
+        return None
+    
+    return "Cumple" if tiempo_respuesta <= sla_objetivo else "No cumple"
+
+
+def evaluar_cumplimiento_sla_solucion(row):
+    """Evalúa si se cumple el SLA de tiempo de solución."""
+    objetivo = safe_float(valor_fila(row, "sla_objetivo_horas"))
+    duracion = safe_float(valor_fila(row, "duracion_sla_horas"))
+    
+    if duracion is None:
+        duracion = safe_float(valor_fila(row, "duracion_horas"))
+    
+    if objetivo is None or duracion is None:
+        return None
+    
+    return "Cumple" if duracion <= objetivo else "No cumple"
+
+
+def agregar_campos_sla_respuesta(df):
+    """Agrega campos de SLA de tiempo de respuesta a un dataframe de incidentes."""
+    trabajo = df.copy()
+    
+    trabajo["tiempo_respuesta_minutos"] = trabajo.apply(calcular_tiempo_respuesta_minutos, axis=1)
+    trabajo["sla_respuesta_objetivo_minutos"] = trabajo.apply(obtener_sla_respuesta_minutos, axis=1)
+    trabajo["cumplimiento_sla_respuesta"] = trabajo.apply(evaluar_cumplimiento_sla_respuesta, axis=1)
+    
+    return trabajo
+
+
+def calcular_disponibilidad_mes(incidentes_df, mes_dt):
+    """
+    Calcula la disponibilidad del servicio para un mes específico.
+    Basado en: ((Tiempo total del mes - tiempo de indisponibilidad) / Tiempo total del mes) * 100
+    
+    Considera incidentes críticos y de alto impacto como tiempo de indisponibilidad.
+    """
+    if incidentes_df.empty:
+        return 100.0
+    
+    # Convertir mes_dt a timestamp
+    if isinstance(mes_dt, str):
+        mes_dt = pd.to_datetime(mes_dt)
+    
+    # Obtener primer y último día del mes
+    primer_dia = pd.Timestamp(year=mes_dt.year, month=mes_dt.month, day=1)
+    if mes_dt.month == 12:
+        ultimo_dia = pd.Timestamp(year=mes_dt.year + 1, month=1, day=1) - pd.Timedelta(days=1)
+    else:
+        ultimo_dia = pd.Timestamp(year=mes_dt.year, month=mes_dt.month + 1, day=1) - pd.Timedelta(days=1)
+    
+    # Tiempo total del mes en horas (24 horas * días del mes)
+    dias_mes = (ultimo_dia - primer_dia).days + 1
+    tiempo_total_horas = dias_mes * 24
+    
+    # Filtrar incidentes del mes que sean críticos o alto impacto
+    incidentes_mes = incidentes_df.copy()
+    incidentes_mes["creado_dt"] = pd.to_datetime(
+        incidentes_mes["creado"].apply(normalizar_fecha), 
+        errors="coerce"
+    )
+    
+    # Filtrar por mes
+    incidentes_mes = incidentes_mes[
+        (incidentes_mes["creado_dt"] >= primer_dia) & 
+        (incidentes_mes["creado_dt"] <= ultimo_dia)
+    ]
+    
+    if incidentes_mes.empty:
+        return 100.0
+    
+    # Filtrar por prioridad crítica o alto (causantes de indisponibilidad)
+    prioridades_impacto = ["Critico", "Alto"]
+    incidentes_impacto = incidentes_mes[
+        incidentes_mes["prioridad"].apply(
+            lambda x: normalizar_prioridad_incidente(x) in prioridades_impacto
+        )
+    ]
+    
+    # Calcular tiempo total de indisponibilidad
+    tiempo_indisponibilidad_horas = 0
+    
+    for _, incidente in incidentes_impacto.iterrows():
+        creado = pd.to_datetime(normalizar_fecha(valor_fila(incidente, "creado")), errors="coerce")
+        cerrado = pd.to_datetime(normalizar_fecha(valor_fila(incidente, "cerrado")), errors="coerce")
+        
+        if pd.notna(creado) and pd.notna(cerrado) and cerrado >= creado:
+            duracion_horas = (cerrado - creado).total_seconds() / 3600
+            tiempo_indisponibilidad_horas += duracion_horas
+    
+    # Calcular disponibilidad
+    disponibilidad = ((tiempo_total_horas - tiempo_indisponibilidad_horas) / tiempo_total_horas) * 100
+    
+    return round(max(0, min(100, disponibilidad)), 2)
+
+
+def calcular_disponibilidad_por_mes(incidentes_df, mes_inicio, mes_fin):
+    """
+    Calcula disponibilidad para un rango de meses.
+    
+    Args:
+        incidentes_df: DataFrame de incidentes
+        mes_inicio: datetime del mes inicio
+        mes_fin: datetime del mes fin
+    
+    Returns:
+        DataFrame con disponibilidad por mes
+    """
+    resultados = []
+    
+    mes_actual = pd.Timestamp(year=mes_inicio.year, month=mes_inicio.month, day=1)
+    mes_fin_ts = pd.Timestamp(year=mes_fin.year, month=mes_fin.month, day=1)
+    
+    while mes_actual <= mes_fin_ts:
+        disponibilidad = calcular_disponibilidad_mes(incidentes_df, mes_actual)
+        nombre_mes = mes_actual.strftime("%B %Y")
+        
+        resultados.append({
+            "Mes": nombre_mes,
+            "Fecha": mes_actual,
+            "Disponibilidad": disponibilidad,
+            "Cumple_SLA": "Sí" if disponibilidad >= SLA_DISPONIBILIDAD_MINIMO else "No"
+        })
+        
+        # Ir al siguiente mes
+        if mes_actual.month == 12:
+            mes_actual = pd.Timestamp(year=mes_actual.year + 1, month=1, day=1)
+        else:
+            mes_actual = pd.Timestamp(year=mes_actual.year, month=mes_actual.month + 1, day=1)
+    
+    return pd.DataFrame(resultados)
+
+
+def resumir_cumplimiento_sla_incidentes(incidentes_df, filtro_mes=None):
+    """
+    Resumen de cumplimiento SLA de incidentes para un período.
+    
+    Args:
+        incidentes_df: DataFrame de incidentes
+        filtro_mes: mes específico (datetime) o None para todos
+    
+    Returns:
+        DataFrame con métricas de cumplimiento SLA
+    """
+    trabajo = agregar_campos_sla_respuesta(incidentes_df.copy())
+    
+    if filtro_mes is not None:
+        trabajo["creado_dt"] = pd.to_datetime(
+            trabajo["creado"].apply(normalizar_fecha), 
+            errors="coerce"
+        )
+        trabajo = trabajo[
+            (trabajo["creado_dt"].dt.year == filtro_mes.year) &
+            (trabajo["creado_dt"].dt.month == filtro_mes.month)
+        ]
+    
+    if trabajo.empty:
+        return pd.DataFrame()
+    
+    # Contar cumplimientos
+    total_incidentes = len(trabajo)
+    
+    # SLA Respuesta
+    cumple_respuesta = (trabajo["cumplimiento_sla_respuesta"] == "Cumple").sum()
+    no_cumple_respuesta = (trabajo["cumplimiento_sla_respuesta"] == "No cumple").sum()
+    
+    # SLA Solución
+    cumple_solucion = (trabajo["estado_sla"] == "Cumple").sum()
+    no_cumple_solucion = (trabajo["estado_sla"] == "No cumple").sum()
+    
+    pct_cumple_respuesta = (cumple_respuesta / total_incidentes * 100) if total_incidentes > 0 else 0
+    pct_cumple_solucion = (cumple_solucion / total_incidentes * 100) if total_incidentes > 0 else 0
+    
+    return pd.DataFrame([{
+        "Total_Incidentes": total_incidentes,
+        "Cumple_Respuesta": cumple_respuesta,
+        "No_Cumple_Respuesta": no_cumple_respuesta,
+        "Pct_Cumple_Respuesta": round(pct_cumple_respuesta, 1),
+        "Cumple_Solucion": cumple_solucion,
+        "No_Cumple_Solucion": no_cumple_solucion,
+        "Pct_Cumple_Solucion": round(pct_cumple_solucion, 1),
+    }])

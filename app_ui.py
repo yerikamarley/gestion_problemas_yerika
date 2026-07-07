@@ -12,8 +12,11 @@ from PIL import Image, ImageDraw, ImageFont
 
 from app_logic import (
     agregar_campos_sla_incidentes,
+    agregar_campos_sla_respuesta,
     analizar_reincidencias_y_problemas,
     autenticar_usuario,
+    calcular_disponibilidad_mes,
+    calcular_disponibilidad_por_mes,
     contar_incidentes,
     eliminar_usuario,
     es_error_db_transitorio,
@@ -31,6 +34,7 @@ from app_logic import (
     load_incidentes_filtrados,
     obtener_meses_disponibles,
     obtener_ultimo_mes_disponible,
+    resumir_cumplimiento_sla_incidentes,
     duracion_sla_horas_incidente,
     estado_sla_incidente,
     familia_sla_incidente,
