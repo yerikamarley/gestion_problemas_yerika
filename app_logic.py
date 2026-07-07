@@ -106,6 +106,7 @@ CASE_ALIASES = {
 INCIDENT_ALIASES = {
     "numero": [
         "numero",
+        "numero incidente",
         "número",
         "numero de incidente",
         "número de incidente",
@@ -135,7 +136,7 @@ INCIDENT_ALIASES = {
     "creado_por": ["creado por"],
     "cerrado": ["cerrado", "fecha cerrado", "cerrado el", "fecha de cierre"],
     "escalado_proveedor": ["escalado a proveedor"],
-    "servicio_negocio": ["servicio de negocio"],
+    "servicio_negocio": ["servicio", "servicio de negocio"],
     "creado": ["creado", "fecha creado", "creado el", "fecha de creacion", "fecha de creación"],
     "observaciones_trabajo": [
         "observaciones y notas de trabajo",
@@ -145,6 +146,8 @@ INCIDENT_ALIASES = {
     "actualizaciones": ["actualizaciones"],
     "impacto": ["impacto"],
     "lista_notas_trabajo": ["lista de notas de trabajo"],
+    "tipificacion_original": ["tipificacion", "tipificacion original"],
+    "causa_raiz_original": ["causa raiz", "causa raiz original"],
 }
 
 INCIDENT_TEXT_FIELDS = [
@@ -432,6 +435,45 @@ SLA_TIEMPO_RESPUESTA_MINUTOS = {
 
 # SLAs de Disponibilidad
 SLA_DISPONIBILIDAD_MINIMO = 99.8  # 99.8% mensual
+DISPONIBILIDAD_PRIORIDADES_IMPACTO = {"Critico", "Alto"}
+DISPONIBILIDAD_TEXT_FIELDS = list(
+    dict.fromkeys(
+        INCIDENT_TEXT_FIELDS
+        + [
+            "causa_raiz_auto",
+            "tipificacion_auto",
+            "tipo_incidente_auto",
+            "causa_raiz_original",
+            "tipificacion_original",
+            "categoria",
+            "estado",
+        ]
+    )
+)
+DISPONIBILIDAD_KEYWORDS = [
+    "caida",
+    "caido",
+    "indisponibilidad",
+    "fuera de servicio",
+    "down",
+    NO_RESPONDE_TEXT,
+    "no disponible",
+    "interrupcion del servicio",
+    "servicio caido",
+    "afectacion masiva",
+    "ventana de mantenimiento",
+    "mantenimiento programado",
+    "mantenimiento no informado",
+    "mantenimiento sin aviso",
+    "maintenance",
+    "maintenance window",
+]
+DISPONIBILIDAD_EXCLUSION_KEYWORDS = INCIDENT_NO_IMPACT_HINTS + [
+    "no genero indisponibilidad",
+    "no genero afectacion",
+    "sin impacto",
+    "falso positivo",
+]
 
 CASE_USAGE_KEYWORDS = [
     "contrasena",
@@ -3452,7 +3494,7 @@ def agregar_campos_sla_respuesta(df):
     return trabajo
 
 
-def calcular_disponibilidad_mes(incidentes_df, mes_dt):
+def calcular_disponibilidad_mes_legacy(incidentes_df, mes_dt):
     """
     Calcula la disponibilidad del servicio para un mes específico.
     Basado en: ((Tiempo total del mes - tiempo de indisponibilidad) / Tiempo total del mes) * 100
@@ -3536,6 +3578,101 @@ def calcular_disponibilidad_mes(incidentes_df, mes_dt):
     else:
         disponibilidad = 100.0
     
+    return round(max(0, min(100, disponibilidad)), 2)
+
+
+def texto_disponibilidad_incidente(row):
+    return unir_textos(row, DISPONIBILIDAD_TEXT_FIELDS)
+
+
+def es_incidente_indisponibilidad(row):
+    texto = texto_disponibilidad_incidente(row)
+    if not texto:
+        return False
+
+    if any(palabra in texto for palabra in DISPONIBILIDAD_EXCLUSION_KEYWORDS):
+        return False
+
+    prioridad = normalizar_prioridad_incidente(valor_fila(row, "prioridad"))
+    if prioridad in DISPONIBILIDAD_PRIORIDADES_IMPACTO:
+        return True
+
+    return any(palabra in texto for palabra in DISPONIBILIDAD_KEYWORDS)
+
+
+def fin_incidente_para_disponibilidad(incidente, creado, fin_mes):
+    cerrado = pd.to_datetime(normalizar_fecha(valor_fila(incidente, "cerrado")), errors="coerce")
+    if pd.notna(cerrado) and cerrado >= creado:
+        return cerrado
+
+    duracion_existente = safe_float(valor_fila(incidente, "duracion_horas"))
+    if duracion_existente is not None and duracion_existente > 0:
+        return creado + pd.Timedelta(hours=duracion_existente)
+
+    return fin_mes
+
+
+def unir_intervalos_disponibilidad(intervalos):
+    if not intervalos:
+        return []
+
+    ordenados = sorted(intervalos, key=lambda item: item[0])
+    unidos = [[ordenados[0][0], ordenados[0][1]]]
+    for inicio, fin in ordenados[1:]:
+        if inicio > unidos[-1][1]:
+            unidos.append([inicio, fin])
+        else:
+            unidos[-1][1] = max(unidos[-1][1], fin)
+    return unidos
+
+
+def calcular_disponibilidad_mes(incidentes_df, mes_dt):
+    """
+    Calcula disponibilidad mensual contando caidas, indisponibilidad y
+    ventanas de mantenimiento como tiempo no disponible.
+    """
+    if incidentes_df.empty:
+        return 100.0
+
+    if isinstance(mes_dt, str):
+        mes_dt = pd.to_datetime(mes_dt)
+
+    inicio_mes = pd.Timestamp(year=mes_dt.year, month=mes_dt.month, day=1)
+    if mes_dt.month == 12:
+        fin_mes = pd.Timestamp(year=mes_dt.year + 1, month=1, day=1)
+    else:
+        fin_mes = pd.Timestamp(year=mes_dt.year, month=mes_dt.month + 1, day=1)
+
+    tiempo_total_horas = (fin_mes - inicio_mes).total_seconds() / 3600
+    if tiempo_total_horas <= 0:
+        return 100.0
+
+    incidentes_impacto = incidentes_df[
+        incidentes_df.apply(es_incidente_indisponibilidad, axis=1)
+    ].copy()
+    if incidentes_impacto.empty:
+        return 100.0
+
+    intervalos = []
+    for _, incidente in incidentes_impacto.iterrows():
+        creado = pd.to_datetime(normalizar_fecha(valor_fila(incidente, "creado")), errors="coerce")
+        if pd.isna(creado):
+            continue
+
+        fin_incidente = fin_incidente_para_disponibilidad(incidente, creado, fin_mes)
+        if pd.isna(fin_incidente) or fin_incidente <= creado:
+            continue
+
+        inicio_traslape = max(creado, inicio_mes)
+        fin_traslape = min(fin_incidente, fin_mes)
+        if fin_traslape > inicio_traslape:
+            intervalos.append((inicio_traslape, fin_traslape))
+
+    tiempo_indisponibilidad_horas = sum(
+        (fin - inicio).total_seconds() / 3600
+        for inicio, fin in unir_intervalos_disponibilidad(intervalos)
+    )
+    disponibilidad = ((tiempo_total_horas - tiempo_indisponibilidad_horas) / tiempo_total_horas) * 100
     return round(max(0, min(100, disponibilidad)), 2)
 
 
