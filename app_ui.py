@@ -10185,8 +10185,8 @@ def render_kpis_clientes_clave(metricas, mes_dashboard):
             ("Clientes activos", metricas["clientes_activos"]),
             (TEXT_ATENCIONES, metricas[TEXT_TOTAL_CASOS] + metricas[TEXT_TOTAL_INCIDENTES]),
             (TEXT_ABIERTOS, metricas["abiertos"]),
-            (f"SLA casos <{SLA_CASOS_HORAS}h", f"{metricas['sla_casos']}%"),
-            ("SLA incidentes", f"{metricas['sla_incidentes']}%"),
+            (f"ANS casos <{SLA_CASOS_HORAS}h", f"{metricas['sla_casos']}%"),
+            ("ANS incidentes", f"{metricas['sla_incidentes']}%"),
         ]
     )
     st.caption(
@@ -10635,8 +10635,101 @@ def dashboard_kpi_clientes_clave():
     render_detalle_kpi_clientes_clave(resumen)
 
 
+def resumen_por_grupos_clientes_clave(casos, incidentes):
+    filas = []
+    for grupo, clientes in GRUPOS_CLIENTES_CLAVE.items():
+        casos_grupo, incidentes_grupo = filtrar_clientes_seleccionados(casos, incidentes, clientes)
+        resumen = resumen_clientes_clave(casos_grupo, incidentes_grupo)
+        resumen = resumen[resumen[TEXT_CLIENTE].isin(clientes)].copy()
+        actividad = resumen[resumen[COL_TOTAL_ATENCIONES] > 0].copy()
+        metricas = metricas_dashboard_clientes(casos_grupo, incidentes_grupo, actividad)
+        filas.append(
+            {
+                "Grupo": grupo,
+                "Clientes configurados": len(clientes),
+                "Clientes activos": metricas["clientes_activos"],
+                TEXT_CASOS: metricas[TEXT_TOTAL_CASOS],
+                TEXT_INCIDENTES: metricas[TEXT_TOTAL_INCIDENTES],
+                TEXT_ATENCIONES: metricas[TEXT_TOTAL_CASOS] + metricas[TEXT_TOTAL_INCIDENTES],
+                TEXT_ABIERTOS: metricas["abiertos"],
+                "ANS casos %": metricas["sla_casos"],
+                "ANS incidentes %": metricas["sla_incidentes"],
+            }
+        )
+    return pd.DataFrame(filas)
+
+
+def render_resumen_grupos_clientes_clave(casos, incidentes, periodo_label):
+    st.markdown("### Resumen general")
+    st.caption(f"{TEXT_PERIODO}{periodo_label} | Comparativo de los tres grupos de clientes clave.")
+    tabla = resumen_por_grupos_clientes_clave(casos, incidentes)
+    total_atenciones = int(tabla[TEXT_ATENCIONES].sum())
+    total_abiertos = int(tabla[TEXT_ABIERTOS].sum())
+    total_activos = int(tabla["Clientes activos"].sum())
+    render_tarjetas(
+        [
+            ("Grupos", len(tabla)),
+            ("Clientes configurados", len(CLIENTES_CLAVE)),
+            ("Clientes activos", total_activos),
+            (TEXT_ATENCIONES, total_atenciones),
+            (TEXT_ABIERTOS, total_abiertos),
+        ]
+    )
+
+    col_volumen, col_ans = st.columns(2)
+    with col_volumen:
+        volumen = tabla.sort_values(TEXT_ATENCIONES, ascending=True)
+        fig_volumen = px.bar(
+            volumen,
+            x=TEXT_ATENCIONES,
+            y="Grupo",
+            orientation="h",
+            text=TEXT_ATENCIONES,
+            color="Grupo",
+            color_discrete_sequence=[
+                UI_PALETTE[TEXT_PRIMARY],
+                UI_PALETTE[TEXT_PURPLE],
+                UI_PALETTE[TEXT_YELLOW],
+            ],
+        )
+        fig_volumen.update_traces(textposition=TEXT_OUTSIDE)
+        st.plotly_chart(
+            aplicar_estilo_figura(fig_volumen, "Atenciones por grupo"),
+            use_container_width=True,
+            config={"displayModeBar": False},
+        )
+    with col_ans:
+        ans = tabla.melt(
+            id_vars=["Grupo"],
+            value_vars=["ANS casos %", "ANS incidentes %"],
+            var_name="Indicador",
+            value_name="Cumplimiento",
+        )
+        fig_ans = px.bar(
+            ans,
+            x="Grupo",
+            y="Cumplimiento",
+            color="Indicador",
+            barmode="group",
+            text="Cumplimiento",
+            range_y=[0, 105],
+            color_discrete_sequence=[UI_PALETTE[TEXT_PRIMARY], UI_PALETTE[TEXT_PURPLE]],
+        )
+        fig_ans.update_traces(texttemplate="%{text:.0f}%", textposition=TEXT_OUTSIDE)
+        st.plotly_chart(
+            aplicar_estilo_figura(fig_ans, "Cumplimiento de ANS por grupo"),
+            use_container_width=True,
+            config={"displayModeBar": False},
+        )
+
+    st.markdown("#### Detalle comparativo")
+    st.dataframe(tabla, use_container_width=True, hide_index=True)
+    st.info("Selecciona una pestaña de grupo arriba para consultar sus gráficas o el ANS de un solo cliente.")
+
+
 def dashboard_clientes_clave():
     st.subheader(MENU_CLIENTES_CLAVE)
+    st.caption("Seguimiento de volumen, estado y cumplimiento de ANS por grupo o cliente.")
 
     anio, mes, periodo_label = selector_periodo_multi_sql(
         ["cases", "incidents"],
@@ -10644,19 +10737,56 @@ def dashboard_clientes_clave():
     )
     if not periodo_sql_valido(anio, "clientes clave"):
         return
-    clientes_seleccionados = st.multiselect(
-        "Clientes",
-        CLIENTES_CLAVE,
-        default=CLIENTES_CLAVE,
-        key="clientes_clave_filtro",
+
+    casos_base = cargar_casos_clientes_clave_filtrados_cache(anio, mes)
+    incidentes_base = cargar_incidentes_clientes_clave_filtrados_cache(anio, mes)
+    opciones_vista = ["Resumen general", *GRUPOS_CLIENTES_CLAVE.keys()]
+    vista = st.radio(
+        "Vista de clientes clave",
+        opciones_vista,
+        horizontal=True,
+        key="clientes_clave_grupo",
     )
+
+    if vista == "Resumen general":
+        render_resumen_grupos_clientes_clave(casos_base, incidentes_base, periodo_label)
+        return
+
+    clientes_grupo = GRUPOS_CLIENTES_CLAVE[vista]
+    st.markdown(f"### {vista}")
+    st.caption(f"{len(clientes_grupo)} clientes configurados en este grupo.")
+    alcance = st.radio(
+        "Alcance del análisis",
+        ["Todo el grupo", "Un solo cliente", "Selección personalizada"],
+        horizontal=True,
+        key=f"clientes_clave_alcance_{normalizar_texto(vista)}",
+    )
+    if alcance == "Un solo cliente":
+        cliente = st.selectbox(
+            "Cliente para consultar su ANS",
+            clientes_grupo,
+            key=f"clientes_clave_individual_{normalizar_texto(vista)}",
+        )
+        clientes_seleccionados = [cliente]
+    elif alcance == "Selección personalizada":
+        clientes_seleccionados = st.multiselect(
+            "Clientes",
+            clientes_grupo,
+            default=clientes_grupo,
+            key=f"clientes_clave_personalizado_{normalizar_texto(vista)}",
+        )
+    else:
+        clientes_seleccionados = clientes_grupo
+
     if not clientes_seleccionados:
         st.warning("Selecciona al menos un cliente clave.")
         return
 
-    casos = cargar_casos_clientes_clave_filtrados_cache(anio, mes)
-    incidentes = cargar_incidentes_clientes_clave_filtrados_cache(anio, mes)
-    casos, incidentes = filtrar_clientes_seleccionados(casos, incidentes, clientes_seleccionados)
+    casos, incidentes = filtrar_clientes_seleccionados(
+        casos_base,
+        incidentes_base,
+        clientes_seleccionados,
+    )
     resumen = resumen_clientes_clave(casos, incidentes)
     resumen = resumen[resumen[TEXT_CLIENTE].isin(clientes_seleccionados)].copy()
     resumen_actividad = resumen[resumen[COL_TOTAL_ATENCIONES] > 0].copy()
