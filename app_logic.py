@@ -1,68 +1,53 @@
 import re
-import hashlib
-import hmac
-import os
-import time
-import tomllib
 import unicodedata
 from datetime import timedelta
 from math import ceil
 
 import pandas as pd
 
-
-def streamlit_secrets_path():
-    project_secrets = os.path.join(os.path.dirname(__file__), ".streamlit", "secrets.toml")
-    user_secrets = os.path.join(os.path.expanduser("~"), ".streamlit", "secrets.toml")
-    if os.path.exists(project_secrets):
-        return project_secrets
-    if os.path.exists(user_secrets):
-        return user_secrets
-    return ""
-
-
-def local_secret_value(name, default=""):
-    secrets_path = streamlit_secrets_path()
-    if not secrets_path:
-        return default
-    try:
-        with open(secrets_path, "rb") as file:
-            return tomllib.load(file).get(name, default)
-    except Exception:
-        return default
-
-
-def config_value(name, default=""):
-    value = os.environ.get(name)
-    if value not in (None, ""):
-        return value
-    value = local_secret_value(name)
-    if value not in (None, ""):
-        return value
-    try:
-        from streamlit.runtime.scriptrunner import get_script_run_ctx
-
-        if get_script_run_ctx(suppress_warning=True) is None:
-            return default
-        import streamlit as st
-
-        return st.secrets.get(name, default)
-    except Exception:
-        return default
-
-
-SUPABASE_URL = config_value("SUPABASE_URL")
-SUPABASE_PUBLISHABLE_KEY = config_value("SUPABASE_PUBLISHABLE_KEY")
-SUPABASE_DATABASE_URL = config_value("SUPABASE_DATABASE_URL")
-ADMIN_EMAIL = config_value("APP_ADMIN_EMAIL")
-INITIAL_ADMIN_PASSWORD = config_value("APP_ADMIN_PASSWORD")
-
-DB_TRANSIENT_SQLSTATES = {"40P01", "40001"}
-DB_MAX_REINTENTOS = 3
-DB_REINTENTO_ESPERA_SEGUNDOS = 0.35
-DB_BLOQUEO_CARGA_CASOS = "gestion_problemas_yerika:carga_casos"
-DB_BATCH_SIZE = 1000
-DB_LOOKUP_BATCH_SIZE = 5000
+from core.settings import (
+    ADMIN_EMAIL,
+    INITIAL_ADMIN_PASSWORD,
+    SUPABASE_DATABASE_URL,
+    SUPABASE_PUBLISHABLE_KEY,
+    SUPABASE_URL,
+    config_value,
+    local_secret_value,
+    streamlit_secrets_path,
+)
+from core.security import hash_password, normalizar_email, verificar_password
+from repositories.database import (
+    DB_BATCH_SIZE,
+    DB_BLOQUEO_CARGA_CASOS,
+    DB_LOOKUP_BATCH_SIZE,
+    DB_MAX_REINTENTOS,
+    DB_REINTENTO_ESPERA_SEGUNDOS,
+    DB_TRANSIENT_SQLSTATES,
+    db_bool,
+    db_execute,
+    db_executemany,
+    db_placeholder,
+    db_placeholders,
+    db_sql,
+    emitir_progreso,
+    ejecutar_con_reintentos_db,
+    es_error_db_transitorio,
+    get_conn,
+    lotes,
+    validar_identificador_sql,
+)
+from repositories.tables import (
+    agregar_condicion_periodo,
+    columnas_existentes,
+    columnas_select_seguras,
+    limites_periodo,
+    obtener_meses_disponibles,
+    obtener_ultimo_mes_disponible,
+    read_table,
+    read_table_filtered,
+    read_table_years,
+    valor_filtro_activo,
+)
 
 # Literales reutilizados para evitar duplicidad y facilitar mantenimiento.
 NUMERO_DE_CASO_TEXT = "numero de caso"
@@ -1142,52 +1127,6 @@ def ambito_incidente(row, texto=None, texto_resolucion=None):
     return "Cliente interno"
 
 
-def db_placeholder():
-    return "%s"
-
-
-def db_placeholders(count):
-    return ", ".join([db_placeholder()] * count)
-
-
-def db_sql(sql):
-    return sql.replace("?", "%s")
-
-
-def db_bool(value):
-    return bool(value)
-
-
-def get_conn():
-    if not SUPABASE_DATABASE_URL:
-        raise RuntimeError("Configura SUPABASE_DATABASE_URL en Secrets para conectar la base de datos.")
-
-    import psycopg
-
-    return psycopg.connect(SUPABASE_DATABASE_URL, connect_timeout=30)
-
-
-def db_execute(conn, sql, params=()):
-    return conn.execute(db_sql(sql), params)
-
-
-def db_executemany(conn, sql, rows):
-    if not rows:
-        return
-    with conn.cursor() as cursor:
-        cursor.executemany(db_sql(sql), rows)
-
-
-def emitir_progreso(progress_callback, valor, mensaje):
-    if progress_callback:
-        progress_callback(max(0, min(1, float(valor))), mensaje)
-
-
-def lotes(valores, tamano):
-    for inicio in range(0, len(valores), tamano):
-        yield valores[inicio : inicio + tamano]
-
-
 def numeros_existentes(conn, tabla, numeros):
     existentes = set()
     numeros = [numero for numero in numeros if numero]
@@ -1229,223 +1168,9 @@ def ejecutar_upserts_lote(
         )
 
 
-def es_error_db_transitorio(error):
-    sqlstate = getattr(error, "sqlstate", None) or getattr(error, "pgcode", None)
-    return sqlstate in DB_TRANSIENT_SQLSTATES
-
-
-def ejecutar_con_reintentos_db(operacion, intentos=DB_MAX_REINTENTOS):
-    for intento in range(intentos):
-        try:
-            return operacion()
-        except Exception as error:
-            if not es_error_db_transitorio(error) or intento >= intentos - 1:
-                raise
-            time.sleep(DB_REINTENTO_ESPERA_SEGUNDOS * (2**intento))
-
-
 def bloquear_escritura_casos(conn):
     db_execute(conn, "SELECT pg_advisory_xact_lock(hashtext(?))", (DB_BLOQUEO_CARGA_CASOS,))
     db_execute(conn, "LOCK TABLE cases IN SHARE ROW EXCLUSIVE MODE")
-
-
-def read_table(table_name):
-    conn = get_conn()
-    cursor = db_execute(conn, f"SELECT * FROM {table_name}")
-    rows = cursor.fetchall()
-    columns = [column[0] for column in cursor.description]
-    conn.close()
-    return pd.DataFrame(rows, columns=columns)
-
-
-def validar_identificador_sql(nombre):
-    if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", str(nombre or "")):
-        raise ValueError(f"Identificador SQL no valido: {nombre}")
-    return nombre
-
-
-def columnas_existentes(conn, table_name):
-    table_name = validar_identificador_sql(table_name)
-    return {
-        row[0]
-        for row in db_execute(
-            conn,
-            """
-            SELECT column_name
-            FROM information_schema.columns
-            WHERE table_schema = 'public' AND table_name = ?
-            """,
-            (table_name,),
-        ).fetchall()
-    }
-
-
-def columnas_select_seguras(conn, table_name, columns):
-    if not columns:
-        return "*", None, []
-    existentes = columnas_existentes(conn, table_name)
-    selected_columns = [validar_identificador_sql(column) for column in columns if column in existentes]
-    missing_columns = [column for column in columns if column not in existentes]
-    if not selected_columns:
-        return "", columns, missing_columns
-    return ", ".join(selected_columns), columns, missing_columns
-
-
-def limites_periodo(anio=None, mes=None):
-    if mes not in (None, "", "Todos"):
-        if isinstance(mes, str) and "-" in mes:
-            partes = mes.split("-")
-            anio = int(partes[0])
-            mes = int(partes[1])
-        else:
-            if anio in (None, "", "Todos"):
-                return None
-            anio = int(anio)
-            mes = int(mes)
-        siguiente_anio = anio + 1 if mes == 12 else anio
-        siguiente_mes = 1 if mes == 12 else mes + 1
-        return f"{anio:04d}-{mes:02d}", f"{siguiente_anio:04d}-{siguiente_mes:02d}"
-    if anio not in (None, "", "Todos"):
-        anio = int(anio)
-        return f"{anio:04d}", f"{anio + 1:04d}"
-    return None
-
-
-def agregar_condicion_periodo(where, params, anio=None, mes=None):
-    limites = limites_periodo(anio, mes)
-    if limites:
-        inicio, fin = limites
-        where.append("(creado >= ? AND creado < ?)")
-        params.extend([inicio, fin])
-
-
-def valor_filtro_activo(valor):
-    return valor not in (None, "", "Todos")
-
-
-def read_table_filtered(table_name, columns=None, anio=None, mes=None, equals=None, likes=None, limit=None):
-    table_name = validar_identificador_sql(table_name)
-    conn = get_conn()
-    column_sql, requested_columns, missing_columns = columnas_select_seguras(conn, table_name, columns)
-    if not column_sql:
-        conn.close()
-        df = pd.DataFrame(columns=columns or [])
-        df.attrs["missing_columns"] = missing_columns
-        return df
-
-    where = []
-    params = []
-    agregar_condicion_periodo(where, params, anio, mes)
-
-    existentes = columnas_existentes(conn, table_name)
-    for columna, valor in (equals or {}).items():
-        if not valor_filtro_activo(valor) or columna not in existentes:
-            continue
-        columna = validar_identificador_sql(columna)
-        where.append(f"{columna} = ?")
-        params.append(valor)
-
-    for columna, valor in (likes or {}).items():
-        if not valor_filtro_activo(valor) or columna not in existentes:
-            continue
-        columna = validar_identificador_sql(columna)
-        where.append(f"LOWER(COALESCE({columna}, '')) LIKE ?")
-        params.append(f"%{str(valor).lower()}%")
-
-    where_sql = f" WHERE {' AND '.join(where)}" if where else ""
-    limit_sql = " LIMIT ?" if limit else ""
-    if limit:
-        params.append(int(limit))
-
-    cursor = db_execute(
-        conn,
-        f"SELECT {column_sql} FROM {table_name}{where_sql} ORDER BY creado DESC{limit_sql}",
-        params,
-    )
-    rows = cursor.fetchall()
-    result_columns = [column[0] for column in cursor.description]
-    conn.close()
-    df = pd.DataFrame(rows, columns=result_columns)
-    if requested_columns:
-        for column in missing_columns:
-            df[column] = pd.NA
-        df = df[requested_columns]
-    df.attrs["missing_columns"] = missing_columns
-    return df
-
-
-def obtener_meses_disponibles(table_name):
-    table_name = validar_identificador_sql(table_name)
-    conn = get_conn()
-    cursor = db_execute(
-        conn,
-        f"""
-        SELECT DISTINCT substr(creado, 1, 7) AS mes
-        FROM {table_name}
-        WHERE creado IS NOT NULL AND creado <> '' AND length(creado) >= 7
-        ORDER BY mes
-        """,
-    )
-    meses = [row[0] for row in cursor.fetchall() if row[0] and re.fullmatch(r"\d{4}-\d{2}", row[0])]
-    conn.close()
-    return meses
-
-
-def obtener_ultimo_mes_disponible(table_name):
-    meses = obtener_meses_disponibles(table_name)
-    return meses[-1] if meses else ""
-
-
-def read_table_years(table_name, years, columns=None):
-    years = [str(year).strip() for year in years if str(year).strip()]
-    if not years:
-        return pd.DataFrame()
-    conn = get_conn()
-    missing_columns = []
-    requested_columns = columns
-    selected_columns = columns
-    if columns:
-        existing_columns = {
-            row[0]
-            for row in db_execute(
-                conn,
-                """
-                SELECT column_name
-                FROM information_schema.columns
-                WHERE table_schema = 'public' AND table_name = ?
-                """,
-                (table_name,),
-            ).fetchall()
-        }
-        selected_columns = [column for column in columns if column in existing_columns]
-        missing_columns = [column for column in columns if column not in existing_columns]
-        if "creado" not in selected_columns:
-            conn.close()
-            df = pd.DataFrame(columns=columns)
-            df.attrs["missing_columns"] = missing_columns
-            return df
-    column_sql = ", ".join(selected_columns) if selected_columns else "*"
-    condiciones = []
-    params = []
-    for year in years:
-        siguiente = str(int(year) + 1)
-        condiciones.append("(creado >= ? AND creado < ?)")
-        params.extend([year, siguiente])
-    cursor = db_execute(
-        conn,
-        f"SELECT {column_sql} FROM {table_name} WHERE {' OR '.join(condiciones)}",
-        params,
-    )
-    rows = cursor.fetchall()
-    columns = [column[0] for column in cursor.description]
-    conn.close()
-    df = pd.DataFrame(rows, columns=columns)
-    if requested_columns:
-        for column in missing_columns:
-            df[column] = pd.NA
-        df = df[requested_columns]
-    df.attrs["missing_columns"] = missing_columns
-    return df
 
 
 def load_casos_anios(years):
@@ -1501,37 +1226,6 @@ def upsert_sql(table_name, columns, conflict_column):
         f"INSERT INTO {table_name} ({column_sql}) VALUES ({placeholder_sql}) "
         f"ON CONFLICT ({conflict_column}) DO UPDATE SET {updates}"
     )
-
-
-def normalizar_email(email):
-    return str(email or "").strip().lower()
-
-
-def hash_password(password):
-    salt = os.urandom(16)
-    password_hash = hashlib.pbkdf2_hmac(
-        "sha256",
-        str(password).encode("utf-8"),
-        salt,
-        260000,
-    )
-    return f"pbkdf2_sha256$260000${salt.hex()}${password_hash.hex()}"
-
-
-def verificar_password(password, password_hash):
-    try:
-        algoritmo, iteraciones, salt_hex, hash_hex = str(password_hash).split("$")
-        if algoritmo != "pbkdf2_sha256":
-            return False
-        calculado = hashlib.pbkdf2_hmac(
-            "sha256",
-            str(password).encode("utf-8"),
-            bytes.fromhex(salt_hex),
-            int(iteraciones),
-        ).hex()
-        return hmac.compare_digest(calculado, hash_hex)
-    except Exception:
-        return False
 
 
 def usuario_por_email(email):

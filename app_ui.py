@@ -12,9 +12,9 @@ from PIL import Image, ImageDraw, ImageFont
 
 from config.clientes_clave import (
     CLIENTES_CLAVE,
-    CLIENTES_CLAVE_ALIASES,
     GRUPOS_CLIENTES_CLAVE,
 )
+from services.clientes_clave import detectar_cliente_clave, detectar_cliente_en_fila
 from app_logic import (
     agregar_campos_sla_incidentes,
     agregar_campos_sla_respuesta,
@@ -2494,42 +2494,6 @@ def render_seguimiento_casos(df):
             else:
                 visible = tabla[[col for col in columnas if col in tabla.columns]].rename(columns=etiquetas)
                 st.dataframe(visible, use_container_width=True, hide_index=True)
-
-
-def aliases_clientes_ordenados():
-    aliases = []
-    for cliente, opciones in CLIENTES_CLAVE_ALIASES.items():
-        for alias in opciones:
-            alias_normalizado = normalizar_texto(alias)
-            if alias_normalizado:
-                aliases.append((cliente, alias_normalizado))
-    return sorted(aliases, key=lambda item: len(item[1]), reverse=True)
-
-
-CLIENTES_CLAVE_ALIAS_ORDENADOS = aliases_clientes_ordenados()
-
-
-def texto_contiene_alias(texto_normalizado, alias_normalizado):
-    patron = rf"(?<!\w){re.escape(alias_normalizado)}(?!\w)"
-    return re.search(patron, texto_normalizado) is not None
-
-
-def detectar_cliente_clave(texto):
-    texto_normalizado = normalizar_texto(texto)
-    if not texto_normalizado:
-        return ""
-    for cliente, alias in CLIENTES_CLAVE_ALIAS_ORDENADOS:
-        if texto_contiene_alias(texto_normalizado, alias):
-            return cliente
-    return ""
-
-
-def detectar_cliente_en_fila(row, campos):
-    for campo in campos:
-        cliente = detectar_cliente_clave(valor_limpio(row.get(campo)))
-        if cliente:
-            return cliente, campo
-    return "", ""
 
 
 def preparar_casos_clientes_clave(df):
