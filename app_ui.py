@@ -15,6 +15,7 @@ from config.clientes_clave import (
     GRUPOS_CLIENTES_CLAVE,
 )
 from services.clientes_clave import detectar_cliente_clave, detectar_cliente_en_fila
+from services.casos import top_categorias
 from app_logic import (
     agregar_campos_sla_incidentes,
     agregar_campos_sla_respuesta,
@@ -5019,16 +5020,48 @@ def render_lectura_kpi(metricas, base):
     st.markdown(contenido, unsafe_allow_html=True)
 
 
+def resumen_principales_causas_servicios_casos(base, top_n=5):
+    trabajo = base.copy()
+    if TEXT_CAUSA_COMUN not in trabajo.columns:
+        trabajo[TEXT_CAUSA_COMUN] = trabajo.apply(inferir_causa_comun_caso, axis=1)
+    causas = top_categorias(
+        trabajo,
+        TEXT_CAUSA_COMUN,
+        "Causa raíz",
+        top_n=top_n,
+        valor_vacio="Sin causa identificada",
+    )
+    servicios = top_categorias(
+        trabajo,
+        TEXT_PRODUCTO,
+        "Servicio afectado",
+        top_n=top_n,
+        valor_vacio="Sin servicio informado",
+    )
+    return causas, servicios
+
+
+def render_principales_causas_servicios_casos(base):
+    causas, servicios = resumen_principales_causas_servicios_casos(base)
+    st.markdown("#### Principales causas y servicios afectados")
+    st.caption("Top 5 del periodo. Las cifras corresponden a cantidad de casos.")
+    col_causas, col_servicios = st.columns(2)
+    with col_causas:
+        render_ranking_kpi(causas, "Causa raíz", TEXT_CANTIDAD, "Causas raíz principales", top_n=5)
+    with col_servicios:
+        render_ranking_kpi(servicios, "Servicio afectado", TEXT_CANTIDAD, "Servicios afectados", top_n=5)
+
+
 def render_slide_kpi_casos_cliente_externo(base, metricas, mes_dashboard):
     tarjetas = [
         ("Total casos", metricas["total"]),
         ("Cerrados", metricas["cerrados"]),
         ("Abiertos", metricas["abiertos"]),
-        (f"Cumplimiento SLA <={SLA_CASOS_HORAS} h", f"{metricas['cumplimiento_sla']}%"),
+        (f"Cumplimiento ANS <={SLA_CASOS_HORAS} h", f"{metricas['cumplimiento_sla']}%"),
     ]
     caption = (
         f"Tiempo promedio: {metricas['promedio']} h | "
-        f"Cumplen SLA: {metricas['cumple_sla']} | No cumplen: {metricas['no_cumple_sla']}"
+        f"Cumplen ANS: {metricas['cumple_sla']} | No cumplen: {metricas['no_cumple_sla']}"
     )
     lineas = lineas_lectura_kpi_casos(metricas, base)
     izquierda = slide_product_distribution_html(base, mes_dashboard or TEXT_TODOS)
@@ -5049,72 +5082,81 @@ def render_kpi_casos_cliente_externo(df, mes_dashboard=None):
     if base.empty:
         return
 
+    st.subheader("KPI Casos Cliente Externo")
+    st.caption(
+        f"{TEXT_PERIODO}{mes_dashboard or TEXT_TODOS} | "
+        "Resumen ejecutivo de volumen, ANS, causas, servicios y tipologías."
+    )
     modo_diapositiva = st.toggle("Formato diapositiva 16:9", key="slide_kpi_casos_cliente_externo")
     if modo_diapositiva:
         render_slide_kpi_casos_cliente_externo(base, metricas, mes_dashboard)
         return
-
-    if mes_dashboard:
-        st.caption(f"{TEXT_PERIODO}{mes_dashboard}")
-    st.subheader("KPI Casos Cliente Externo")
 
     render_tarjetas(
         [
             ("Total casos", metricas["total"]),
             ("Cerrados", metricas["cerrados"]),
             ("Abiertos", metricas["abiertos"]),
-            (f"Cumplimiento SLA <={SLA_CASOS_HORAS} h", f"{metricas['cumplimiento_sla']}%"),
+            (f"Cumplimiento ANS <={SLA_CASOS_HORAS} h", f"{metricas['cumplimiento_sla']}%"),
         ]
     )
     st.caption(
         f"Tiempo promedio: {metricas['promedio']} h | "
-        f"Cumplen SLA: {metricas['cumple_sla']} | No cumplen: {metricas['no_cumple_sla']}"
+        f"Cumplen ANS: {metricas['cumple_sla']} | No cumplen: {metricas['no_cumple_sla']}"
     )
 
     st.divider()
-    render_distribucion_productos_soporte(base, mes_dashboard or TEXT_TODOS)
-    render_focos_operativos_kpi_casos(base)
+    tab_resumen, tab_tipologias, tab_detalle = st.tabs(
+        ["Resumen ejecutivo", "Tipologías", "Detalle operativo"]
+    )
 
-    st.divider()
-    col_grafico, col_lectura = st.columns([2.15, 1])
-    with col_grafico:
-        tipificaciones = resumen_tipologias_soporte_casos(base)
-        grafico_porcentaje_tipologias_soporte(tipificaciones)
-    with col_lectura:
+    with tab_resumen:
+        render_principales_causas_servicios_casos(base)
+        st.markdown("#### Lectura ejecutiva")
         render_lectura_kpi(metricas, base)
 
-    with st.expander("Descripcion de las tipologias de casos"):
-        st.dataframe(
-            pd.DataFrame(CASE_SUPPORT_TYPOLOGY_GUIDE),
-            use_container_width=True,
-            hide_index=True,
-        )
+    with tab_tipologias:
+        st.markdown("#### Distribución por tipología")
+        st.caption("Se conserva la clasificación actual y su descripción funcional.")
+        tipificaciones = resumen_tipologias_soporte_casos(base)
+        grafico_porcentaje_tipologias_soporte(tipificaciones)
+        st.dataframe(tipificaciones, use_container_width=True, hide_index=True)
+        with st.expander("Descripción de las tipologías de casos"):
+            st.dataframe(
+                pd.DataFrame(CASE_SUPPORT_TYPOLOGY_GUIDE),
+                use_container_width=True,
+                hide_index=True,
+            )
 
-    with st.expander("Detalle completo de casos usados en el calculo"):
-        columnas = [
-            TEXT_NUMERO,
-            TEXT_ESTADO,
-            TEXT_CUENTA,
-            TEXT_DESCRIPCION_2,
-            TEXT_TIPOLOGIA_SOPORTE,
-            TEXT_TIPIFICACION_2,
-            TEXT_CAUSA_COMUN,
-            TEXT_PRODUCTO,
-            TEXT_TIEMPO_RESPUESTA,
-            "_tiempo_eval_sla_h",
-            "Cumple SLA <=36h",
-            TEXT_CANAL,
-            TEXT_ASIGNADO,
-            TEXT_CREADO,
-            TEXT_CERRADO,
-        ]
-        visible = base[[col for col in columnas if col in base.columns]].rename(
-            columns={
-                "_tiempo_eval_sla_h": "Tiempo evaluado SLA h",
-                TEXT_PRODUCTO: "Servicio",
-            }
-        )
-        dataframe_liviano(visible)
+    with tab_detalle:
+        st.markdown("#### Servicios, focos y registros")
+        render_distribucion_productos_soporte(base, mes_dashboard or TEXT_TODOS)
+        render_focos_operativos_kpi_casos(base)
+        with st.expander("Detalle completo de casos usados en el cálculo"):
+            columnas = [
+                TEXT_NUMERO,
+                TEXT_ESTADO,
+                TEXT_CUENTA,
+                TEXT_DESCRIPCION_2,
+                TEXT_TIPOLOGIA_SOPORTE,
+                TEXT_TIPIFICACION_2,
+                TEXT_CAUSA_COMUN,
+                TEXT_PRODUCTO,
+                TEXT_TIEMPO_RESPUESTA,
+                "_tiempo_eval_sla_h",
+                "Cumple SLA <=36h",
+                TEXT_CANAL,
+                TEXT_ASIGNADO,
+                TEXT_CREADO,
+                TEXT_CERRADO,
+            ]
+            visible = base[[col for col in columnas if col in base.columns]].rename(
+                columns={
+                    "_tiempo_eval_sla_h": "Tiempo evaluado SLA h",
+                    TEXT_PRODUCTO: "Servicio",
+                }
+            )
+            dataframe_liviano(visible)
 
 
 def valor_foco_kpi_casos(resumen_focos, foco, columna=TEXT_CANTIDAD):
@@ -7524,7 +7566,29 @@ def render_causas_incidentes(df, titulo, porcentaje_columna):
     st.dataframe(relevantes, use_container_width=True, hide_index=True)
 
 
+def render_evolucion_diaria_casos(df):
+    casos_dia = (
+        df.groupby(df[TEXT_CREADO_DT_DASHBOARD].dt.date)
+        .size()
+        .reset_index(name=TEXT_CASOS_2)
+    )
+    casos_dia.columns = [TEXT_FECHA, TEXT_CASOS_2]
+    fig = px.bar(
+        casos_dia,
+        x=TEXT_FECHA,
+        y=TEXT_CASOS_2,
+        text=TEXT_CASOS_2,
+        color_discrete_sequence=[UI_PALETTE[TEXT_YELLOW]],
+    )
+    fig.update_traces(marker_color=UI_PALETTE[TEXT_YELLOW], textposition=TEXT_OUTSIDE)
+    fig = aplicar_estilo_figura(fig, "Evolución diaria de casos")
+    fig.update_layout(height=360, bargap=0.28)
+    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+
+
 def dashboard_casos():
+    st.subheader("Dashboard de casos")
+    st.caption("Vista operativa de volumen, ANS, causas, servicios, tipologías y seguimiento.")
     anio, mes, periodo_label = selector_periodo_sql("cases", "dashboard_casos_periodo")
     if not periodo_sql_valido(anio, "casos"):
         return
@@ -7558,47 +7622,40 @@ def dashboard_casos():
             (TEXT_CERRADOS, cerrados),
             (TEXT_ABIERTOS, abiertos),
             ("Promedio (h)", promedio),
-            (f"SLA <{SLA_CASOS_HORAS}h (%)", f"{porcentaje_sla}%"),
+            (f"ANS <{SLA_CASOS_HORAS}h (%)", f"{porcentaje_sla}%"),
         ]
     )
     st.caption(f"{TEXT_PERIODO}{periodo_label} | Cumplen: {cumplen}{TEXT_NO_CUMPLEN}{incumplen}")
 
     st.divider()
-    render_distribucion_productos_soporte(df, periodo_label)
+    tab_resumen, tab_tipologias, tab_operacion = st.tabs(
+        ["Resumen ejecutivo", "Tipologías", "Operación y seguimiento"]
+    )
 
-    st.divider()
-    render_carga_agentes(df, TEXT_ASIGNADO, "Carga por agente - casos", TEXT_CASOS)
+    with tab_resumen:
+        render_principales_causas_servicios_casos(df)
+        st.markdown("#### Tendencia del periodo")
+        render_evolucion_diaria_casos(df)
 
-    st.divider()
-    col1, col2 = st.columns(2)
-
-    with col1:
+    with tab_tipologias:
+        st.markdown("#### Tipologías de casos")
+        st.caption("Agrupación ejecutiva; la tipificación original se mantiene como referencia.")
         tip = resumen_tipologias_soporte_casos(df)
         grafico_porcentaje_tipologias_soporte(tip)
+        st.dataframe(tip, use_container_width=True, hide_index=True)
+        with st.expander("Ver tipificaciones originales"):
+            st.dataframe(tabla_resumen_tipificaciones_casos(df), use_container_width=True, hide_index=True)
 
-    with col2:
-        serie = df.copy()
-        casos_dia = serie.groupby(serie[TEXT_CREADO_DT_DASHBOARD].dt.date).size().reset_index(name=TEXT_CASOS_2)
-        casos_dia.columns = [TEXT_FECHA, TEXT_CASOS_2]
-        fig = px.bar(casos_dia, x=TEXT_FECHA, y=TEXT_CASOS_2, color_discrete_sequence=[UI_PALETTE[TEXT_YELLOW]])
-        fig.update_traces(marker_color=UI_PALETTE[TEXT_YELLOW])
-        st.plotly_chart(aplicar_estilo_figura(fig, "Casos por dia"), use_container_width=True)
-
-    st.divider()
-    with st.expander("Analisis de agendamiento con historico"):
-        st.caption("Este bloque puede consultar mas datos. Se carga solo cuando lo solicitas.")
-        if st.button("Calcular analisis de agendamiento", key="calcular_agendamiento_dashboard_casos"):
-            historico = preparar_fechas_dashboard(cargar_casos_soporte_cache())
-            render_analisis_agendamiento_mesa(df, historico, periodo_key_sql(anio, mes))
-
-    st.divider()
-    st.subheader("Resumen por tipologia de casos")
-    st.caption("Agrupacion ejecutiva de casos. La tipificacion original se mantiene como referencia.")
-    st.dataframe(resumen_tipologias_soporte_casos(df), use_container_width=True, hide_index=True)
-    with st.expander("Ver tipificaciones originales"):
-        st.dataframe(tabla_resumen_tipificaciones_casos(df), use_container_width=True, hide_index=True)
-
-    render_seguimiento_casos(df)
+    with tab_operacion:
+        st.markdown("#### Distribución operativa")
+        render_distribucion_productos_soporte(df, periodo_label)
+        render_carga_agentes(df, TEXT_ASIGNADO, "Carga por agente - casos", TEXT_CASOS)
+        with st.expander("Análisis de agendamiento con histórico"):
+            st.caption("Este bloque consulta más datos y se carga solo cuando lo solicitas.")
+            if st.button("Calcular análisis de agendamiento", key="calcular_agendamiento_dashboard_casos"):
+                historico = preparar_fechas_dashboard(cargar_casos_soporte_cache())
+                render_analisis_agendamiento_mesa(df, historico, periodo_key_sql(anio, mes))
+        render_seguimiento_casos(df)
 
 
 def dashboard_kpi_casos_cliente_externo():
