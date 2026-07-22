@@ -10,6 +10,11 @@ import streamlit as st
 import streamlit.components.v1 as components
 from PIL import Image, ImageDraw, ImageFont
 
+from config.clientes_clave import (
+    CLIENTES_CLAVE,
+    CLIENTES_CLAVE_ALIASES,
+    GRUPOS_CLIENTES_CLAVE,
+)
 from app_logic import (
     agregar_campos_sla_incidentes,
     agregar_campos_sla_respuesta,
@@ -404,26 +409,6 @@ TIPIFICACION_INCIDENTE_CLIENTE_EXTERNO = "Incidente Cliente Externo"
 TIPIFICACION_INCIDENTE_INTERNO = "Incidente Interno"
 TIPIFICACION_CASO_CLIENTE_EXTERNO = "Caso Cliente Externo"
 
-CLIENTE_SICOV = "SICOV"
-CLIENTE_TELEFONICA = "TELEFONICA"
-CLIENTE_TUYA = "TUYA"
-CLIENTE_SUFI_BANCOLOMBIA = "SUFI BANCOLOMBIA"
-CLIENTE_RCI_COLOMBIA = "RCI COLOMBIA S.A COMPAÃ‘ÃA DE FINANCIAMIENTO"
-CLIENTE_PORVENIR = "PORVENIR"
-CLIENTE_MIBANCO = "MIBANCO S.A."
-CLIENTE_BBVA = "BBVA"
-CLIENTE_BANCOOMEVA = "BANCOOMEVA"
-CLIENTE_BANCOLOMBIA = "BANCOLOMBIA"
-CLIENTE_BANCO_POPULAR = "BANCO POPULAR"
-CLIENTE_BANCO_FALABELLA = "BANCO FALABELLA"
-CLIENTE_BANCO_DE_OCCIDENTE = "BANCO DE OCCIDENTE"
-CLIENTE_BANCO_DAVIVIENDA = "BANCO DAVIVIENDA S.A."
-CLIENTE_BANCO_CAJA_SOCIAL = "BANCO CAJA SOCIAL"
-CLIENTE_AV_VILLAS = "AV VILLAS"
-CLIENTE_FALLABELLA = "FALLABELLA"
-CLIENTE_COLPENSIONES = "COLPENSIONES"
-CLIENTE_CLARO = "CLARO"
-
 PANDAS_DATETIME_DTYPE = "datetime64[ns]"
 SIN_DATO = "Sin dato"
 SIN_DURACION = "Sin duracion"
@@ -538,17 +523,17 @@ def periodo_key_sql(anio, mes):
     return TEXT_TODOS
 
 
-def selector_periodo_sql(tabla, key, label_anio="AÃ±o", label_mes="Mes"):
+def selector_periodo_sql(tabla, key, label_anio="Año", label_mes="Mes"):
     meses = cargar_meses_disponibles_cache(tabla)
     return selector_periodo_desde_meses(meses, key, label_anio, label_mes)
 
 
-def selector_periodo_multi_sql(tablas, key, label_anio="AÃ±o", label_mes="Mes"):
+def selector_periodo_multi_sql(tablas, key, label_anio="Año", label_mes="Mes"):
     meses = cargar_meses_disponibles_multi_cache(tuple(tablas))
     return selector_periodo_desde_meses(meses, key, label_anio, label_mes)
 
 
-def selector_periodo_desde_meses(meses, key, label_anio="AÃ±o", label_mes="Mes"):
+def selector_periodo_desde_meses(meses, key, label_anio="Año", label_mes="Mes"):
     if not meses:
         st.caption("No hay fechas validas para filtrar por periodo.")
         return None, None, TEXT_TODOS
@@ -1130,81 +1115,6 @@ INCIDENT_TIPIFICATION_ORDER = [
     TIPIFICACION_INCIDENTE_INTERNO,
     TIPIFICACION_CASO_CLIENTE_EXTERNO,
 ]
-
-ASOBANCARIA = [
-    "Asobancaria", "Bancolombia", "Bancoomeva", "BBVA", "Banco de Bogotá",
-    "Banco Caja Social", "Davivienda", "Banco Falabella", "Mibanco",
-    "Banco Mundo Mujer", "Banco de Occidente", "Banco Popular", "Porvenir",
-    "RCI", "Sufi", "Tuya", "Banco AV Villas",
-]
-
-CONFECAMARAS = [
-    "Cámara de Comercio de Bogotá", "Cámara de Comercio de Facatativá",
-    "Cámara de Comercio de Girardot, Alto Magdalena y Tequendama",
-    "Cámara de Comercio de Tunja", "Cámara de Comercio de Duitama",
-    "Cámara de Comercio de Sogamoso", "Cámara de Comercio de Barranquilla",
-    "Cámara de Comercio de Cartagena",
-    "Cámara de Comercio de Santa Marta para el Magdalena",
-    "Cámara de Comercio de Valledupar para el Valle del Río Cesar",
-    "Cámara de Comercio de Aguachica", "Cámara de Comercio de la Guajira",
-    "Cámara de Comercio de Montería", "Cámara de Comercio de Sincelejo",
-    "Cámara de Comercio de Magangué",
-    "Cámara de Comercio de San Andrés, Providencia y Santa Catalina",
-    "Cámara de Comercio de Medellín para Antioquia",
-    "Cámara de Comercio del Aburrá Sur", "Cámara de Comercio del Oriente Antioqueño",
-    "Cámara de Comercio del Urabá",
-    "Cámara de Comercio del Magdalena Medio y Nordeste Antioqueño",
-    "Cámara de Comercio del Chocó", "Cámara de Comercio de Cali",
-    "Cámara de Comercio de Buenaventura", "Cámara de Comercio de Buga",
-    "Cámara de Comercio de Cartago", "Cámara de Comercio de Palmira",
-    "Cámara de Comercio de Tuluá", "Cámara de Comercio del Cauca",
-    "Cámara de Comercio de Pasto", "Cámara de Comercio de Ipiales",
-    "Cámara de Comercio de Tumaco", "Cámara de Comercio de Manizales por Caldas",
-    "Cámara de Comercio de La Dorada, Puerto Boyacá, Puerto Salgar y Oriente de Caldas",
-    "Cámara de Comercio de Pereira", "Cámara de Comercio de Dosquebradas",
-    "Cámara de Comercio de Santa Rosa de Cabal",
-    "Cámara de Comercio de Armenia y del Quindío",
-    "Cámara de Comercio de Bucaramanga", "Cámara de Comercio de Barrancabermeja",
-    "Cámara de Comercio de Cúcuta", "Cámara de Comercio de Ocaña",
-    "Cámara de Comercio de Pamplona", "Cámara de Comercio de Ibagué",
-    "Cámara de Comercio de Honda, Guaduas y Norte del Tolima",
-    "Cámara de Comercio del Sur y Oriente del Tolima", "Cámara de Comercio del Huila",
-    "Cámara de Comercio de Villavicencio", "Cámara de Comercio de Arauca",
-    "Cámara de Comercio del Piedemonte Araucano", "Cámara de Comercio de Casanare",
-    "Cámara de Comercio de Florencia para el Caquetá",
-    "Cámara de Comercio del Putumayo", "Cámara de Comercio del Amazonas",
-    "Cámara de Comercio de San José del Guaviare", "Cámara de Comercio del Guainía",
-    "Cámara de Comercio del Vaupés",
-]
-
-OTROS_CLIENTES_CLAVE = [
-    "Claro", "Seguros del Estado", "Colpensiones", "Enterritorio",
-    "Empresa de Energía de Pereira", "REN Consultores",
-]
-
-GRUPOS_CLIENTES_CLAVE = {
-    "Asobancaria": ASOBANCARIA,
-    "Confecámaras": CONFECAMARAS,
-    "Otros clientes clave": OTROS_CLIENTES_CLAVE,
-}
-CLIENTES_CLAVE = [cliente for clientes in GRUPOS_CLIENTES_CLAVE.values() for cliente in clientes]
-
-# Cada nombre oficial funciona como alias; estas variantes cubren nombres frecuentes en las fuentes.
-CLIENTES_CLAVE_ALIASES = {cliente: [cliente] for cliente in CLIENTES_CLAVE}
-CLIENTES_CLAVE_ALIASES.update({
-    "Bancolombia": ["Bancolombia", "Bancolombia S.A"],
-    "Bancoomeva": ["Bancoomeva", "Bancoomeva S.A"],
-    "Banco Caja Social": ["Banco Caja Social", "Caja Social"],
-    "Davivienda": ["Davivienda", "Banco Davivienda", "Banco Davivienda S.A."],
-    "Mibanco": ["Mibanco", "Mibanco S.A."],
-    "RCI": ["RCI", "RCI Colombia", CLIENTE_RCI_COLOMBIA],
-    "Sufi": ["Sufi", CLIENTE_SUFI_BANCOLOMBIA],
-    "Tuya": ["Tuya", "Tuya S.A"],
-    "Banco AV Villas": ["Banco AV Villas", "AV Villas"],
-    "Claro": ["Claro", "Comcel"],
-    "Colpensiones": ["Colpensiones", "Colpen"],
-})
-
 
 def aplicar_tema_visual():
     st.markdown(
@@ -2043,7 +1953,7 @@ def estilos_login():
             border: 1px solid var(--border);
         }
 
-        /* TÃ­tulo */
+        /* Título */
         .login-title {
             font-size: 28px;
             font-weight: 800;
@@ -2052,7 +1962,7 @@ def estilos_login():
             text-align: left;
         }
 
-        /* SubtÃ­tulo */
+        /* Subtítulo */
         .login-subtitle {
             font-size: 14px;
             color: var(--muted);
@@ -2074,7 +1984,7 @@ def estilos_login():
             outline: none;
         }
 
-        /* BotÃ³n */
+        /* Botón */
         div.stButton > button {
             width: 100%;
             border-radius: 8px;
@@ -8140,17 +8050,17 @@ def render_graficas_kpi_comparativo_rangos(metricas, tendencia):
         st.info("No hay metricas para graficar.")
         return
     
-    # Obtener los periodos Ãºnicos
+    # Obtener los periodos únicos
     periodos = metricas["Periodo"].unique().tolist()
     
-    # GrÃ¡ficos de Total por rango
+    # Gráficos de Total por rango
     st.markdown("---")
-    st.markdown("<h2 style='text-align: center; color: #f35b04;'>ðŸ“Š AnÃ¡lisis de Casos e Incidentes</h2>", unsafe_allow_html=True)
+    st.markdown("<h2 style='text-align: center; color: #f35b04;'>📊 Análisis de Casos e Incidentes</h2>", unsafe_allow_html=True)
     
     col_casos, col_incidentes = st.columns(2)
     
     with col_casos:
-        st.markdown("<h3 style='text-align: center;'>DistribuciÃ³n de Casos</h3>", unsafe_allow_html=True)
+        st.markdown("<h3 style='text-align: center;'>Distribución de Casos</h3>", unsafe_allow_html=True)
         datos_casos = metricas[metricas["Registro"] == TEXT_CASOS].copy()
         if not datos_casos.empty:
             fig = px.pie(
@@ -8177,7 +8087,7 @@ def render_graficas_kpi_comparativo_rangos(metricas, tendencia):
             st.plotly_chart(fig, use_container_width=True)
     
     with col_incidentes:
-        st.markdown("<h3 style='text-align: center;'>DistribuciÃ³n de Incidentes</h3>", unsafe_allow_html=True)
+        st.markdown("<h3 style='text-align: center;'>Distribución de Incidentes</h3>", unsafe_allow_html=True)
         datos_incidentes = metricas[metricas["Registro"] == TEXT_INCIDENTES].copy()
         if not datos_incidentes.empty:
             fig = px.pie(
@@ -8307,15 +8217,15 @@ def etiqueta_rango_fechas(fecha_inicio, fecha_fin):
     anio_inicio = ts_inicio.year
     anio_fin = ts_fin.year
     
-    # Si es el mismo mes y aÃ±o
+    # Si es el mismo mes y año
     if ts_inicio.month == ts_fin.month and anio_inicio == anio_fin:
         return f"{mes_inicio} {anio_inicio}"
     
-    # Si es el mismo aÃ±o pero diferente mes
+    # Si es el mismo año pero diferente mes
     if anio_inicio == anio_fin:
         return f"{mes_inicio} - {mes_fin} {anio_fin}"
     
-    # Si son aÃ±os diferentes
+    # Si son años diferentes
     return f"{mes_inicio} {anio_inicio} - {mes_fin} {anio_fin}"
 
 
@@ -8502,7 +8412,7 @@ def render_grafico_estado_anual(metricas, registro, anios):
         color=TEXT_ESTADO_2,
         text=TEXT_CANTIDAD,
         barmode="stack",
-        labels={"Anio": "AÃ±o"},
+        labels={"Anio": "Año"},
         color_discrete_map={
             TEXT_ABIERTOS: UI_PALETTE[TEXT_PRIMARY],
             TEXT_CERRADOS: UI_PALETTE[TEXT_LAVENDER],
@@ -8696,21 +8606,21 @@ def dashboard_kpi_comparativo_anual_legacy():
     col_base, col_comparado = st.columns(2)
     with col_base:
         anio_base = st.selectbox(
-            "AÃ±o base",
+            "Año base",
             anios_disponibles,
             index=anios_disponibles.index(2025) if 2025 in anios_disponibles else 0,
             key="kpi_comp_anio_base",
         )
     with col_comparado:
         anio_comparado = st.selectbox(
-            "AÃ±o comparado",
+            "Año comparado",
             anios_disponibles,
             index=anios_disponibles.index(2026) if 2026 in anios_disponibles else len(anios_disponibles) - 1,
             key="kpi_comp_anio_comparado",
         )
 
     if anio_base == anio_comparado:
-        st.warning("Selecciona dos aÃ±os diferentes para comparar.")
+        st.warning("Selecciona dos años diferentes para comparar.")
         return
 
     anios = [anio_base, anio_comparado]
@@ -8719,7 +8629,7 @@ def dashboard_kpi_comparativo_anual_legacy():
         incidentes = cargar_incidentes_anios_cache(tuple(anios))
 
     if casos.empty and incidentes.empty:
-        st.info("No hay casos ni incidentes cargados para los aÃ±os seleccionados.")
+        st.info("No hay casos ni incidentes cargados para los años seleccionados.")
         return
 
     with st.spinner("Preparando resumen anual..."):
@@ -8737,7 +8647,7 @@ def dashboard_kpi_comparativo_anual_legacy():
 
     with st.expander("Ver tabla resumen"):
         columnas = ["Anio", "Registro", TEXT_TOTAL, TEXT_ABIERTOS, TEXT_CERRADOS]
-        tabla = metricas[[col for col in columnas if col in metricas.columns]].rename(columns={"Anio": "AÃ±o"})
+        tabla = metricas[[col for col in columnas if col in metricas.columns]].rename(columns={"Anio": "Año"})
         st.dataframe(tabla, use_container_width=True, hide_index=True)
 
 

@@ -838,7 +838,7 @@ def safe_float(valor):
 
 def normalizar_clave(valor):
     texto = normalizar_texto(valor)
-    texto = texto.replace("n?", "nu").replace("n�", "nu")
+    texto = texto.replace("n?", "nu").replace("n\ufffd", "nu")
     return re.sub(r"[^a-z0-9]+", " ", texto).strip()
 
 
