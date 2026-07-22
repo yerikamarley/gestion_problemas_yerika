@@ -14,8 +14,13 @@ from config.clientes_clave import (
     CLIENTES_CLAVE,
     GRUPOS_CLIENTES_CLAVE,
 )
+from config.equipo_soporte import (
+    SEGMENTO_EQUIPO_SOPORTE,
+    SEGMENTO_OTROS_RESPONSABLES,
+    SEGMENTO_SIN_ASIGNACION,
+)
 from services.clientes_clave import detectar_cliente_clave, detectar_cliente_en_fila
-from services.casos import top_categorias
+from services.casos import COL_SEGMENTO_ASIGNACION, segmentar_casos_por_asignacion, top_categorias
 from app_logic import (
     agregar_campos_sla_incidentes,
     agregar_campos_sla_respuesta,
@@ -7586,6 +7591,38 @@ def render_evolucion_diaria_casos(df):
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
 
+def render_control_asignacion_casos(segmentos):
+    render_tarjetas(
+        [
+            ("Total general", len(segmentos["todos"])),
+            ("Equipo de soporte", len(segmentos["equipo"])),
+            ("Otros responsables", len(segmentos["otros"])),
+            ("Sin asignación", len(segmentos["sin_asignacion"])),
+        ]
+    )
+
+
+def render_casos_fuera_equipo(segmentos):
+    columnas = [TEXT_NUMERO, TEXT_ASIGNADO, TEXT_CUENTA, TEXT_ESTADO, TEXT_CREADO]
+    with st.expander(f"Casos asignados a otros responsables ({len(segmentos['otros'])})"):
+        st.caption("Estos registros se controlan por separado y no participan en las métricas del equipo de soporte.")
+        otros = segmentos["otros"]
+        if otros.empty:
+            st.success("No hay casos asignados a responsables externos al equipo.")
+        else:
+            st.dataframe(otros[[col for col in columnas if col in otros.columns]], use_container_width=True, hide_index=True)
+    with st.expander(f"Casos sin asignación ({len(segmentos['sin_asignacion'])})"):
+        sin_asignacion = segmentos["sin_asignacion"]
+        if sin_asignacion.empty:
+            st.success("No hay casos pendientes de asignación.")
+        else:
+            st.dataframe(
+                sin_asignacion[[col for col in columnas if col in sin_asignacion.columns]],
+                use_container_width=True,
+                hide_index=True,
+            )
+
+
 def dashboard_casos():
     st.subheader("Dashboard de casos")
     st.caption("Vista operativa de volumen, ANS, causas, servicios, tipologías y seguimiento.")
@@ -7600,6 +7637,19 @@ def dashboard_casos():
     df = preparar_fechas_dashboard(df)
     if df.empty:
         st.info(f"No hay casos cargados para {periodo_label}.")
+        return
+
+    segmentos_asignacion = segmentar_casos_por_asignacion(df, TEXT_ASIGNADO)
+    st.markdown("#### Control de asignación")
+    st.caption(
+        "Las métricas inferiores incluyen exclusivamente los casos asignados al equipo de soporte. "
+        "Otros responsables y casos sin asignación se muestran aparte."
+    )
+    render_control_asignacion_casos(segmentos_asignacion)
+    df = segmentos_asignacion["equipo"]
+    if df.empty:
+        st.warning("No hay casos asignados al equipo de soporte para calcular las métricas del periodo.")
+        render_casos_fuera_equipo(segmentos_asignacion)
         return
 
     total = len(df)
@@ -7618,7 +7668,7 @@ def dashboard_casos():
 
     render_tarjetas(
         [
-            ("Total Casos", total),
+            ("Casos equipo soporte", total),
             (TEXT_CERRADOS, cerrados),
             (TEXT_ABIERTOS, abiertos),
             ("Promedio (h)", promedio),
@@ -7655,6 +7705,7 @@ def dashboard_casos():
             if st.button("Calcular análisis de agendamiento", key="calcular_agendamiento_dashboard_casos"):
                 historico = preparar_fechas_dashboard(cargar_casos_soporte_cache())
                 render_analisis_agendamiento_mesa(df, historico, periodo_key_sql(anio, mes))
+        render_casos_fuera_equipo(segmentos_asignacion)
         render_seguimiento_casos(df)
 
 
@@ -10812,6 +10863,8 @@ def vista_cargar_casos():
         procesar_archivo_casos(df, reemplazar_meses)
 
 def vista_casos():
+    st.subheader("Casos")
+    st.caption("Consulta y control de casos por estado, tipología, servicio y segmento de asignación.")
     anio, mes, periodo_label = selector_periodo_sql("cases", "vista_casos_periodo")
     if not periodo_sql_valido(anio, "casos"):
         return
@@ -10820,11 +10873,12 @@ def vista_casos():
     filtro_soporte = TEXT_TODOS
     filtro_servicio = TEXT_TODOS
     filtro_cuenta = ""
+    filtro_asignacion = TEXT_TODOS
     if not df.empty:
         df = preparar_fechas_dashboard(df)
         df["mes"] = df[TEXT_CREADO_DT_DASHBOARD].dt.to_period("M").astype(str).replace("NaT", "Sin fecha")
 
-        filtro_col1, filtro_col2, filtro_col3, filtro_col4 = st.columns([1, 1.5, 1.5, 2])
+        filtro_col1, filtro_col2, filtro_col3, filtro_col4, filtro_col5 = st.columns([1, 1.35, 1.25, 1.6, 1.45])
         with filtro_col1:
             estados = sorted(df[TEXT_ESTADO].dropna().unique().tolist())
             filtro_estado = st.selectbox(TEXT_ESTADO_2, [TEXT_TODOS] + estados, key="estado_casos")
@@ -10839,6 +10893,12 @@ def vista_casos():
             filtro_servicio = st.selectbox("Servicio", [TEXT_TODOS] + servicios, key="servicio_casos")
         with filtro_col4:
             filtro_cuenta = st.text_input("Cuenta", key="cuenta_casos")
+        with filtro_col5:
+            filtro_asignacion = st.selectbox(
+                "Asignación",
+                [TEXT_TODOS, SEGMENTO_EQUIPO_SOPORTE, SEGMENTO_OTROS_RESPONSABLES, SEGMENTO_SIN_ASIGNACION],
+                key="asignacion_casos",
+            )
 
         filtro_estado_sql = filtro_estado if filtro_estado != TEXT_TODOS else ""
         filtro_servicio_sql = (
@@ -10865,11 +10925,23 @@ def vista_casos():
             df = filtrar_por_servicio(df, TEXT_PRODUCTO, filtro_servicio)
         if filtro_cuenta:
             df = df[df[TEXT_CUENTA].fillna("").str.contains(filtro_cuenta, case=False, na=False)]
+        segmentos_asignacion = segmentar_casos_por_asignacion(df, TEXT_ASIGNADO)
+        st.markdown("#### Control de asignación")
+        render_control_asignacion_casos(segmentos_asignacion)
+        if filtro_asignacion == SEGMENTO_EQUIPO_SOPORTE:
+            df = segmentos_asignacion["equipo"]
+        elif filtro_asignacion == SEGMENTO_OTROS_RESPONSABLES:
+            df = segmentos_asignacion["otros"]
+        elif filtro_asignacion == SEGMENTO_SIN_ASIGNACION:
+            df = segmentos_asignacion["sin_asignacion"]
+        else:
+            df = segmentos_asignacion["todos"]
         df = df.drop(columns=[TEXT_CREADO_DT_DASHBOARD], errors="ignore")
         columnas = [
             TEXT_NUMERO,
             TEXT_ESTADO,
             "mes",
+            COL_SEGMENTO_ASIGNACION,
             TEXT_TIPOLOGIA_SOPORTE,
             TEXT_CUENTA,
             "contacto",
@@ -10897,7 +10969,15 @@ def vista_casos():
     dataframe_paginado(
         df,
         "vista_casos_tabla",
-        reset_token=(periodo_label, filtro_estado, filtro_soporte, filtro_servicio, filtro_cuenta, len(df)),
+        reset_token=(
+            periodo_label,
+            filtro_estado,
+            filtro_soporte,
+            filtro_servicio,
+            filtro_cuenta,
+            filtro_asignacion,
+            len(df),
+        ),
     )
 
 
