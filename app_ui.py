@@ -19,7 +19,12 @@ from config.equipo_soporte import (
     SEGMENTO_OTROS_RESPONSABLES,
     SEGMENTO_SIN_ASIGNACION,
 )
-from services.clientes_clave import detectar_cliente_clave, detectar_cliente_en_fila
+from services.clientes_clave import (
+    detectar_cliente_clave,
+    detectar_cliente_en_fila,
+    detectar_grupo_cliente_clave,
+    filtrar_por_grupo_cliente_clave,
+)
 from services.casos import COL_SEGMENTO_ASIGNACION, segmentar_casos_por_asignacion, top_categorias
 from app_logic import (
     agregar_campos_sla_incidentes,
@@ -10875,11 +10880,12 @@ def vista_casos():
     filtro_servicio = TEXT_TODOS
     filtro_cuenta = ""
     filtro_asignacion = TEXT_TODOS
+    filtro_grupo_cliente = TEXT_TODOS
     if not df.empty:
         df = preparar_fechas_dashboard(df)
         df["mes"] = df[TEXT_CREADO_DT_DASHBOARD].dt.to_period("M").astype(str).replace("NaT", "Sin fecha")
 
-        filtro_col1, filtro_col2, filtro_col3, filtro_col4, filtro_col5 = st.columns([1, 1.35, 1.25, 1.6, 1.45])
+        filtro_col1, filtro_col2, filtro_col3 = st.columns(3)
         with filtro_col1:
             estados = sorted(df[TEXT_ESTADO].dropna().unique().tolist())
             filtro_estado = st.selectbox(TEXT_ESTADO_2, [TEXT_TODOS] + estados, key="estado_casos")
@@ -10892,9 +10898,17 @@ def vista_casos():
         with filtro_col3:
             servicios = opciones_filtro_servicio(df, TEXT_PRODUCTO)
             filtro_servicio = st.selectbox("Servicio", [TEXT_TODOS] + servicios, key="servicio_casos")
+
+        filtro_col4, filtro_col5, filtro_col6 = st.columns([1.4, 1.6, 1.3])
         with filtro_col4:
-            filtro_cuenta = st.text_input("Cuenta", key="cuenta_casos")
+            filtro_grupo_cliente = st.selectbox(
+                "Grupo cliente clave",
+                [TEXT_TODOS, *GRUPOS_CLIENTES_CLAVE.keys()],
+                key="grupo_cliente_clave_casos",
+            )
         with filtro_col5:
+            filtro_cuenta = st.text_input("Cuenta", key="cuenta_casos")
+        with filtro_col6:
             filtro_asignacion = st.selectbox(
                 "Asignación",
                 [TEXT_TODOS, SEGMENTO_EQUIPO_SOPORTE, SEGMENTO_OTROS_RESPONSABLES, SEGMENTO_SIN_ASIGNACION],
@@ -10926,6 +10940,13 @@ def vista_casos():
             df = filtrar_por_servicio(df, TEXT_PRODUCTO, filtro_servicio)
         if filtro_cuenta:
             df = df[df[TEXT_CUENTA].fillna("").str.contains(filtro_cuenta, case=False, na=False)]
+        if filtro_grupo_cliente != TEXT_TODOS:
+            df = filtrar_por_grupo_cliente_clave(df, TEXT_CUENTA, filtro_grupo_cliente)
+        df["Grupo cliente clave"] = (
+            df[TEXT_CUENTA]
+            .apply(detectar_grupo_cliente_clave)
+            .replace("", "No es cliente clave")
+        )
         segmentos_asignacion = segmentar_casos_por_asignacion(df, TEXT_ASIGNADO)
         st.markdown("#### Control de asignación")
         render_control_asignacion_casos(segmentos_asignacion)
@@ -10942,6 +10963,7 @@ def vista_casos():
             TEXT_NUMERO,
             TEXT_ESTADO,
             "mes",
+            "Grupo cliente clave",
             COL_SEGMENTO_ASIGNACION,
             TEXT_TIPOLOGIA_SOPORTE,
             TEXT_CUENTA,
@@ -10976,6 +10998,7 @@ def vista_casos():
             filtro_soporte,
             filtro_servicio,
             filtro_cuenta,
+            filtro_grupo_cliente,
             filtro_asignacion,
             len(df),
         ),

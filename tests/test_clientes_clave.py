@@ -3,7 +3,12 @@ import unittest
 import pandas as pd
 
 from config.clientes_clave import CLIENTES_CLAVE, COOPCENTRAL, GRUPOS_CLIENTES_CLAVE
-from services.clientes_clave import detectar_cliente_clave, detectar_cliente_en_fila
+from services.clientes_clave import (
+    detectar_cliente_clave,
+    detectar_cliente_en_fila,
+    detectar_grupo_cliente_clave,
+    filtrar_por_grupo_cliente_clave,
+)
 
 
 class ClientesClaveConfigTest(unittest.TestCase):
@@ -42,6 +47,22 @@ class DeteccionClientesClaveTest(unittest.TestCase):
     def test_informa_el_campo_que_identifico_al_cliente(self):
         fila = pd.Series({"empresa": "Sin coincidencia", "descripcion": "Caso reportado por COMCEL"})
         self.assertEqual(("Claro", "descripcion"), detectar_cliente_en_fila(fila, ["empresa", "descripcion"]))
+
+    def test_detecta_y_filtra_grupo_cliente_clave(self):
+        self.assertEqual("Asobancaria", detectar_grupo_cliente_clave("BANCO DAVIVIENDA S.A."))
+        self.assertEqual("Coopcentral", detectar_grupo_cliente_clave("Caso de COOPSURAMERICA"))
+        df = pd.DataFrame(
+            {
+                "cuenta": [
+                    "Banco Davivienda S.A.",
+                    "Cámara de Comercio de Bogotá",
+                    "Coopsuramerica",
+                    "Cliente no configurado",
+                ]
+            }
+        )
+        filtrado = filtrar_por_grupo_cliente_clave(df, "cuenta", "Coopcentral")
+        self.assertEqual(["Coopsuramerica"], filtrado["cuenta"].tolist())
 
 
 if __name__ == "__main__":

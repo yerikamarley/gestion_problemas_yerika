@@ -5,7 +5,14 @@ import re
 import pandas as pd
 
 from app_logic import normalizar_texto
-from config.clientes_clave import CLIENTES_CLAVE_ALIASES
+from config.clientes_clave import CLIENTES_CLAVE_ALIASES, GRUPOS_CLIENTES_CLAVE
+
+
+GRUPO_POR_CLIENTE = {
+    cliente: grupo
+    for grupo, clientes in GRUPOS_CLIENTES_CLAVE.items()
+    for cliente in clientes
+}
 
 
 def aliases_clientes_ordenados():
@@ -39,6 +46,22 @@ def detectar_cliente_clave(texto):
     return ""
 
 
+def detectar_grupo_cliente_clave(texto):
+    """Retorna el grupo del cliente encontrado en un texto o una cadena vacía."""
+    cliente = detectar_cliente_clave(texto)
+    return GRUPO_POR_CLIENTE.get(cliente, "")
+
+
+def filtrar_por_grupo_cliente_clave(df, columna, grupo):
+    """Filtra un DataFrame por grupo sin modificar los registros originales."""
+    if df.empty or not grupo:
+        return df.copy()
+    if columna not in df.columns:
+        return df.iloc[0:0].copy()
+    grupos_detectados = df[columna].apply(detectar_grupo_cliente_clave)
+    return df[grupos_detectados == grupo].copy()
+
+
 def _valor_limpio(valor):
     if valor is None or pd.isna(valor):
         return ""
@@ -52,4 +75,3 @@ def detectar_cliente_en_fila(row, campos):
         if cliente:
             return cliente, campo
     return "", ""
-
