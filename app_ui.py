@@ -10643,7 +10643,7 @@ def resumen_por_grupos_clientes_clave(casos, incidentes):
 
 def render_resumen_grupos_clientes_clave(casos, incidentes, periodo_label):
     st.markdown("### Resumen general")
-    st.caption(f"{TEXT_PERIODO}{periodo_label} | Comparativo de los tres grupos de clientes clave.")
+    st.caption(f"{TEXT_PERIODO}{periodo_label} | Comparativo de los cuatro grupos de clientes clave.")
     tabla = resumen_por_grupos_clientes_clave(casos, incidentes)
     total_atenciones = int(tabla[TEXT_ATENCIONES].sum())
     total_abiertos = int(tabla[TEXT_ABIERTOS].sum())
@@ -10672,6 +10672,7 @@ def render_resumen_grupos_clientes_clave(casos, incidentes, periodo_label):
                 UI_PALETTE[TEXT_PRIMARY],
                 UI_PALETTE[TEXT_PURPLE],
                 UI_PALETTE[TEXT_YELLOW],
+                UI_PALETTE["blue"],
             ],
         )
         fig_volumen.update_traces(textposition=TEXT_OUTSIDE)

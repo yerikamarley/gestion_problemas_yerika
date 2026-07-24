@@ -2,17 +2,23 @@ import unittest
 
 import pandas as pd
 
-from config.clientes_clave import CLIENTES_CLAVE, GRUPOS_CLIENTES_CLAVE
+from config.clientes_clave import CLIENTES_CLAVE, COOPCENTRAL, GRUPOS_CLIENTES_CLAVE
 from services.clientes_clave import detectar_cliente_clave, detectar_cliente_en_fila
 
 
 class ClientesClaveConfigTest(unittest.TestCase):
     def test_catalogo_no_tiene_duplicados(self):
-        self.assertEqual(80, len(CLIENTES_CLAVE))
+        self.assertEqual(139, len(CLIENTES_CLAVE))
         self.assertEqual(len(CLIENTES_CLAVE), len(set(CLIENTES_CLAVE)))
 
     def test_grupos_tienen_las_cantidades_configuradas(self):
-        self.assertEqual([17, 57, 6], [len(clientes) for clientes in GRUPOS_CLIENTES_CLAVE.values()])
+        self.assertEqual([17, 57, 59, 6], [len(clientes) for clientes in GRUPOS_CLIENTES_CLAVE.values()])
+
+    def test_coopcentral_tiene_el_catalogo_completo(self):
+        self.assertEqual(59, len(COOPCENTRAL))
+        self.assertIn("Caja Unión", COOPCENTRAL)
+        self.assertIn("Coopcentral", COOPCENTRAL)
+        self.assertIn("Coodin", COOPCENTRAL)
 
 
 class DeteccionClientesClaveTest(unittest.TestCase):
@@ -23,6 +29,8 @@ class DeteccionClientesClaveTest(unittest.TestCase):
             "COMCEL": "Claro",
             "RCI COLOMBIA S.A COMPAÑÍA DE FINANCIAMIENTO": "RCI",
             "Cámara de Comercio de Bogotá": "Cámara de Comercio de Bogotá",
+            "COOPSURAMERICA": "Coopsuramérica",
+            "Cooperativa Leon XIII Ltda Guatape": "Cooperativa León XIII Ltda Guatapé",
         }
         for texto, esperado in casos.items():
             with self.subTest(texto=texto):
@@ -38,4 +46,3 @@ class DeteccionClientesClaveTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
