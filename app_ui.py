@@ -22,8 +22,8 @@ from config.equipo_soporte import (
 from services.clientes_clave import (
     detectar_cliente_clave,
     detectar_cliente_en_fila,
-    detectar_grupo_cliente_clave,
     filtrar_por_grupo_cliente_clave,
+    serie_grupo_cliente_clave,
 )
 from services.casos import COL_SEGMENTO_ASIGNACION, segmentar_casos_por_asignacion, top_categorias
 from app_logic import (
@@ -2519,7 +2519,7 @@ def preparar_casos_clientes_clave(df):
 
     trabajo = normalizar_tipificaciones_casos_df(df)
     detecciones = trabajo.apply(
-        lambda row: detectar_cliente_en_fila(row, [TEXT_CUENTA]),
+        lambda row: detectar_cliente_en_fila(row, [TEXT_CUENTA, "creado_por"]),
         axis=1,
         result_type="expand",
     )
@@ -10941,12 +10941,26 @@ def vista_casos():
         if filtro_cuenta:
             df = df[df[TEXT_CUENTA].fillna("").str.contains(filtro_cuenta, case=False, na=False)]
         if filtro_grupo_cliente != TEXT_TODOS:
-            df = filtrar_por_grupo_cliente_clave(df, TEXT_CUENTA, filtro_grupo_cliente)
-        df["Grupo cliente clave"] = (
-            df[TEXT_CUENTA]
-            .apply(detectar_grupo_cliente_clave)
-            .replace("", "No es cliente clave")
-        )
+            df = filtrar_por_grupo_cliente_clave(
+                df,
+                [TEXT_CUENTA, "creado_por"],
+                filtro_grupo_cliente,
+            )
+        df["Grupo cliente clave"] = serie_grupo_cliente_clave(
+            df,
+            [TEXT_CUENTA, "creado_por"],
+        ).replace("", "No es cliente clave")
+        if not df.empty:
+            detecciones_cliente = df.apply(
+                lambda row: detectar_cliente_en_fila(row, [TEXT_CUENTA, "creado_por"]),
+                axis=1,
+                result_type="expand",
+            )
+            detecciones_cliente.columns = ["Cliente clave detectado", "Fuente identificación VIP"]
+            df[["Cliente clave detectado", "Fuente identificación VIP"]] = detecciones_cliente
+        else:
+            df["Cliente clave detectado"] = pd.Series(dtype=TEXT_OBJECT)
+            df["Fuente identificación VIP"] = pd.Series(dtype=TEXT_OBJECT)
         segmentos_asignacion = segmentar_casos_por_asignacion(df, TEXT_ASIGNADO)
         st.markdown("#### Control de asignación")
         render_control_asignacion_casos(segmentos_asignacion)
@@ -10964,6 +10978,8 @@ def vista_casos():
             TEXT_ESTADO,
             "mes",
             "Grupo cliente clave",
+            "Cliente clave detectado",
+            "Fuente identificación VIP",
             COL_SEGMENTO_ASIGNACION,
             TEXT_TIPOLOGIA_SOPORTE,
             TEXT_CUENTA,

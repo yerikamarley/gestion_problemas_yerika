@@ -52,13 +52,29 @@ def detectar_grupo_cliente_clave(texto):
     return GRUPO_POR_CLIENTE.get(cliente, "")
 
 
-def filtrar_por_grupo_cliente_clave(df, columna, grupo):
+def detectar_grupo_en_fila(row, columnas):
+    """Busca el grupo usando las columnas en orden de prioridad."""
+    for columna in columnas:
+        grupo = detectar_grupo_cliente_clave(_valor_limpio(row.get(columna)))
+        if grupo:
+            return grupo
+    return ""
+
+
+def serie_grupo_cliente_clave(df, columnas):
+    """Clasifica cada fila por grupo usando cuenta y campos alternativos."""
+    columnas = [columnas] if isinstance(columnas, str) else list(columnas)
+    columnas_disponibles = [columna for columna in columnas if columna in df.columns]
+    if not columnas_disponibles:
+        return pd.Series([""] * len(df), index=df.index, dtype="object")
+    return df.apply(lambda row: detectar_grupo_en_fila(row, columnas_disponibles), axis=1)
+
+
+def filtrar_por_grupo_cliente_clave(df, columnas, grupo):
     """Filtra un DataFrame por grupo sin modificar los registros originales."""
     if df.empty or not grupo:
         return df.copy()
-    if columna not in df.columns:
-        return df.iloc[0:0].copy()
-    grupos_detectados = df[columna].apply(detectar_grupo_cliente_clave)
+    grupos_detectados = serie_grupo_cliente_clave(df, columnas)
     return df[grupos_detectados == grupo].copy()
 
 

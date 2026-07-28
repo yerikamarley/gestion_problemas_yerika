@@ -8,6 +8,7 @@ from services.clientes_clave import (
     detectar_cliente_en_fila,
     detectar_grupo_cliente_clave,
     filtrar_por_grupo_cliente_clave,
+    serie_grupo_cliente_clave,
 )
 
 
@@ -63,6 +64,19 @@ class DeteccionClientesClaveTest(unittest.TestCase):
         )
         filtrado = filtrar_por_grupo_cliente_clave(df, "cuenta", "Coopcentral")
         self.assertEqual(["Coopsuramerica"], filtrado["cuenta"].tolist())
+
+    def test_detecta_cliente_por_correo_cuando_no_hay_cuenta(self):
+        self.assertEqual("Codema", detectar_cliente_clave("mespinosa@codema.com.co"))
+        df = pd.DataFrame(
+            {
+                "cuenta": ["", "Davivienda"],
+                "creado_por": ["mespinosa@codema.com.co", "usuario@empresa.com"],
+            }
+        )
+        grupos = serie_grupo_cliente_clave(df, ["cuenta", "creado_por"])
+        self.assertEqual(["Coopcentral", "Asobancaria"], grupos.tolist())
+        filtrado = filtrar_por_grupo_cliente_clave(df, ["cuenta", "creado_por"], "Coopcentral")
+        self.assertEqual(["mespinosa@codema.com.co"], filtrado["creado_por"].tolist())
 
 
 if __name__ == "__main__":
