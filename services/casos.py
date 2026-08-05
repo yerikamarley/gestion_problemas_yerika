@@ -1,6 +1,5 @@
 """Resúmenes analíticos reutilizables para los dashboards de casos."""
 
-import calendar
 import unicodedata
 
 import pandas as pd
@@ -81,14 +80,22 @@ def _serie_fechas(df, columna):
 
 def _estado_esperando_cliente(valor):
     estado = _normalizar_nombre(valor)
-    return "cliente" in estado and any(palabra in estado for palabra in ("esper", "pendiente", "respuesta"))
+    return "esper" in estado or (
+        "pendiente" in estado
+        and any(palabra in estado for palabra in ("cliente", "usuario", "solicitante", "respuesta"))
+    )
+
+
+def _estado_cerrado(valor):
+    estado = _normalizar_nombre(valor)
+    return any(palabra in estado for palabra in ("cerrado", "closed", "resuelto", "resolved", "solucionado", "finalizado", "completado"))
 
 
 def resumen_diario_soporte(df, anio, mes, alcance="soporte_y_sin_asignacion"):
-    """Resume el mes usando fechas reales y la asignación/estado actuales."""
+    """Agrupa por día los casos creados en el mes y su estado actual."""
     columnas = [
-        "Fecha", "Nuevos", "Cerrados", "Abiertos al cierre",
-        "Esperando cliente*", "Sin asignación*", "Balance diario",
+        "Fecha", "Total del día", "Abiertos", "Esperando cliente",
+        "Cerrados", "Sin asignación",
     ]
     if df.empty:
         return pd.DataFrame(columns=columnas)
@@ -104,26 +111,24 @@ def resumen_diario_soporte(df, anio, mes, alcance="soporte_y_sin_asignacion"):
         ]
 
     creados = _serie_fechas(trabajo, "creado")
-    cerrados = _serie_fechas(trabajo, "cerrado")
+    en_mes = creados.dt.year.eq(int(anio)) & creados.dt.month.eq(int(mes))
+    trabajo = trabajo[en_mes].copy()
+    creados = creados[en_mes]
     estados = trabajo.get("estado", pd.Series("", index=trabajo.index))
     esperando = estados.apply(_estado_esperando_cliente)
+    cerrados = estados.apply(_estado_cerrado) | _serie_fechas(trabajo, "cerrado").notna()
+    esperando = esperando & ~cerrados
+    abiertos = ~cerrados & ~esperando
     sin_asignar = trabajo[COL_SEGMENTO_ASIGNACION].eq(SEGMENTO_SIN_ASIGNACION)
     filas = []
-    for dia in range(1, calendar.monthrange(int(anio), int(mes))[1] + 1):
-        fecha = pd.Timestamp(int(anio), int(mes), dia)
-        fin_dia = fecha + pd.Timedelta(days=1)
-        nuevos_dia = creados.ge(fecha) & creados.lt(fin_dia)
-        cerrados_dia = cerrados.ge(fecha) & cerrados.lt(fin_dia)
-        pendientes = creados.lt(fin_dia) & (cerrados.isna() | cerrados.ge(fin_dia))
-        nuevos = int(nuevos_dia.sum())
-        cerrados_total = int(cerrados_dia.sum())
+    for fecha in pd.date_range(f"{int(anio):04d}-{int(mes):02d}-01", periods=pd.Period(f"{anio}-{mes:02d}").days_in_month):
+        del_dia = creados.dt.normalize().eq(fecha)
         filas.append({
             "Fecha": fecha,
-            "Nuevos": nuevos,
-            "Cerrados": cerrados_total,
-            "Abiertos al cierre": int(pendientes.sum()),
-            "Esperando cliente*": int((pendientes & esperando).sum()),
-            "Sin asignación*": int((pendientes & sin_asignar).sum()),
-            "Balance diario": nuevos - cerrados_total,
+            "Total del día": int(del_dia.sum()),
+            "Abiertos": int((del_dia & abiertos).sum()),
+            "Esperando cliente": int((del_dia & esperando).sum()),
+            "Cerrados": int((del_dia & cerrados).sum()),
+            "Sin asignación": int((del_dia & sin_asignar).sum()),
         })
     return pd.DataFrame(filas, columns=columnas)

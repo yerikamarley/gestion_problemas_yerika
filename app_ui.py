@@ -11335,7 +11335,10 @@ def vista_control_diario_soporte():
 
     anio, mes = parse_mes_periodo(periodo)
     resumen = resumen_diario_soporte(
-        cargar_casos_cache(), anio, mes, opciones_alcance[etiqueta_alcance]
+        cargar_casos_filtrados_cache(anio, mes),
+        anio,
+        mes,
+        opciones_alcance[etiqueta_alcance],
     )
     hoy = pd.Timestamp.now().normalize()
     if anio == hoy.year and mes == hoy.month:
@@ -11344,31 +11347,41 @@ def vista_control_diario_soporte():
         st.info("No fue posible construir el resumen para el periodo seleccionado.")
         return
 
-    ultimo = resumen.iloc[-1]
-    total_nuevos = int(resumen["Nuevos"].sum())
+    total_casos = int(resumen["Total del día"].sum())
+    total_abiertos = int(resumen["Abiertos"].sum())
+    total_esperando = int(resumen["Esperando cliente"].sum())
     total_cerrados = int(resumen["Cerrados"].sum())
+    total_sin_asignacion = int(resumen["Sin asignación"].sum())
     render_tarjetas([
-        ("Nuevos del mes", total_nuevos),
-        ("Cerrados del mes", total_cerrados),
-        ("Pendientes al último corte", int(ultimo["Abiertos al cierre"])),
-        ("Esperando cliente*", int(ultimo["Esperando cliente*"])),
-        ("Sin asignación*", int(ultimo["Sin asignación*"])),
-        ("Balance del mes", total_nuevos - total_cerrados),
+        ("Casos recibidos", total_casos),
+        ("Abiertos actualmente", total_abiertos),
+        ("Esperando cliente", total_esperando),
+        ("Cerrados actualmente", total_cerrados),
+        ("Sin asignación", total_sin_asignacion),
     ])
+    st.caption(
+        f"Los {total_casos} casos recibidos se dividen por su estado actual en "
+        f"{total_abiertos} abiertos, {total_esperando} esperando cliente y {total_cerrados} cerrados. "
+        "Sin asignación se muestra aparte porque puede incluir casos de cualquiera de esos estados."
+    )
 
-    grafico = resumen[["Fecha", "Nuevos", "Cerrados"]].melt(
-        id_vars="Fecha", var_name="Movimiento", value_name="Casos"
+    grafico = resumen[["Fecha", "Abiertos", "Esperando cliente", "Cerrados"]].melt(
+        id_vars="Fecha", var_name="Estado actual", value_name="Casos"
     )
     figura = px.bar(
         grafico,
         x="Fecha",
         y="Casos",
-        color="Movimiento",
-        barmode="group",
-        color_discrete_map={"Nuevos": UI_PALETTE[TEXT_ORANGE], "Cerrados": UI_PALETTE[TEXT_PURPLE]},
+        color="Estado actual",
+        barmode="stack",
+        color_discrete_map={
+            "Abiertos": UI_PALETTE[TEXT_ORANGE],
+            "Esperando cliente": UI_PALETTE[TEXT_YELLOW],
+            "Cerrados": UI_PALETTE[TEXT_PURPLE],
+        },
     )
     st.plotly_chart(
-        aplicar_estilo_figura(figura, "Casos nuevos y cerrados por día"),
+        aplicar_estilo_figura(figura, "Casos recibidos cada día, según su estado actual"),
         use_container_width=True,
         config={"displayModeBar": False},
     )
@@ -11383,11 +11396,7 @@ def vista_control_diario_soporte():
         "control_diario_soporte",
         etiqueta_mes_periodo(anio, mes),
     )
-    st.caption(
-        "* La base registra las fechas de creación y cierre, pero no guarda el historial de cada cambio "
-        "de estado o responsable. Por eso 'Esperando cliente' y 'Sin asignación' usan el estado y la "
-        "asignación actuales sobre los casos pendientes en cada corte."
-    )
+    st.caption("Cada fila contiene únicamente los casos creados ese día dentro del mes seleccionado.")
 
 ADMIN_MENU_OPTIONS = [
     "Cargar Excel Casos",

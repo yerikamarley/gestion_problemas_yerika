@@ -13,11 +13,10 @@ class ControlDiarioSoporteTest(unittest.TestCase):
             {"asignado": "Otro responsable", "estado": "Abierto", "creado": "2026-08-01 10:00", "cerrado": ""},
         ])
         resultado = resumen_diario_soporte(casos, 2026, 8)
-        self.assertEqual(2, resultado.loc[0, "Nuevos"])
-        self.assertEqual(2, resultado.loc[0, "Abiertos al cierre"])
-        self.assertEqual(1, resultado.loc[1, "Cerrados"])
-        self.assertEqual(1, resultado.loc[1, "Esperando cliente*"])
-        self.assertEqual(1, resultado.loc[1, "Sin asignación*"])
+        self.assertEqual(2, resultado.loc[0, "Total del día"])
+        self.assertEqual(1, resultado.loc[0, "Cerrados"])
+        self.assertEqual(1, resultado.loc[0, "Esperando cliente"])
+        self.assertEqual(1, resultado.loc[0, "Sin asignación"])
 
     def test_permite_solo_sin_asignacion(self):
         casos = pd.DataFrame([
@@ -25,7 +24,7 @@ class ControlDiarioSoporteTest(unittest.TestCase):
             {"asignado": None, "estado": "Abierto", "creado": "2026-08-01", "cerrado": ""},
         ])
         resultado = resumen_diario_soporte(casos, 2026, 8, "sin_asignacion")
-        self.assertEqual(1, resultado.loc[0, "Nuevos"])
+        self.assertEqual(1, resultado.loc[0, "Total del día"])
 
 
 if __name__ == "__main__":
