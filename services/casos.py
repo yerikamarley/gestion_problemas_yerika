@@ -1,5 +1,6 @@
 """Resúmenes analíticos reutilizables para los dashboards de casos."""
 
+import calendar
 import unicodedata
 
 import pandas as pd
@@ -70,3 +71,59 @@ def top_categorias(df, columna, etiqueta, top_n=5, valor_vacio="Sin información
         .rename_axis(etiqueta)
         .reset_index(name="Cantidad")
     )
+
+
+def _serie_fechas(df, columna):
+    if columna not in df.columns:
+        return pd.Series(pd.NaT, index=df.index, dtype="datetime64[ns]")
+    return pd.to_datetime(df[columna], errors="coerce")
+
+
+def _estado_esperando_cliente(valor):
+    estado = _normalizar_nombre(valor)
+    return "cliente" in estado and any(palabra in estado for palabra in ("esper", "pendiente", "respuesta"))
+
+
+def resumen_diario_soporte(df, anio, mes, alcance="soporte_y_sin_asignacion"):
+    """Resume el mes usando fechas reales y la asignación/estado actuales."""
+    columnas = [
+        "Fecha", "Nuevos", "Cerrados", "Abiertos al cierre",
+        "Esperando cliente*", "Sin asignación*", "Balance diario",
+    ]
+    if df.empty:
+        return pd.DataFrame(columns=columnas)
+
+    trabajo = agregar_segmento_asignacion(df)
+    if alcance == "soporte":
+        trabajo = trabajo[trabajo[COL_SEGMENTO_ASIGNACION] == SEGMENTO_EQUIPO_SOPORTE]
+    elif alcance == "sin_asignacion":
+        trabajo = trabajo[trabajo[COL_SEGMENTO_ASIGNACION] == SEGMENTO_SIN_ASIGNACION]
+    else:
+        trabajo = trabajo[
+            trabajo[COL_SEGMENTO_ASIGNACION].isin([SEGMENTO_EQUIPO_SOPORTE, SEGMENTO_SIN_ASIGNACION])
+        ]
+
+    creados = _serie_fechas(trabajo, "creado")
+    cerrados = _serie_fechas(trabajo, "cerrado")
+    estados = trabajo.get("estado", pd.Series("", index=trabajo.index))
+    esperando = estados.apply(_estado_esperando_cliente)
+    sin_asignar = trabajo[COL_SEGMENTO_ASIGNACION].eq(SEGMENTO_SIN_ASIGNACION)
+    filas = []
+    for dia in range(1, calendar.monthrange(int(anio), int(mes))[1] + 1):
+        fecha = pd.Timestamp(int(anio), int(mes), dia)
+        fin_dia = fecha + pd.Timedelta(days=1)
+        nuevos_dia = creados.ge(fecha) & creados.lt(fin_dia)
+        cerrados_dia = cerrados.ge(fecha) & cerrados.lt(fin_dia)
+        pendientes = creados.lt(fin_dia) & (cerrados.isna() | cerrados.ge(fin_dia))
+        nuevos = int(nuevos_dia.sum())
+        cerrados_total = int(cerrados_dia.sum())
+        filas.append({
+            "Fecha": fecha,
+            "Nuevos": nuevos,
+            "Cerrados": cerrados_total,
+            "Abiertos al cierre": int(pendientes.sum()),
+            "Esperando cliente*": int((pendientes & esperando).sum()),
+            "Sin asignación*": int((pendientes & sin_asignar).sum()),
+            "Balance diario": nuevos - cerrados_total,
+        })
+    return pd.DataFrame(filas, columns=columnas)

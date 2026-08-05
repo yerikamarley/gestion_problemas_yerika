@@ -26,7 +26,12 @@ from services.clientes_clave import (
     filtrar_por_grupo_cliente_clave,
     serie_grupo_cliente_clave,
 )
-from services.casos import COL_SEGMENTO_ASIGNACION, segmentar_casos_por_asignacion, top_categorias
+from services.casos import (
+    COL_SEGMENTO_ASIGNACION,
+    resumen_diario_soporte,
+    segmentar_casos_por_asignacion,
+    top_categorias,
+)
 from app_logic import (
     agregar_campos_sla_incidentes,
     agregar_campos_sla_respuesta,
@@ -479,6 +484,7 @@ COL_REINCIDENCIA_AGENDAMIENTO = "Reincidencia agendamiento %"
 MENU_CLIENTES_CLAVE = "Clientes clave"
 MENU_KPI_CLIENTES_CLAVE = "KPI Clientes Clave"
 MENU_DASHBOARD_CASOS_SOPORTE = "Dashboard Casos Soporte"
+MENU_CONTROL_DIARIO_SOPORTE = "Control diario de Soporte"
 MENU_KPI_CASOS_CLIENTE_EXTERNO = "KPI Casos Cliente Externo"
 MENU_KPI_INCIDENTES = "KPI Incidentes"
 MENU_KPI_COMPARATIVO_ANUAL = "KPI 2025 vs 2026"
@@ -11297,10 +11303,97 @@ def vista_administrar_usuarios():
     st.divider()
     render_eliminar_usuario()
 
+
+def vista_control_diario_soporte():
+    st.subheader("Control diario de Soporte")
+    st.caption("Movimiento diario de los casos de Soporte y los casos que aún no tienen asignación.")
+
+    meses = cargar_meses_disponibles_cache("cases")
+    if not meses:
+        st.info("No hay meses disponibles para construir el control diario.")
+        return
+
+    col_mes, col_alcance = st.columns([1, 1.4])
+    with col_mes:
+        periodo = st.selectbox(
+            "Mes",
+            list(reversed(meses)),
+            format_func=lambda valor: etiqueta_mes_periodo(*parse_mes_periodo(valor)),
+            key="control_diario_soporte_mes",
+        )
+    opciones_alcance = {
+        "Soporte + sin asignación": "soporte_y_sin_asignacion",
+        "Solo Soporte": "soporte",
+        "Solo sin asignación": "sin_asignacion",
+    }
+    with col_alcance:
+        etiqueta_alcance = st.selectbox(
+            "Alcance",
+            list(opciones_alcance),
+            key="control_diario_soporte_alcance",
+        )
+
+    anio, mes = parse_mes_periodo(periodo)
+    resumen = resumen_diario_soporte(
+        cargar_casos_cache(), anio, mes, opciones_alcance[etiqueta_alcance]
+    )
+    hoy = pd.Timestamp.now().normalize()
+    if anio == hoy.year and mes == hoy.month:
+        resumen = resumen[resumen["Fecha"] <= hoy].copy()
+    if resumen.empty:
+        st.info("No fue posible construir el resumen para el periodo seleccionado.")
+        return
+
+    ultimo = resumen.iloc[-1]
+    total_nuevos = int(resumen["Nuevos"].sum())
+    total_cerrados = int(resumen["Cerrados"].sum())
+    render_tarjetas([
+        ("Nuevos del mes", total_nuevos),
+        ("Cerrados del mes", total_cerrados),
+        ("Pendientes al último corte", int(ultimo["Abiertos al cierre"])),
+        ("Esperando cliente*", int(ultimo["Esperando cliente*"])),
+        ("Sin asignación*", int(ultimo["Sin asignación*"])),
+        ("Balance del mes", total_nuevos - total_cerrados),
+    ])
+
+    grafico = resumen[["Fecha", "Nuevos", "Cerrados"]].melt(
+        id_vars="Fecha", var_name="Movimiento", value_name="Casos"
+    )
+    figura = px.bar(
+        grafico,
+        x="Fecha",
+        y="Casos",
+        color="Movimiento",
+        barmode="group",
+        color_discrete_map={"Nuevos": UI_PALETTE[TEXT_ORANGE], "Cerrados": UI_PALETTE[TEXT_PURPLE]},
+    )
+    st.plotly_chart(
+        aplicar_estilo_figura(figura, "Casos nuevos y cerrados por día"),
+        use_container_width=True,
+        config={"displayModeBar": False},
+    )
+
+    st.markdown("#### Detalle diario")
+    tabla = resumen.copy()
+    tabla["Fecha"] = tabla["Fecha"].dt.strftime("%d/%m/%Y")
+    st.dataframe(tabla, use_container_width=True, hide_index=True)
+    render_descarga_dataframe(
+        tabla,
+        "descargar_control_diario_soporte",
+        "control_diario_soporte",
+        etiqueta_mes_periodo(anio, mes),
+    )
+    st.caption(
+        "* La base registra las fechas de creación y cierre, pero no guarda el historial de cada cambio "
+        "de estado o responsable. Por eso 'Esperando cliente' y 'Sin asignación' usan el estado y la "
+        "asignación actuales sobre los casos pendientes en cada corte."
+    )
+
 ADMIN_MENU_OPTIONS = [
     "Cargar Excel Casos",
     TEXT_CASOS,
     MENU_DASHBOARD_CASOS_SOPORTE,
+    MENU_CONTROL_DIARIO_SOPORTE,
     MENU_KPI_CASOS_CLIENTE_EXTERNO,
     "Cargar Excel Incidentes",
     TEXT_INCIDENTES,
@@ -11318,6 +11411,7 @@ ADMIN_MENU_OPTIONS = [
 VIEWER_MENU_OPTIONS = [
     TEXT_CASOS,
     MENU_DASHBOARD_CASOS_SOPORTE,
+    MENU_CONTROL_DIARIO_SOPORTE,
     MENU_KPI_CASOS_CLIENTE_EXTERNO,
     TEXT_INCIDENTES,
     MENU_KPI_INCIDENTES,
@@ -11333,6 +11427,7 @@ ADMIN_VIEWS = {
     "Cargar Excel Casos": vista_cargar_casos,
     TEXT_CASOS: vista_casos,
     MENU_DASHBOARD_CASOS_SOPORTE: dashboard_casos,
+    MENU_CONTROL_DIARIO_SOPORTE: vista_control_diario_soporte,
     MENU_KPI_CASOS_CLIENTE_EXTERNO: dashboard_kpi_casos_cliente_externo,
     "Cargar Excel Incidentes": vista_cargar_incidentes,
     TEXT_INCIDENTES: vista_incidentes,
@@ -11350,6 +11445,7 @@ ADMIN_VIEWS = {
 VIEWER_VIEWS = {
     TEXT_CASOS: dashboard_casos,
     MENU_DASHBOARD_CASOS_SOPORTE: dashboard_casos,
+    MENU_CONTROL_DIARIO_SOPORTE: vista_control_diario_soporte,
     MENU_KPI_CASOS_CLIENTE_EXTERNO: dashboard_kpi_casos_cliente_externo,
     TEXT_INCIDENTES: dashboard_incidentes,
     MENU_KPI_INCIDENTES: dashboard_kpi_incidentes,
