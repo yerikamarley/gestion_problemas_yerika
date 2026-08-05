@@ -7,6 +7,7 @@ from services.clientes_clave import (
     detectar_cliente_clave,
     detectar_cliente_en_fila,
     detectar_grupo_cliente_clave,
+    filtrar_por_cliente_o_texto,
     filtrar_por_grupo_cliente_clave,
     serie_grupo_cliente_clave,
 )
@@ -77,6 +78,34 @@ class DeteccionClientesClaveTest(unittest.TestCase):
         self.assertEqual(["Coopcentral", "Asobancaria"], grupos.tolist())
         filtrado = filtrar_por_grupo_cliente_clave(df, ["cuenta", "creado_por"], "Coopcentral")
         self.assertEqual(["mespinosa@codema.com.co"], filtrado["creado_por"].tolist())
+
+    def test_filtro_casos_usa_alias_y_campos_de_clientes_vip(self):
+        df = pd.DataFrame(
+            {
+                "numero": ["1", "2", "3", "4"],
+                "cuenta": ["COMCEL", "", "Bancolombia S.A", "Otro cliente"],
+                "creado_por": ["", "usuario@claro.com", "", "usuario@empresa.com"],
+            }
+        )
+
+        claro = filtrar_por_cliente_o_texto(df, ["cuenta", "creado_por"], "Claro")
+        bancolombia = filtrar_por_cliente_o_texto(df, ["cuenta", "creado_por"], "Bancolombia")
+
+        self.assertEqual(["1", "2"], claro["numero"].tolist())
+        self.assertEqual(["3"], bancolombia["numero"].tolist())
+
+    def test_filtro_casos_conserva_busqueda_de_texto_libre(self):
+        df = pd.DataFrame(
+            {
+                "numero": ["1", "2"],
+                "cuenta": ["Cliente Especial Norte", "Otro cliente"],
+                "creado_por": ["usuario@empresa.com", "contacto@especial.com"],
+            }
+        )
+
+        filtrado = filtrar_por_cliente_o_texto(df, ["cuenta", "creado_por"], "especial")
+
+        self.assertEqual(["1", "2"], filtrado["numero"].tolist())
 
 
 if __name__ == "__main__":

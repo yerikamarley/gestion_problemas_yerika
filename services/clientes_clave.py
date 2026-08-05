@@ -78,6 +78,33 @@ def filtrar_por_grupo_cliente_clave(df, columnas, grupo):
     return df[grupos_detectados == grupo].copy()
 
 
+def filtrar_por_cliente_o_texto(df, columnas, busqueda):
+    """Filtra con los mismos alias VIP y conserva búsquedas de texto libre."""
+    if df.empty or not str(busqueda or "").strip():
+        return df.copy()
+
+    columnas = [columnas] if isinstance(columnas, str) else list(columnas)
+    columnas_disponibles = [columna for columna in columnas if columna in df.columns]
+    if not columnas_disponibles:
+        return df.iloc[0:0].copy()
+
+    cliente_buscado = detectar_cliente_clave(busqueda)
+    if cliente_buscado:
+        clientes_detectados = df.apply(
+            lambda row: detectar_cliente_en_fila(row, columnas_disponibles)[0],
+            axis=1,
+        )
+        return df[clientes_detectados == cliente_buscado].copy()
+
+    texto_buscado = normalizar_texto(busqueda)
+    mascara = pd.Series(False, index=df.index)
+    for columna in columnas_disponibles:
+        mascara |= df[columna].apply(
+            lambda valor: texto_buscado in normalizar_texto(_valor_limpio(valor))
+        )
+    return df[mascara].copy()
+
+
 def _valor_limpio(valor):
     if valor is None or pd.isna(valor):
         return ""

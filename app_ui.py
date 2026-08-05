@@ -22,6 +22,7 @@ from config.equipo_soporte import (
 from services.clientes_clave import (
     detectar_cliente_clave,
     detectar_cliente_en_fila,
+    filtrar_por_cliente_o_texto,
     filtrar_por_grupo_cliente_clave,
     serie_grupo_cliente_clave,
 )
@@ -10921,11 +10922,11 @@ def vista_casos():
             if filtro_servicio not in (TEXT_TODOS, SIN_SERVICIO)
             else ""
         )
-        if filtro_estado_sql or filtro_servicio_sql or filtro_cuenta:
+        if filtro_estado_sql or filtro_servicio_sql:
             df = cargar_casos_soporte_filtrados_cache(
                 anio,
                 mes,
-                filtro_cuenta,
+                "",
                 filtro_estado_sql,
                 filtro_servicio_sql,
             )
@@ -10939,7 +10940,11 @@ def vista_casos():
         if filtro_servicio != TEXT_TODOS:
             df = filtrar_por_servicio(df, TEXT_PRODUCTO, filtro_servicio)
         if filtro_cuenta:
-            df = df[df[TEXT_CUENTA].fillna("").str.contains(filtro_cuenta, case=False, na=False)]
+            df = filtrar_por_cliente_o_texto(
+                df,
+                [TEXT_CUENTA, "creado_por"],
+                filtro_cuenta,
+            )
         if filtro_grupo_cliente != TEXT_TODOS:
             df = filtrar_por_grupo_cliente_clave(
                 df,
