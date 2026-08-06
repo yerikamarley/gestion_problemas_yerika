@@ -492,6 +492,7 @@ MENU_REINCIDENCIAS_PROBLEMAS = "Reincidencias y problemas sugeridos"
 MENU_SEGUIMIENTO_INCIDENTES_VIEWER = "Seguimiento incidentes"
 MENU_SEGUIMIENTO_INCIDENTES_ADMIN = "Seguimiento Incidentes"
 MENU_SEGUIMIENTO_RPOST = "Seguimiento de RPost"
+MENU_SEGUIMIENTO_AUTENTIC = "Seguimiento de Autentic"
 LABEL_CASOS_CLIENTE_EXTERNO = "Casos cliente externo"
 TEXT_TIPOLOGIA_SOPORTE = "Tipologia caso"
 SOPORTE_USO = "Soporte Uso"
@@ -9839,6 +9840,179 @@ def dashboard_seguimiento_rpost():
     render_detalle_incidentes_seguimiento_rpost(incidentes)
 
 
+def filtrar_registros_autentic(df, campos, es_caso=False):
+    trabajo = preparar_fechas_seguimiento_rpost(
+        normalizar_tipificaciones_casos_df(df) if es_caso else df
+    )
+    if trabajo.empty:
+        trabajo[TEXT_CLIENTE] = pd.Series(dtype=TEXT_OBJECT)
+        return trabajo
+
+    trabajo["_texto_seguimiento_autentic"] = trabajo.apply(
+        lambda row: texto_normalizado_campos(row, campos),
+        axis=1,
+    )
+    trabajo = trabajo[
+        trabajo["_texto_seguimiento_autentic"].str.contains(
+            r"(?<![a-z0-9])autentic(?![a-z0-9])",
+            regex=True,
+            na=False,
+        )
+    ].copy()
+    if trabajo.empty:
+        trabajo[TEXT_CLIENTE] = pd.Series(dtype=TEXT_OBJECT)
+        return trabajo
+    detector_cliente = cliente_caso_seguimiento_rpost if es_caso else cliente_incidente_seguimiento_rpost
+    trabajo[TEXT_CLIENTE] = trabajo.apply(detector_cliente, axis=1)
+    return trabajo
+
+
+@st.cache_data(ttl=CACHE_TTL_SEGUNDOS, show_spinner=False)
+def cargar_casos_autentic_filtrados_cache(anio=None, mes=None):
+    return filtrar_registros_autentic(
+        cargar_casos_filtrados_cache(anio, mes),
+        CASE_FIELDS_SEGUIMIENTO_RPOST,
+        es_caso=True,
+    )
+
+
+@st.cache_data(ttl=CACHE_TTL_SEGUNDOS, show_spinner=False)
+def cargar_incidentes_autentic_filtrados_cache(anio=None, mes=None):
+    return filtrar_registros_autentic(
+        cargar_incidentes_filtrados_cache(anio, mes),
+        INCIDENT_FIELDS_SEGUIMIENTO_RPOST,
+    )
+
+
+def base_eventos_seguimiento_autentic(casos, incidentes):
+    tablas = []
+    for df, tipo in [(casos, "Caso Autentic"), (incidentes, "Incidente Autentic")]:
+        if not df.empty:
+            eventos = df[[TEXT_CREADO_DT_DASHBOARD, TEXT_CLIENTE, TEXT_NUMERO]].copy()
+            eventos["Tipo"] = tipo
+            tablas.append(eventos)
+    if not tablas:
+        return pd.DataFrame(columns=[TEXT_CREADO_DT_DASHBOARD, TEXT_CLIENTE, TEXT_NUMERO, "Tipo"])
+    return pd.concat(tablas, ignore_index=True)
+
+
+def render_graficas_seguimiento_autentic(casos, incidentes):
+    eventos = base_eventos_seguimiento_autentic(casos, incidentes)
+    if eventos.empty:
+        st.info("No hay informacion para graficar con los filtros seleccionados.")
+        return
+
+    col_clientes, col_fechas = st.columns(2)
+    with col_clientes:
+        resumen = eventos.groupby([TEXT_CLIENTE, "Tipo"]).size().reset_index(name=TEXT_CANTIDAD)
+        fig = px.bar(
+            resumen.sort_values(by=TEXT_CANTIDAD), x=TEXT_CANTIDAD, y=TEXT_CLIENTE,
+            color="Tipo", orientation="h", text=TEXT_CANTIDAD, barmode="group",
+            color_discrete_sequence=[UI_PALETTE[TEXT_PRIMARY], UI_PALETTE[TEXT_LAVENDER]],
+        )
+        fig.update_traces(textposition=TEXT_OUTSIDE)
+        st.plotly_chart(aplicar_estilo_figura(fig, "Volumen por cliente"), use_container_width=True)
+    with col_fechas:
+        por_fecha = eventos.dropna(subset=[TEXT_CREADO_DT_DASHBOARD]).copy()
+        if por_fecha.empty:
+            st.info("No hay fechas validas para graficar la tendencia.")
+        else:
+            por_fecha[TEXT_FECHA] = por_fecha[TEXT_CREADO_DT_DASHBOARD].dt.date
+            resumen = por_fecha.groupby([TEXT_FECHA, "Tipo"]).size().reset_index(name=TEXT_CANTIDAD)
+            fig = px.bar(
+                resumen, x=TEXT_FECHA, y=TEXT_CANTIDAD, color="Tipo", barmode="group",
+                color_discrete_sequence=[UI_PALETTE[TEXT_PRIMARY], UI_PALETTE[TEXT_LAVENDER]],
+            )
+            st.plotly_chart(aplicar_estilo_figura(fig, "Actividad por fecha"), use_container_width=True)
+
+
+def render_detalle_seguimiento_autentic(df, tipo):
+    es_caso = tipo == "casos"
+    titulo = "Casos Autentic" if es_caso else "Incidentes Autentic"
+    st.subheader(titulo)
+    if df.empty:
+        st.info(f"No hay {titulo.lower()} para los filtros seleccionados.")
+        return
+    columnas = [
+        TEXT_NUMERO, TEXT_CLIENTE, TEXT_ESTADO, TEXT_PRIORIDAD, TEXT_CREADO, TEXT_CERRADO,
+        TEXT_CUENTA if es_caso else TEXT_EMPRESA,
+        TEXT_PRODUCTO if es_caso else TEXT_SOLICITANTE,
+        TEXT_TIPIFICACION_2 if es_caso else TEXT_SERVICIO_NEGOCIO,
+        TEXT_DESCRIPCION_2,
+        TEXT_OBSERVACIONES_TRABAJO,
+    ]
+    visibles = [col for col in columnas if col in df.columns]
+    tabla = df.sort_values(by=TEXT_CREADO_DT_DASHBOARD, ascending=False)[visibles].rename(
+        columns={TEXT_NUMERO: "Numero caso" if es_caso else "Numero incidente"}
+    )
+    dataframe_liviano(tabla)
+
+
+def dashboard_seguimiento_autentic():
+    st.subheader(MENU_SEGUIMIENTO_AUTENTIC)
+    anio, mes, periodo_label = selector_periodo_multi_sql(
+        ["cases", "incidents"], "seguimiento_autentic_periodo"
+    )
+    if not periodo_sql_valido(anio, "seguimiento Autentic"):
+        return
+    with st.spinner("Cargando seguimiento de Autentic..."):
+        casos = cargar_casos_autentic_filtrados_cache(anio, mes)
+        incidentes = cargar_incidentes_autentic_filtrados_cache(anio, mes)
+
+    if casos.empty and incidentes.empty:
+        st.info(f"No hay casos ni incidentes Autentic para {periodo_label}.")
+        return
+
+    col_cliente, col_busqueda = st.columns([1.4, 1.4])
+    clientes = clientes_seguimiento_rpost(casos, incidentes)
+    with col_cliente:
+        cliente = st.selectbox("Cliente", [TEXT_TODOS] + clientes, key="seguimiento_autentic_cliente")
+    with col_busqueda:
+        busqueda = st.text_input("Buscar numero o texto", key="seguimiento_autentic_busqueda")
+    casos, incidentes = aplicar_filtros_seguimiento_rpost(
+        casos, incidentes, TEXT_TODOS, cliente, busqueda
+    )
+    if casos.empty and incidentes.empty:
+        st.info("No hay registros para los filtros seleccionados.")
+        return
+
+    render_tarjetas([
+        ("Casos Autentic", len(casos)),
+        ("Clientes en casos", casos[TEXT_CLIENTE].nunique() if not casos.empty else 0),
+        ("Incidentes Autentic", len(incidentes)),
+        ("Clientes en incidentes", incidentes[TEXT_CLIENTE].nunique() if not incidentes.empty else 0),
+        ("Clientes total", len(clientes_seguimiento_rpost(casos, incidentes))),
+    ])
+    st.caption(f"{TEXT_PERIODO}{periodo_label} | Registros que mencionan al proveedor Autentic.")
+
+    st.divider()
+    st.subheader("Resumen por cliente")
+    resumen = resumen_clientes_seguimiento_rpost(casos, incidentes).rename(columns={
+        "Casos RPost/acuses": "Casos Autentic", "Incidentes RPost": "Incidentes Autentic"
+    })
+    if resumen.empty:
+        st.info("No hay clientes para resumir.")
+    else:
+        st.dataframe(resumen, use_container_width=True, hide_index=True)
+
+    st.divider()
+    st.subheader("Disponibilidad Autentic")
+    if not incidentes.empty and mes is not None:
+        mes_ts = pd.Timestamp(year=anio, month=mes, day=1)
+        render_resumen_disponibilidad_rpost(resumir_disponibilidad_mes(incidentes, mes_ts))
+    elif mes is None:
+        st.info("Selecciona un mes para calcular la disponibilidad.")
+    else:
+        st.info("No hay incidentes para calcular disponibilidad.")
+
+    st.divider()
+    render_graficas_seguimiento_autentic(casos, incidentes)
+    st.divider()
+    render_detalle_seguimiento_autentic(casos, "casos")
+    st.divider()
+    render_detalle_seguimiento_autentic(incidentes, "incidentes")
+
+
 def fechas_clientes_clave(casos, incidentes):
     fechas = []
     if not casos.empty:
@@ -11411,6 +11585,7 @@ ADMIN_MENU_OPTIONS = [
     MENU_KPI_COMPARATIVO_ANUAL,
     MENU_REINCIDENCIAS_PROBLEMAS,
     MENU_SEGUIMIENTO_RPOST,
+    MENU_SEGUIMIENTO_AUTENTIC,
     MENU_SEGUIMIENTO_INCIDENTES_ADMIN,
     MENU_KPI_CLIENTES_CLAVE,
     "Clientes Clave",
@@ -11427,6 +11602,7 @@ VIEWER_MENU_OPTIONS = [
     MENU_KPI_COMPARATIVO_ANUAL,
     MENU_REINCIDENCIAS_PROBLEMAS,
     MENU_SEGUIMIENTO_RPOST,
+    MENU_SEGUIMIENTO_AUTENTIC,
     MENU_SEGUIMIENTO_INCIDENTES_VIEWER,
     MENU_KPI_CLIENTES_CLAVE,
     MENU_CLIENTES_CLAVE,
@@ -11445,6 +11621,7 @@ ADMIN_VIEWS = {
     MENU_KPI_COMPARATIVO_ANUAL: dashboard_kpi_comparativo_anual,
     MENU_REINCIDENCIAS_PROBLEMAS: dashboard_reincidencias_problemas,
     MENU_SEGUIMIENTO_RPOST: dashboard_seguimiento_rpost,
+    MENU_SEGUIMIENTO_AUTENTIC: dashboard_seguimiento_autentic,
     MENU_SEGUIMIENTO_INCIDENTES_ADMIN: vista_seguimiento_incidentes,
     MENU_KPI_CLIENTES_CLAVE: dashboard_kpi_clientes_clave,
     "Clientes Clave": dashboard_clientes_clave,
@@ -11461,6 +11638,7 @@ VIEWER_VIEWS = {
     MENU_KPI_COMPARATIVO_ANUAL: dashboard_kpi_comparativo_anual,
     MENU_REINCIDENCIAS_PROBLEMAS: dashboard_reincidencias_problemas,
     MENU_SEGUIMIENTO_RPOST: dashboard_seguimiento_rpost,
+    MENU_SEGUIMIENTO_AUTENTIC: dashboard_seguimiento_autentic,
     MENU_SEGUIMIENTO_INCIDENTES_VIEWER: vista_seguimiento_incidentes,
     MENU_KPI_CLIENTES_CLAVE: dashboard_kpi_clientes_clave,
     MENU_CLIENTES_CLAVE: dashboard_clientes_clave,
