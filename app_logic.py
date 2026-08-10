@@ -121,6 +121,7 @@ INCIDENT_ALIASES = {
     "creado_por": ["creado por"],
     "cerrado": ["cerrado", "fecha cerrado", "cerrado el", "fecha de cierre"],
     "escalado_proveedor": ["escalado a proveedor"],
+    "nombre_proveedor": ["nombre del proveedor", "proveedor"],
     "servicio_negocio": ["servicio", "servicio de negocio"],
     "creado": ["creado", "fecha creado", "creado el", "fecha de creacion", "fecha de creación"],
     "observaciones_trabajo": [
@@ -147,6 +148,7 @@ INCIDENT_TEXT_FIELDS = [
     "servicio_negocio",
     "tipo_falla",
     "impacto",
+    "nombre_proveedor",
 ]
 
 INCIDENT_CAUSE_FIELDS = [
@@ -1467,6 +1469,7 @@ def init_db():
             creado_por TEXT,
             cerrado TEXT,
             escalado_proveedor TEXT,
+            nombre_proveedor TEXT,
             servicio_negocio TEXT,
             creado TEXT,
             observaciones_trabajo TEXT,
@@ -1507,6 +1510,7 @@ def init_db():
             "creado_por": "TEXT",
             "cerrado": "TEXT",
             "escalado_proveedor": "TEXT",
+            "nombre_proveedor": "TEXT",
             "servicio_negocio": "TEXT",
             "creado": "TEXT",
             "observaciones_trabajo": "TEXT",
@@ -2201,6 +2205,7 @@ INCIDENT_DB_COLUMNS = [
     "creado_por",
     "cerrado",
     "escalado_proveedor",
+    "nombre_proveedor",
     "servicio_negocio",
     "creado",
     "observaciones_trabajo",
@@ -2263,6 +2268,7 @@ def guardar_incidentes(df, progress_callback=None):
                 safe_text(valor_fila(row, "creado_por")),
                 normalizar_fecha(valor_fila(row, "cerrado")),
                 safe_text(valor_fila(row, "escalado_proveedor")),
+                safe_text(valor_fila(row, "nombre_proveedor")),
                 safe_text(valor_fila(row, "servicio_negocio")),
                 normalizar_fecha(valor_fila(row, "creado")),
                 safe_text(valor_fila(row, "observaciones_trabajo")),

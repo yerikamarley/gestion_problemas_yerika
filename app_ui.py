@@ -636,6 +636,7 @@ INCIDENT_FIELDS_SEGUIMIENTO_RPOST = [
     TEXT_CAUSA_RAIZ_AUTO,
     TEXT_TIPO_INCIDENTE_AUTO,
     TEXT_TIPIFICACION_AUTO,
+    "nombre_proveedor",
 ]
 
 PATRONES_NO_RECIBIO_ACUSE = [
@@ -9639,6 +9640,7 @@ def render_detalle_incidentes_seguimiento_rpost(incidentes):
         TEXT_EMPRESA,
         TEXT_SOLICITANTE,
         TEXT_SERVICIO_NEGOCIO,
+        "nombre_proveedor",
         TEXT_TIPIFICACION_AUTO,
         TEXT_TIPO_INCIDENTE_AUTO,
         TEXT_CAUSA_RAIZ_AUTO,
@@ -9941,6 +9943,8 @@ def render_detalle_seguimiento_autentic(df, tipo):
         TEXT_DESCRIPCION_2,
         TEXT_OBSERVACIONES_TRABAJO,
     ]
+    if not es_caso:
+        columnas.insert(9, "nombre_proveedor")
     visibles = [col for col in columnas if col in df.columns]
     tabla = df.sort_values(by=TEXT_CREADO_DT_DASHBOARD, ascending=False)[visibles].rename(
         columns={TEXT_NUMERO: "Numero caso" if es_caso else "Numero incidente"}
