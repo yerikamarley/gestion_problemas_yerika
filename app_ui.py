@@ -11248,11 +11248,12 @@ def vista_incidentes():
     filtro_tipificacion = TEXT_TODOS
     filtro_servicio = TEXT_TODOS
     filtro_alerta = TEXT_TODOS
+    filtro_proveedor = TEXT_TODOS
     if not df.empty:
         df = preparar_fechas_dashboard(df)
         df["mes"] = df[TEXT_CREADO_DT_DASHBOARD].dt.to_period("M").astype(str).replace("NaT", "Sin fecha")
 
-        filtro_col1, filtro_col2, filtro_col3, filtro_col4 = st.columns([1, 1.4, 1.4, 1])
+        filtro_col1, filtro_col2, filtro_col3, filtro_col4, filtro_col5 = st.columns([1, 1.4, 1.4, 1, 1.2])
         with filtro_col1:
             estados = sorted(df[TEXT_ESTADO].dropna().unique().tolist())
             filtro_estado = st.selectbox(TEXT_ESTADO_2, [TEXT_TODOS] + estados, key="estado_inc")
@@ -11270,6 +11271,15 @@ def vista_incidentes():
                 "Es alerta",
                 [TEXT_TODOS] + sorted(df[TEXT_ES_ALERTA_AUTO].dropna().unique().tolist()),
                 key="alerta_inc",
+            )
+        with filtro_col5:
+            proveedores = sorted(
+                df["nombre_proveedor"].replace("", pd.NA).dropna().astype(str).unique().tolist()
+            )
+            filtro_proveedor = st.selectbox(
+                "Proveedor",
+                [TEXT_TODOS] + proveedores,
+                key="proveedor_inc",
             )
 
         filtro_estado_sql = filtro_estado if filtro_estado != TEXT_TODOS else ""
@@ -11301,6 +11311,8 @@ def vista_incidentes():
             df = filtrar_por_servicio(df, TEXT_SERVICIO_NEGOCIO, filtro_servicio)
         if filtro_alerta != TEXT_TODOS:
             df = df[df[TEXT_ES_ALERTA_AUTO] == filtro_alerta]
+        if filtro_proveedor != TEXT_TODOS:
+            df = df[df["nombre_proveedor"] == filtro_proveedor]
         columnas = [
             TEXT_NUMERO,
             TEXT_SOLICITANTE,
@@ -11320,6 +11332,7 @@ def vista_incidentes():
             "creado_por",
             TEXT_CERRADO,
             "escalado_proveedor",
+            "nombre_proveedor",
             TEXT_SERVICIO_NEGOCIO,
             TEXT_CREADO,
             TEXT_OBSERVACIONES_TRABAJO,
