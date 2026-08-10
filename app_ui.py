@@ -639,6 +639,21 @@ INCIDENT_FIELDS_SEGUIMIENTO_RPOST = [
     "nombre_proveedor",
 ]
 
+CASE_FIELDS_BUSQUEDA_GLOBAL = [
+    TEXT_NUMERO,
+    TEXT_CUENTA,
+    "contacto",
+    "creado_por",
+    TEXT_DESCRIPCION_2,
+    TEXT_CAUSA,
+    TEXT_PRODUCTO,
+    TEXT_TIPIFICACION_2,
+    TEXT_CODIGO_RESOLUCION,
+    "notas_resolucion",
+    TEXT_OBSERVACIONES_ADICIONALES,
+    TEXT_OBSERVACIONES_TRABAJO,
+]
+
 PATRONES_NO_RECIBIO_ACUSE = [
     r"\bno\s+(?:se\s+)?(?:ha\s+|han\s+)?recib(?:io|ido|ieron|e|en|imos)\s+(?:el\s+|los\s+|la\s+|las\s+)?acuses?(?:\s+de\s+recibo)?\b",
     r"\bno\s+(?:se\s+)?(?:esta|estan|estamos)\s+recibiendo\s+(?:el\s+|los\s+|la\s+|las\s+)?acuses?(?:\s+de\s+recibo)?\b",
@@ -11066,6 +11081,7 @@ def vista_casos():
     filtro_cuenta = ""
     filtro_asignacion = TEXT_TODOS
     filtro_grupo_cliente = TEXT_TODOS
+    filtro_texto = ""
     if not df.empty:
         df = preparar_fechas_dashboard(df)
         df["mes"] = df[TEXT_CREADO_DT_DASHBOARD].dt.to_period("M").astype(str).replace("NaT", "Sin fecha")
@@ -11099,6 +11115,16 @@ def vista_casos():
                 [TEXT_TODOS, SEGMENTO_EQUIPO_SOPORTE, SEGMENTO_OTROS_RESPONSABLES, SEGMENTO_SIN_ASIGNACION],
                 key="asignacion_casos",
             )
+
+        filtro_texto = st.text_input(
+            "Buscar persona o texto dentro de los casos",
+            placeholder="Ejemplo: SERGIO ESTEBAN REINA ESPINOSA",
+            key="texto_global_casos",
+            help=(
+                "Busca en número, cuenta, contacto, creador, descripción, causa, producto, "
+                "tipificación, resolución, notas y observaciones. No distingue mayúsculas ni tildes."
+            ),
+        )
 
         filtro_estado_sql = filtro_estado if filtro_estado != TEXT_TODOS else ""
         filtro_servicio_sql = (
@@ -11135,6 +11161,8 @@ def vista_casos():
                 [TEXT_CUENTA, "creado_por"],
                 filtro_grupo_cliente,
             )
+        if filtro_texto:
+            df = filtrar_por_cliente_o_texto(df, CASE_FIELDS_BUSQUEDA_GLOBAL, filtro_texto)
         df["Grupo cliente clave"] = serie_grupo_cliente_clave(
             df,
             [TEXT_CUENTA, "creado_por"],
@@ -11205,6 +11233,7 @@ def vista_casos():
             filtro_cuenta,
             filtro_grupo_cliente,
             filtro_asignacion,
+            filtro_texto,
             len(df),
         ),
     )
