@@ -11117,8 +11117,8 @@ def vista_casos():
             )
 
         filtro_texto = st.text_input(
-            "Buscar persona o texto dentro de los casos",
-            placeholder="Ejemplo: SERGIO ESTEBAN REINA ESPINOSA",
+            "Buscar coincidencia por texto en los casos",
+            placeholder="Escribe el texto que deseas encontrar",
             key="texto_global_casos",
             help=(
                 "Busca en número, cuenta, contacto, creador, descripción, causa, producto, "
