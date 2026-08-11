@@ -9970,31 +9970,21 @@ def render_detalle_seguimiento_autentic(df, tipo):
 def resumen_anual_seguimiento_autentic(casos, incidentes, anio, meses_observados):
     """Construye el balance anual sin mezclarlo con los filtros del detalle mensual."""
     clientes = clientes_seguimiento_rpost(casos, incidentes)
-    resumenes_disponibilidad = [
-        resumir_disponibilidad_mes(
-            incidentes,
-            pd.Timestamp(year=int(anio), month=int(mes), day=1),
-        )
-        for mes in meses_observados
-    ]
-    horas_totales = sum(item["tiempo_total_horas"] for item in resumenes_disponibilidad)
-    horas_indisponibles = sum(
-        item["tiempo_indisponibilidad_horas"] for item in resumenes_disponibilidad
-    )
-    incidentes_con_caida = sum(item["caidas"] for item in resumenes_disponibilidad)
-    disponibilidad = (
-        ((horas_totales - horas_indisponibles) / horas_totales) * 100
-        if horas_totales
-        else 100.0
+    casos_cerrados = casos[mascara_cerrados(casos)] if not casos.empty else pd.DataFrame()
+    tiempos_casos = pd.to_numeric(
+        casos_cerrados.get(TEXT_TIEMPO_RESPUESTA, pd.Series(dtype=TEXT_FLOAT)),
+        errors=TEXT_COERCE,
+    ).dropna()
+    sla_casos = (
+        porcentaje(len(tiempos_casos[tiempos_casos < SLA_CASOS_HORAS]), len(tiempos_casos))
+        if len(tiempos_casos)
+        else None
     )
     return {
         "casos": len(casos),
-        "sla_casos": calcular_sla_casos_clientes(casos),
+        "sla_casos": sla_casos,
         "incidentes": len(incidentes),
-        "incidentes_con_caida": incidentes_con_caida,
-        "horas_indisponibles": round(horas_indisponibles, 2),
         "clientes": len(clientes),
-        "disponibilidad": round(max(0, min(100, disponibilidad)), 2),
         "meses": len(meses_observados),
     }
 
@@ -10025,20 +10015,26 @@ def render_balance_anual_seguimiento_autentic(meses_disponibles):
             casos, incidentes, anio, meses_observados
         )
 
+    st.markdown("#### Gestión de casos")
+    sla_casos_texto = (
+        f'{resumen["sla_casos"]}%'
+        if resumen["sla_casos"] is not None
+        else "Sin dato"
+    )
     render_tarjetas([
         ("Casos del año", resumen["casos"]),
-        (f"Cumplimiento casos <{SLA_CASOS_HORAS}h", f'{resumen["sla_casos"]}%'),
+        (f"Cumplimiento ANS <{SLA_CASOS_HORAS}h", sla_casos_texto),
+        ("Clientes con casos", casos[TEXT_CLIENTE].nunique() if not casos.empty else 0),
+    ])
+
+    st.markdown("#### Gestión de incidentes")
+    render_tarjetas([
         ("Incidentes del año", resumen["incidentes"]),
-        ("Incidentes con caída", resumen["incidentes_con_caida"]),
-        ("Horas indisponibles", f'{resumen["horas_indisponibles"]:.2f} h'),
-        ("Disponibilidad de incidentes", f'{resumen["disponibilidad"]:.2f}%'),
-        ("Clientes impactados", resumen["clientes"]),
-        ("Meses observados", resumen["meses"]),
+        ("Clientes con incidentes", incidentes[TEXT_CLIENTE].nunique() if not incidentes.empty else 0),
     ])
     st.caption(
-        f"Casos: cumplimiento del ANS de atención menor a {SLA_CASOS_HORAS} horas. "
-        "Incidentes: la disponibilidad disminuye únicamente por el tiempo real de caída; "
-        "un incidente sin indisponibilidad no descuenta horas."
+        f"Año {anio} · {resumen['meses']} meses observados · "
+        f"{resumen['clientes']} clientes relacionados en total."
     )
 
     eventos = base_eventos_seguimiento_autentic(casos, incidentes)
