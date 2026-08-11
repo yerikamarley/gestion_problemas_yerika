@@ -9967,8 +9967,99 @@ def render_detalle_seguimiento_autentic(df, tipo):
     dataframe_liviano(tabla)
 
 
+def resumen_anual_seguimiento_autentic(casos, incidentes, anio, meses_observados):
+    """Construye el balance anual sin mezclarlo con los filtros del detalle mensual."""
+    clientes = clientes_seguimiento_rpost(casos, incidentes)
+    resumenes_disponibilidad = [
+        resumir_disponibilidad_mes(
+            incidentes,
+            pd.Timestamp(year=int(anio), month=int(mes), day=1),
+        )
+        for mes in meses_observados
+    ]
+    horas_totales = sum(item["tiempo_total_horas"] for item in resumenes_disponibilidad)
+    horas_indisponibles = sum(
+        item["tiempo_indisponibilidad_horas"] for item in resumenes_disponibilidad
+    )
+    disponibilidad = (
+        ((horas_totales - horas_indisponibles) / horas_totales) * 100
+        if horas_totales
+        else 100.0
+    )
+    return {
+        "casos": len(casos),
+        "incidentes": len(incidentes),
+        "clientes": len(clientes),
+        "disponibilidad": round(max(0, min(100, disponibilidad)), 2),
+        "meses": len(meses_observados),
+    }
+
+
+def render_balance_anual_seguimiento_autentic(meses_disponibles):
+    st.markdown("### Balance anual de Autentic")
+    st.caption("Vista global independiente de los filtros mensuales del detalle.")
+
+    periodos = [parse_mes_periodo(periodo) for periodo in meses_disponibles]
+    anios = sorted({anio for anio, _ in periodos if anio})
+    if not anios:
+        st.info("No hay años disponibles para construir el balance anual.")
+        return
+
+    anio = st.selectbox(
+        "Año del balance",
+        anios,
+        index=len(anios) - 1,
+        key="seguimiento_autentic_balance_anual_anio",
+    )
+    meses_observados = sorted(
+        {mes for periodo_anio, mes in periodos if periodo_anio == int(anio) and mes}
+    )
+    with st.spinner("Calculando balance anual de Autentic..."):
+        casos = cargar_casos_autentic_filtrados_cache(anio, None)
+        incidentes = cargar_incidentes_autentic_filtrados_cache(anio, None)
+        resumen = resumen_anual_seguimiento_autentic(
+            casos, incidentes, anio, meses_observados
+        )
+
+    render_tarjetas([
+        ("Casos del año", resumen["casos"]),
+        ("Incidentes del año", resumen["incidentes"]),
+        ("Clientes impactados", resumen["clientes"]),
+        ("Disponibilidad acumulada", f'{resumen["disponibilidad"]:.2f}%'),
+        ("Meses observados", resumen["meses"]),
+    ])
+
+    eventos = base_eventos_seguimiento_autentic(casos, incidentes)
+    eventos = eventos.dropna(subset=[TEXT_CREADO_DT_DASHBOARD]).copy()
+    if eventos.empty:
+        st.info(f"No hay actividad de Autentic registrada en {anio}.")
+        return
+    eventos["Mes_num"] = eventos[TEXT_CREADO_DT_DASHBOARD].dt.month
+    tendencia = eventos.groupby(["Mes_num", "Tipo"]).size().reset_index(name=TEXT_CANTIDAD)
+    tendencia["Mes"] = tendencia["Mes_num"].map(MONTH_NAMES_ES)
+    fig = px.bar(
+        tendencia,
+        x="Mes",
+        y=TEXT_CANTIDAD,
+        color="Tipo",
+        barmode="group",
+        text=TEXT_CANTIDAD,
+        category_orders={"Mes": [MONTH_NAMES_ES[mes] for mes in meses_observados]},
+        color_discrete_sequence=[UI_PALETTE[TEXT_PRIMARY], UI_PALETTE[TEXT_LAVENDER]],
+    )
+    fig.update_traces(textposition=TEXT_OUTSIDE)
+    st.plotly_chart(
+        aplicar_estilo_figura(fig, f"Tendencia anual de Autentic · {anio}"),
+        use_container_width=True,
+    )
+
+
 def dashboard_seguimiento_autentic():
     st.subheader(MENU_SEGUIMIENTO_AUTENTIC)
+    meses_disponibles = cargar_meses_disponibles_multi_cache(("cases", "incidents"))
+    render_balance_anual_seguimiento_autentic(meses_disponibles)
+    st.divider()
+    st.markdown("### Detalle mensual")
     anio, mes, periodo_label = selector_periodo_multi_sql(
         ["cases", "incidents"], "seguimiento_autentic_periodo"
     )
