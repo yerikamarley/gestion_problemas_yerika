@@ -9981,6 +9981,7 @@ def resumen_anual_seguimiento_autentic(casos, incidentes, anio, meses_observados
     horas_indisponibles = sum(
         item["tiempo_indisponibilidad_horas"] for item in resumenes_disponibilidad
     )
+    incidentes_con_caida = sum(item["caidas"] for item in resumenes_disponibilidad)
     disponibilidad = (
         ((horas_totales - horas_indisponibles) / horas_totales) * 100
         if horas_totales
@@ -9988,7 +9989,10 @@ def resumen_anual_seguimiento_autentic(casos, incidentes, anio, meses_observados
     )
     return {
         "casos": len(casos),
+        "sla_casos": calcular_sla_casos_clientes(casos),
         "incidentes": len(incidentes),
+        "incidentes_con_caida": incidentes_con_caida,
+        "horas_indisponibles": round(horas_indisponibles, 2),
         "clientes": len(clientes),
         "disponibilidad": round(max(0, min(100, disponibilidad)), 2),
         "meses": len(meses_observados),
@@ -10023,11 +10027,19 @@ def render_balance_anual_seguimiento_autentic(meses_disponibles):
 
     render_tarjetas([
         ("Casos del año", resumen["casos"]),
+        (f"Cumplimiento casos <{SLA_CASOS_HORAS}h", f'{resumen["sla_casos"]}%'),
         ("Incidentes del año", resumen["incidentes"]),
+        ("Incidentes con caída", resumen["incidentes_con_caida"]),
+        ("Horas indisponibles", f'{resumen["horas_indisponibles"]:.2f} h'),
+        ("Disponibilidad de incidentes", f'{resumen["disponibilidad"]:.2f}%'),
         ("Clientes impactados", resumen["clientes"]),
-        ("Disponibilidad acumulada", f'{resumen["disponibilidad"]:.2f}%'),
         ("Meses observados", resumen["meses"]),
     ])
+    st.caption(
+        f"Casos: cumplimiento del ANS de atención menor a {SLA_CASOS_HORAS} horas. "
+        "Incidentes: la disponibilidad disminuye únicamente por el tiempo real de caída; "
+        "un incidente sin indisponibilidad no descuenta horas."
+    )
 
     eventos = base_eventos_seguimiento_autentic(casos, incidentes)
     eventos = eventos.dropna(subset=[TEXT_CREADO_DT_DASHBOARD]).copy()
