@@ -16,6 +16,19 @@ from core.settings import (
     streamlit_secrets_path,
 )
 from core.security import hash_password, normalizar_email, verificar_password
+from core.auth_context import obtener_contexto_autorizacion
+from core.permissions import (
+    ACTION_MANAGE_USERS,
+    ACTION_PURGE_INCIDENTS,
+    ACTION_WRITE_CASES,
+    ACTION_WRITE_INCIDENTS,
+    ROLE_ADMIN,
+    ROLES_PERMITIDOS,
+    normalizar_rol,
+    puede_acceder,
+    puede_ejecutar,
+    rol_valido,
+)
 from repositories.database import (
     DB_BATCH_SIZE,
     DB_BLOQUEO_CARGA_CASOS,
@@ -1176,6 +1189,7 @@ def bloquear_escritura_casos(conn):
 
 
 def load_casos_anios(years):
+    exigir_contexto_lectura()
     return read_table_years(
         "cases",
         years,
@@ -1199,6 +1213,7 @@ def load_casos_anios(years):
 
 
 def load_incidentes_anios(years):
+    exigir_contexto_lectura()
     return read_table_years(
         "incidents",
         years,
@@ -1255,6 +1270,85 @@ def usuario_por_email(email):
     }
 
 
+def obtener_usuario_actual(email):
+    """Obtiene desde ``app_users`` los datos no sensibles del usuario actual."""
+    usuario = usuario_por_email(email)
+    if not usuario:
+        return None
+    return {
+        "email": normalizar_email(usuario.get("email")),
+        "role": usuario.get("role"),
+        "active": bool(usuario.get("active")),
+    }
+
+
+class AutorizacionError(PermissionError):
+    """La identidad no está autorizada para la operación solicitada."""
+
+
+def obtener_rol_actual(usuario):
+    """Valida el rol procedente del usuario consultado en base de datos."""
+    rol = normalizar_rol((usuario or {}).get("role"))
+    return rol if rol_valido(rol) else ""
+
+
+def cerrar_sesion_invalida(session_state):
+    """Elimina de forma segura todo el estado asociado a la sesión inválida."""
+    session_state.clear()
+
+
+def refrescar_usuario_autenticado(session_state, obtener_usuario=None):
+    """Revalida existencia, estado y rol usando el correo de la sesión.
+
+    ``obtener_usuario`` permite pruebas aisladas; en producción siempre se usa
+    ``obtener_usuario_actual``, que consulta ``app_users``.
+    """
+    email = normalizar_email(session_state.get("user"))
+    if not email:
+        cerrar_sesion_invalida(session_state)
+        return None
+
+    consulta_usuario = obtener_usuario or obtener_usuario_actual
+    usuario = consulta_usuario(email)
+    rol = obtener_rol_actual(usuario)
+    if not usuario or not usuario.get("active") or not rol:
+        cerrar_sesion_invalida(session_state)
+        return None
+
+    usuario_validado = {
+        "email": normalizar_email(usuario.get("email")),
+        "role": rol,
+        "active": True,
+    }
+    if not usuario_validado["email"]:
+        cerrar_sesion_invalida(session_state)
+        return None
+
+    session_state["user"] = usuario_validado["email"]
+    session_state["role"] = usuario_validado["role"]
+    return usuario_validado
+
+
+def exigir_permiso_actor(actor_email, permiso, consulta_usuario=None):
+    """Revalida al actor en base de datos y exige una vista o capacidad."""
+    email = normalizar_email(actor_email)
+    consulta = consulta_usuario or obtener_usuario_actual
+    usuario = consulta(email) if email else None
+    rol = obtener_rol_actual(usuario)
+    autorizado = puede_acceder(rol, permiso) or puede_ejecutar(rol, permiso)
+    if not usuario or not usuario.get("active") or not rol or not autorizado:
+        raise AutorizacionError("No tienes permisos para realizar esta operación")
+    return {"email": normalizar_email(usuario.get("email")), "role": rol, "active": True}
+
+
+def exigir_contexto_lectura():
+    """Exige que una consulta se origine en una vista autorizada activa."""
+    actor_email, view_id = obtener_contexto_autorizacion()
+    if not actor_email or not view_id:
+        raise AutorizacionError("La consulta requiere una sesión y vista autorizadas")
+    return exigir_permiso_actor(actor_email, view_id)
+
+
 def autenticar_usuario(email, password):
     usuario = usuario_por_email(email)
     if not usuario or not usuario["active"]:
@@ -1275,12 +1369,46 @@ def autenticar_usuario(email, password):
     return usuario
 
 
-def listar_usuarios():
+def hay_usuarios():
+    """Comprobación mínima usada únicamente por el arranque inicial."""
+    conn = get_conn()
+    try:
+        return db_execute(conn, "SELECT 1 FROM app_users LIMIT 1").fetchone() is not None
+    finally:
+        conn.close()
+
+
+def crear_primer_admin(email, password):
+    """Crea el Admin inicial solo cuando la tabla está vacía."""
+    email = normalizar_email(email)
+    if not email or not password or len(str(password)) < 8:
+        raise ValueError("Correo y contraseña válida son obligatorios.")
+    conn = get_conn()
+    try:
+        db_execute(conn, "LOCK TABLE app_users IN SHARE ROW EXCLUSIVE MODE")
+        if db_execute(conn, "SELECT 1 FROM app_users LIMIT 1").fetchone():
+            raise ValueError("La configuración inicial ya fue completada.")
+        db_execute(
+            conn,
+            """INSERT INTO app_users (email, password_hash, role, active, created_at)
+               VALUES (?, ?, 'admin', TRUE, CURRENT_TIMESTAMP)""",
+            (email, hash_password(password)),
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def listar_usuarios(actor_email):
+    exigir_permiso_actor(actor_email, ACTION_MANAGE_USERS)
     conn = get_conn()
     rows = db_execute(
         conn,
         """
-        SELECT email, role, active, created_at, last_login
+        SELECT name, email, role, active, created_at, updated_at, last_login
         FROM app_users
         ORDER BY role, email
         """
@@ -1288,74 +1416,120 @@ def listar_usuarios():
     conn.close()
     return pd.DataFrame(
         rows,
-        columns=["email", "role", "active", "created_at", "last_login"],
+        columns=["name", "email", "role", "active", "created_at", "updated_at", "last_login"],
     )
 
 
-def guardar_usuario(email, password, role="viewer", active=True):
+def _bloquear_y_validar_admin(conn, actor_email):
+    actor_email = normalizar_email(actor_email)
+    actor = db_execute(
+        conn,
+        "SELECT role, active FROM app_users WHERE email = ? FOR UPDATE",
+        (actor_email,),
+    ).fetchone()
+    if not actor or not bool(actor[1]) or normalizar_rol(actor[0]) != ROLE_ADMIN:
+        raise AutorizacionError("No tienes permisos para realizar esta operación")
+
+
+def _es_ultimo_admin_activo(conn, email):
+    objetivo = db_execute(
+        conn, "SELECT role, active FROM app_users WHERE email = ? FOR UPDATE", (email,)
+    ).fetchone()
+    if not objetivo or normalizar_rol(objetivo[0]) != ROLE_ADMIN or not bool(objetivo[1]):
+        return False
+    db_execute(conn, "LOCK TABLE app_users IN SHARE ROW EXCLUSIVE MODE")
+    total = db_execute(
+        conn, "SELECT COUNT(*) FROM app_users WHERE role = 'admin' AND active = TRUE"
+    ).fetchone()[0]
+    return int(total) <= 1
+
+
+def guardar_usuario(actor_email, name, email, password, role, active=True):
+    name = str(name or "").strip() or None
     email = normalizar_email(email)
-    role = role if role in ("admin", "viewer") else "viewer"
+    role = normalizar_rol(role)
     if not email:
         raise ValueError("El correo es obligatorio.")
+    if role not in ROLES_PERMITIDOS:
+        raise ValueError("Selecciona un rol válido.")
     if password is not None and len(str(password)) < 8:
         raise ValueError("La contrasena debe tener al menos 8 caracteres.")
 
     conn = get_conn()
-    existe = db_execute(conn, "SELECT 1 FROM app_users WHERE email = ?", (email,)).fetchone()
-    if existe:
-        if password:
+    try:
+        _bloquear_y_validar_admin(conn, actor_email)
+        existe = db_execute(conn, "SELECT 1 FROM app_users WHERE email = ?", (email,)).fetchone()
+        if existe and _es_ultimo_admin_activo(conn, email) and (role != ROLE_ADMIN or not active):
+            raise ValueError("No se puede desactivar ni cambiar el rol del último Admin activo.")
+        if existe:
+            parametros = [name, role, db_bool(active)]
+            password_sql = ""
+            if password:
+                password_sql = ", password_hash = ?"
+                parametros.append(hash_password(password))
+            parametros.append(email)
             db_execute(
                 conn,
-                """
-                UPDATE app_users
-                SET password_hash = ?, role = ?, active = ?
-                WHERE email = ?
-                """,
-                (hash_password(password), role, db_bool(active), email),
+                f"""UPDATE app_users
+                    SET name = ?, role = ?, active = ?, updated_at = CURRENT_TIMESTAMP{password_sql}
+                    WHERE email = ?""",
+                parametros,
             )
         else:
+            if not password:
+                raise ValueError("La contrasena es obligatoria para crear el usuario.")
             db_execute(
                 conn,
-                "UPDATE app_users SET role = ?, active = ? WHERE email = ?",
-                (role, db_bool(active), email),
+                """INSERT INTO app_users
+                   (name, email, password_hash, role, active, created_at, updated_at)
+                   VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)""",
+                (name, email, hash_password(password), role, db_bool(active)),
             )
-    else:
-        if not password:
-            raise ValueError("La contrasena es obligatoria para crear el usuario.")
-        db_execute(
-            conn,
-            """
-            INSERT INTO app_users (email, password_hash, role, active, created_at)
-            VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
-            """,
-            (email, hash_password(password), role, db_bool(active)),
-        )
-    conn.commit()
-    conn.close()
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
-def eliminar_usuario(email):
+def eliminar_usuario(actor_email, email):
     email = normalizar_email(email)
     conn = get_conn()
-    db_execute(conn, "DELETE FROM app_users WHERE email = ?", (email,))
-    conn.commit()
-    conn.close()
+    try:
+        _bloquear_y_validar_admin(conn, actor_email)
+        if _es_ultimo_admin_activo(conn, email):
+            raise ValueError("No se puede eliminar el último Admin activo.")
+        db_execute(conn, "DELETE FROM app_users WHERE email = ?", (email,))
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
-def contar_incidentes():
+def contar_incidentes(actor_email):
+    exigir_permiso_actor(actor_email, ACTION_PURGE_INCIDENTS)
     conn = get_conn()
     total = db_execute(conn, "SELECT COUNT(*) FROM incidents").fetchone()[0]
     conn.close()
     return total
 
 
-def limpiar_incidentes():
+def limpiar_incidentes(actor_email):
     conn = get_conn()
-    total = db_execute(conn, "SELECT COUNT(*) FROM incidents").fetchone()[0]
-    db_execute(conn, "DELETE FROM incidents")
-    conn.commit()
-    conn.close()
-    return total
+    try:
+        _bloquear_y_validar_admin(conn, actor_email)
+        total = db_execute(conn, "SELECT COUNT(*) FROM incidents").fetchone()[0]
+        db_execute(conn, "DELETE FROM incidents")
+        conn.commit()
+        return total
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
 def ensure_table_columns(conn, table_name, columns):
@@ -1707,10 +1881,13 @@ CASE_DB_COLUMNS = [
 ]
 
 
-def _guardar_casos_preparados(df, reemplazar_meses, duplicados_archivo, progress_callback=None):
+def _guardar_casos_preparados(
+    df, reemplazar_meses, duplicados_archivo, progress_callback=None, actor_email=None
+):
     conn = get_conn()
     cargados = 0
     try:
+        _bloquear_y_validar_admin(conn, actor_email)
         emitir_progreso(progress_callback, 0.12, "Procesando casos: bloqueando carga...")
         bloquear_escritura_casos(conn)
         emitir_progreso(progress_callback, 0.18, "Procesando casos: validando meses...")
@@ -1793,7 +1970,8 @@ def _guardar_casos_preparados(df, reemplazar_meses, duplicados_archivo, progress
         conn.close()
 
 
-def guardar_casos(df, reemplazar_meses=False, progress_callback=None):
+def guardar_casos(df, reemplazar_meses=False, progress_callback=None, actor_email=None):
+    exigir_permiso_actor(actor_email, ACTION_WRITE_CASES)
     filas_recibidas = len(df)
     emitir_progreso(progress_callback, 0.03, "Procesando casos: leyendo archivo...")
     df = preparar_casos(df)
@@ -1805,34 +1983,27 @@ def guardar_casos(df, reemplazar_meses=False, progress_callback=None):
     emitir_progreso(progress_callback, 0.08, "Procesando casos: ordenando registros...")
     df = df.sort_values("numero", kind="mergesort").reset_index(drop=True)
     return ejecutar_con_reintentos_db(
-        lambda: _guardar_casos_preparados(df, reemplazar_meses, duplicados_archivo, progress_callback)
+        lambda: _guardar_casos_preparados(
+            df, reemplazar_meses, duplicados_archivo, progress_callback, actor_email
+        )
     )
 
 
 def aplicar_tipificaciones_casos(df):
     if not df.empty:
         tipificaciones = df.apply(tipificar_caso, axis=1)
-        cambios = df["tipificacion"].fillna("") != tipificaciones.fillna("")
-        if cambios.any():
-            conn = get_conn()
-            for numero, tipificacion in zip(df.loc[cambios, "numero"], tipificaciones.loc[cambios]):
-                db_execute(
-                    conn,
-                    "UPDATE cases SET tipificacion=? WHERE numero=?",
-                    (tipificacion, numero),
-                )
-            conn.commit()
-            conn.close()
         df["tipificacion"] = tipificaciones
 
     return df
 
 
 def load_casos():
+    exigir_contexto_lectura()
     return aplicar_tipificaciones_casos(read_table("cases"))
 
 
 def load_casos_filtrados(anio=None, mes=None, cliente=None, estado=None, servicio=None, tipificacion=None, limit=None):
+    exigir_contexto_lectura()
     df = read_table_filtered(
         "cases",
         columns=CASE_DB_COLUMNS,
@@ -2224,9 +2395,11 @@ INCIDENT_DB_COLUMNS = [
 ]
 
 
-def guardar_incidentes(df, progress_callback=None):
+def guardar_incidentes(df, progress_callback=None, actor_email=None):
+    exigir_permiso_actor(actor_email, ACTION_WRITE_INCIDENTS)
     conn = get_conn()
     cargados = 0
+    _bloquear_y_validar_admin(conn, actor_email)
     emitir_progreso(progress_callback, 0.03, "Procesando incidentes: leyendo archivo...")
     df = preparar_incidentes(df)
     if df.empty:
@@ -2321,6 +2494,7 @@ def aplicar_clasificacion_incidentes(df):
 
 
 def load_incidentes():
+    exigir_contexto_lectura()
     return aplicar_clasificacion_incidentes(read_table("incidents"))
 
 
@@ -2334,6 +2508,7 @@ def load_incidentes_filtrados(
     es_alerta=None,
     limit=None,
 ):
+    exigir_contexto_lectura()
     df = read_table_filtered(
         "incidents",
         columns=INCIDENT_DB_COLUMNS,

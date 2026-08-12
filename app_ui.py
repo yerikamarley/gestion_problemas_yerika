@@ -1,5 +1,6 @@
 ﻿import html
 import json
+import logging
 import re
 from io import BytesIO
 from textwrap import dedent
@@ -33,17 +34,20 @@ from services.casos import (
     top_categorias,
 )
 from app_logic import (
+    AutorizacionError,
     agregar_campos_sla_incidentes,
     agregar_campos_sla_respuesta,
     analizar_reincidencias_y_problemas,
     autenticar_usuario,
     calcular_disponibilidad_por_mes,
     contar_incidentes,
+    crear_primer_admin,
     eliminar_usuario,
     es_error_db_transitorio,
     guardar_casos,
     guardar_incidentes,
     guardar_usuario,
+    hay_usuarios,
     init_db,
     limpiar_incidentes,
     listar_usuarios,
@@ -54,6 +58,7 @@ from app_logic import (
     load_incidentes_anios,
     load_incidentes_filtrados,
     obtener_meses_disponibles,
+    refrescar_usuario_autenticado,
     obtener_ultimo_mes_disponible,
     resumir_disponibilidad_mes,
     duracion_sla_horas_incidente,
@@ -65,6 +70,30 @@ from app_logic import (
     normalizar_email,
     sla_objetivo_horas_incidente,
 )
+from core.permissions import (
+    NOMBRES_ROLES,
+    ROLES_PERMITIDOS,
+    VIEW_ADMINISTRAR_USUARIOS,
+    VIEW_CARGAR_CASOS,
+    VIEW_CARGAR_INCIDENTES,
+    VIEW_CASOS,
+    VIEW_CLIENTES_CLAVE,
+    VIEW_CONTROL_DIARIO_SOPORTE,
+    VIEW_DASHBOARD_CASOS_SOPORTE,
+    VIEW_DASHBOARD_INCIDENTES,
+    VIEW_INCIDENTES,
+    VIEW_KPI_2025_2026,
+    VIEW_KPI_CASOS_CLIENTE_EXTERNO,
+    VIEW_KPI_CLIENTES_CLAVE,
+    VIEW_KPI_INCIDENTES,
+    VIEW_REINCIDENCIAS_PROBLEMAS,
+    VIEW_SEGUIMIENTO_AUTENTIC,
+    VIEW_SEGUIMIENTO_INCIDENTES,
+    VIEW_SEGUIMIENTO_RPOST,
+    obtener_vistas_permitidas,
+    puede_acceder,
+)
+from core.auth_context import establecer_contexto_autorizacion, restaurar_contexto_autorizacion
 
 
 # Constantes genericas para literales repetidos detectados por SonarQube
@@ -225,6 +254,7 @@ CACHE_TTL_SEGUNDOS = 300
 DATAFRAME_DISPLAY_LIMIT = 1000
 DATAFRAME_PAGE_SIZE = 50
 SLA_CASOS_HORAS = 36
+LOGGER = logging.getLogger(__name__)
 
 
 def limpiar_cache_datos():
@@ -2070,7 +2100,15 @@ def validar_email(correo):
 
 def login():
     if "user" in st.session_state:
-        return True
+        try:
+            usuario = refrescar_usuario_autenticado(st.session_state)
+        except Exception:
+            st.session_state.clear()
+            st.error("No fue posible validar tu sesión. Inicia sesión nuevamente.")
+            return False
+        if usuario:
+            return True
+        st.warning("Tu sesión ya no es válida. Inicia sesión nuevamente.")
 
     estilos_login()
     st.markdown('<div class="login-spacer"></div>', unsafe_allow_html=True)
@@ -2088,7 +2126,12 @@ def login():
                     st.error("Escribe un correo valido")
                     return False
 
-                usuario = autenticar_usuario(correo, password)
+                try:
+                    usuario = autenticar_usuario(correo, password)
+                except Exception:
+                    LOGGER.exception("Fallo técnico durante la autenticación")
+                    st.error("No fue posible validar el acceso en este momento.")
+                    return False
                 if not usuario:
                     st.error("Correo o contrasena incorrectos, o usuario inactivo")
                     return False
@@ -2126,7 +2169,7 @@ def configurar_primer_admin():
                 st.error("Las contrasenas no coinciden.")
                 return
 
-            guardar_usuario(correo, password, role=TEXT_ADMIN, active=True)
+            crear_primer_admin(correo, password)
             st.session_state.user = normalizar_email(correo)
             st.session_state.role = TEXT_ADMIN
             st.success("Administrador creado.")
@@ -2151,7 +2194,13 @@ def render_tarjetas(items):
 
 def ejecutar_con_carga(nombre, funcion):
     with st.spinner(f"Cargando {nombre.lower()}..."):
-        funcion()
+        try:
+            funcion()
+        except AutorizacionError:
+            st.error("No tienes permisos para acceder a este módulo")
+        except Exception:
+            LOGGER.exception("Fallo técnico al cargar un módulo autorizado")
+            st.error("No fue posible cargar el módulo en este momento.")
 
 
 def valor_limpio(valor):
@@ -11122,6 +11171,7 @@ def procesar_archivo_casos(df, reemplazar_meses):
             df,
             reemplazar_meses=reemplazar_meses,
             progress_callback=actualizar_progreso,
+            actor_email=st.session_state.get("user"),
         )
     except Exception as error:
         actualizar_progreso(1, "No se pudo finalizar la carga de casos.")
@@ -11347,7 +11397,11 @@ def vista_cargar_incidentes():
         if st.button("Procesar incidentes"):
             actualizar_progreso = crear_barra_progreso_carga("Procesando incidentes...")
             try:
-                cargados, reemplazados = guardar_incidentes(df, progress_callback=actualizar_progreso)
+                cargados, reemplazados = guardar_incidentes(
+                    df,
+                    progress_callback=actualizar_progreso,
+                    actor_email=st.session_state.get("user"),
+                )
             except Exception as error:
                 actualizar_progreso(1, "No se pudo finalizar la carga de incidentes.")
                 if es_error_db_transitorio(error):
@@ -11516,13 +11570,14 @@ def render_tabla_usuarios(usuarios):
         return
     tabla = usuarios.copy()
     tabla["active"] = tabla["active"].apply(lambda value: "Activo" if bool(value) else "Inactivo")
-    tabla["role"] = tabla["role"].map({TEXT_ADMIN: "Admin", TEXT_VIEWER: "Viewer"}).fillna(tabla["role"])
+    tabla["role"] = tabla["role"].map(NOMBRES_ROLES).fillna(tabla["role"])
     st.dataframe(tabla, use_container_width=True, hide_index=True)
 
 
 def formulario_usuario():
     st.markdown("#### Crear o actualizar usuario")
     with st.form("form_usuario"):
+        name = st.text_input("Nombre", key="usuario_nombre")
         email = st.text_input("Correo", key="usuario_email")
         password = st.text_input(
             "Contrasena nueva",
@@ -11532,21 +11587,28 @@ def formulario_usuario():
         )
         col_rol, col_estado = st.columns(2)
         with col_rol:
-            role = st.selectbox("Rol", [TEXT_VIEWER, TEXT_ADMIN], format_func=lambda x: "Viewer" if x == TEXT_VIEWER else "Admin")
+            role = st.selectbox("Rol", ROLES_PERMITIDOS, format_func=lambda value: NOMBRES_ROLES[value])
         with col_estado:
             active = st.checkbox("Activo", value=True)
         guardar = st.form_submit_button("Guardar usuario")
-    return guardar, email, password, role, active
+    return guardar, name, email, password, role, active
 
 
-def procesar_formulario_usuario(guardar, email, password, role, active):
+def procesar_formulario_usuario(guardar, name, email, password, role, active):
     if not guardar:
         return
     if not validar_email(email):
         st.error("Escribe un correo valido.")
         return
     try:
-        guardar_usuario(email, password or None, role=role, active=active)
+        guardar_usuario(
+            st.session_state.get("user"),
+            name,
+            email,
+            password or None,
+            role=role,
+            active=active,
+        )
         st.success("Usuario guardado.")
         st.rerun()
     except ValueError as exc:
@@ -11555,7 +11617,7 @@ def procesar_formulario_usuario(guardar, email, password, role, active):
 
 def render_mantenimiento_incidentes():
     st.markdown("#### Mantenimiento de datos")
-    total_incidentes = contar_incidentes()
+    total_incidentes = contar_incidentes(st.session_state.get("user"))
     st.caption(
         f"Incidentes guardados actualmente: {total_incidentes}. "
         "Esta accion elimina solo incidentes; los casos se conservan."
@@ -11564,16 +11626,17 @@ def render_mantenimiento_incidentes():
         "Confirmo que quiero borrar todos los incidentes cargados",
         key="confirmar_limpiar_incidentes",
     )
-    clave_limpieza = st.text_input(
-        "Clave para limpiar incidentes",
-        type=TEXT_PASSWORD,
-        key="clave_limpiar_incidentes",
+    texto_confirmacion = st.text_input(
+        "Escribe ELIMINAR INCIDENTES para confirmar",
+        key="texto_limpiar_incidentes",
     )
-    puede_limpiar = confirmar_limpieza and clave_limpieza == "lina202" and total_incidentes > 0
-    if clave_limpieza and clave_limpieza != "lina202":
-        st.error("Clave incorrecta.")
+    puede_limpiar = (
+        confirmar_limpieza
+        and texto_confirmacion.strip() == "ELIMINAR INCIDENTES"
+        and total_incidentes > 0
+    )
     if st.button("Limpiar incidentes", disabled=not puede_limpiar):
-        borrados = limpiar_incidentes()
+        borrados = limpiar_incidentes(st.session_state.get("user"))
         limpiar_cache_datos()
         st.success(f"Incidentes eliminados: {borrados}. Los casos no fueron modificados.")
         st.rerun()
@@ -11590,7 +11653,7 @@ def candidatos_eliminacion_usuarios(usuarios_actuales):
 
 def render_eliminar_usuario():
     st.markdown("#### Quitar acceso")
-    usuarios_actuales = listar_usuarios()
+    usuarios_actuales = listar_usuarios(st.session_state.get("user"))
     if usuarios_actuales.empty:
         st.info("No hay usuarios para eliminar.")
         return
@@ -11603,7 +11666,7 @@ def render_eliminar_usuario():
     usuario_eliminar = st.selectbox("Usuario", candidatos, key="usuario_eliminar")
     confirmar = st.checkbox("Confirmo que quiero eliminar este usuario", key="confirmar_eliminar_usuario")
     if st.button("Eliminar usuario", disabled=not confirmar):
-        eliminar_usuario(usuario_eliminar)
+        eliminar_usuario(st.session_state.get("user"), usuario_eliminar)
         st.success("Usuario eliminado.")
         st.rerun()
 
@@ -11611,7 +11674,7 @@ def render_eliminar_usuario():
 def vista_administrar_usuarios():
     st.subheader("Administrar usuarios")
     st.caption("Crea usuarios para dar acceso a los dashboards o cambia su rol y estado.")
-    render_tabla_usuarios(listar_usuarios())
+    render_tabla_usuarios(listar_usuarios(st.session_state.get("user")))
 
     st.divider()
     procesar_formulario_usuario(*formulario_usuario())
@@ -11717,77 +11780,47 @@ def vista_control_diario_soporte():
     )
     st.caption("Cada fila contiene únicamente los casos creados ese día dentro del mes seleccionado.")
 
-ADMIN_MENU_OPTIONS = [
-    "Cargar Excel Casos",
-    TEXT_CASOS,
-    MENU_DASHBOARD_CASOS_SOPORTE,
-    MENU_CONTROL_DIARIO_SOPORTE,
-    MENU_KPI_CASOS_CLIENTE_EXTERNO,
-    "Cargar Excel Incidentes",
-    TEXT_INCIDENTES,
-    "Dashboard Incidentes",
-    MENU_KPI_INCIDENTES,
-    MENU_KPI_COMPARATIVO_ANUAL,
-    MENU_REINCIDENCIAS_PROBLEMAS,
-    MENU_SEGUIMIENTO_RPOST,
-    MENU_SEGUIMIENTO_AUTENTIC,
-    MENU_SEGUIMIENTO_INCIDENTES_ADMIN,
-    MENU_KPI_CLIENTES_CLAVE,
-    "Clientes Clave",
-    "Administrar Usuarios",
-]
+CATEGORY_CASES = "Gestión de casos"
+CATEGORY_INCIDENTS = "Gestión de incidentes y problemas"
+CATEGORY_KEY_CLIENTS = "Clientes clave"
+CATEGORY_ADMIN = "Administración"
 
-VIEWER_MENU_OPTIONS = [
-    TEXT_CASOS,
-    MENU_DASHBOARD_CASOS_SOPORTE,
-    MENU_CONTROL_DIARIO_SOPORTE,
-    MENU_KPI_CASOS_CLIENTE_EXTERNO,
-    TEXT_INCIDENTES,
-    MENU_KPI_INCIDENTES,
-    MENU_KPI_COMPARATIVO_ANUAL,
-    MENU_REINCIDENCIAS_PROBLEMAS,
-    MENU_SEGUIMIENTO_RPOST,
-    MENU_SEGUIMIENTO_AUTENTIC,
-    MENU_SEGUIMIENTO_INCIDENTES_VIEWER,
-    MENU_KPI_CLIENTES_CLAVE,
-    MENU_CLIENTES_CLAVE,
-]
+VIEW_CATALOG = (
+    (VIEW_CARGAR_CASOS, "Cargar Excel Casos", CATEGORY_CASES, 10, vista_cargar_casos),
+    (VIEW_CASOS, TEXT_CASOS, CATEGORY_CASES, 20, vista_casos),
+    (VIEW_DASHBOARD_CASOS_SOPORTE, MENU_DASHBOARD_CASOS_SOPORTE, CATEGORY_CASES, 30, dashboard_casos),
+    (VIEW_CONTROL_DIARIO_SOPORTE, MENU_CONTROL_DIARIO_SOPORTE, CATEGORY_CASES, 40, vista_control_diario_soporte),
+    (VIEW_KPI_CASOS_CLIENTE_EXTERNO, MENU_KPI_CASOS_CLIENTE_EXTERNO, CATEGORY_CASES, 50, dashboard_kpi_casos_cliente_externo),
+    (VIEW_CARGAR_INCIDENTES, "Cargar Excel Incidentes", CATEGORY_INCIDENTS, 10, vista_cargar_incidentes),
+    (VIEW_INCIDENTES, TEXT_INCIDENTES, CATEGORY_INCIDENTS, 20, vista_incidentes),
+    (VIEW_DASHBOARD_INCIDENTES, "Dashboard Incidentes", CATEGORY_INCIDENTS, 30, dashboard_incidentes),
+    (VIEW_KPI_INCIDENTES, MENU_KPI_INCIDENTES, CATEGORY_INCIDENTS, 40, dashboard_kpi_incidentes),
+    (VIEW_KPI_2025_2026, MENU_KPI_COMPARATIVO_ANUAL, CATEGORY_INCIDENTS, 50, dashboard_kpi_comparativo_anual),
+    (VIEW_REINCIDENCIAS_PROBLEMAS, MENU_REINCIDENCIAS_PROBLEMAS, CATEGORY_INCIDENTS, 60, dashboard_reincidencias_problemas),
+    (VIEW_SEGUIMIENTO_RPOST, MENU_SEGUIMIENTO_RPOST, CATEGORY_INCIDENTS, 70, dashboard_seguimiento_rpost),
+    (VIEW_SEGUIMIENTO_AUTENTIC, MENU_SEGUIMIENTO_AUTENTIC, CATEGORY_INCIDENTS, 80, dashboard_seguimiento_autentic),
+    (VIEW_SEGUIMIENTO_INCIDENTES, MENU_SEGUIMIENTO_INCIDENTES_ADMIN, CATEGORY_INCIDENTS, 90, vista_seguimiento_incidentes),
+    (VIEW_KPI_CLIENTES_CLAVE, MENU_KPI_CLIENTES_CLAVE, CATEGORY_KEY_CLIENTS, 10, dashboard_kpi_clientes_clave),
+    (VIEW_CLIENTES_CLAVE, "Clientes Clave", CATEGORY_KEY_CLIENTS, 20, dashboard_clientes_clave),
+    (VIEW_ADMINISTRAR_USUARIOS, "Administrar Usuarios", CATEGORY_ADMIN, 10, vista_administrar_usuarios),
+)
 
-ADMIN_VIEWS = {
-    "Cargar Excel Casos": vista_cargar_casos,
-    TEXT_CASOS: vista_casos,
-    MENU_DASHBOARD_CASOS_SOPORTE: dashboard_casos,
-    MENU_CONTROL_DIARIO_SOPORTE: vista_control_diario_soporte,
-    MENU_KPI_CASOS_CLIENTE_EXTERNO: dashboard_kpi_casos_cliente_externo,
-    "Cargar Excel Incidentes": vista_cargar_incidentes,
-    TEXT_INCIDENTES: vista_incidentes,
-    "Dashboard Incidentes": dashboard_incidentes,
-    MENU_KPI_INCIDENTES: dashboard_kpi_incidentes,
-    MENU_KPI_COMPARATIVO_ANUAL: dashboard_kpi_comparativo_anual,
-    MENU_REINCIDENCIAS_PROBLEMAS: dashboard_reincidencias_problemas,
-    MENU_SEGUIMIENTO_RPOST: dashboard_seguimiento_rpost,
-    MENU_SEGUIMIENTO_AUTENTIC: dashboard_seguimiento_autentic,
-    MENU_SEGUIMIENTO_INCIDENTES_ADMIN: vista_seguimiento_incidentes,
-    MENU_KPI_CLIENTES_CLAVE: dashboard_kpi_clientes_clave,
-    "Clientes Clave": dashboard_clientes_clave,
-    "Administrar Usuarios": vista_administrar_usuarios,
-}
 
-VIEWER_VIEWS = {
-    TEXT_CASOS: dashboard_casos,
-    MENU_DASHBOARD_CASOS_SOPORTE: dashboard_casos,
-    MENU_CONTROL_DIARIO_SOPORTE: vista_control_diario_soporte,
-    MENU_KPI_CASOS_CLIENTE_EXTERNO: dashboard_kpi_casos_cliente_externo,
-    TEXT_INCIDENTES: dashboard_incidentes,
-    MENU_KPI_INCIDENTES: dashboard_kpi_incidentes,
-    MENU_KPI_COMPARATIVO_ANUAL: dashboard_kpi_comparativo_anual,
-    MENU_REINCIDENCIAS_PROBLEMAS: dashboard_reincidencias_problemas,
-    MENU_SEGUIMIENTO_RPOST: dashboard_seguimiento_rpost,
-    MENU_SEGUIMIENTO_AUTENTIC: dashboard_seguimiento_autentic,
-    MENU_SEGUIMIENTO_INCIDENTES_VIEWER: vista_seguimiento_incidentes,
-    MENU_KPI_CLIENTES_CLAVE: dashboard_kpi_clientes_clave,
-    MENU_CLIENTES_CLAVE: dashboard_clientes_clave,
-}
+def catalogo_permitido(rol):
+    permitidas = set(obtener_vistas_permitidas(rol))
+    return tuple(item for item in VIEW_CATALOG if item[0] in permitidas)
+
+
+def categorias_permitidas(rol):
+    return tuple(dict.fromkeys(item[2] for item in catalogo_permitido(rol)))
+
+
+def resolver_vista_permitida(rol, vista_solicitada):
+    catalogo = catalogo_permitido(rol)
+    ids = {item[0] for item in catalogo}
+    if vista_solicitada in ids:
+        return vista_solicitada, False
+    return (catalogo[0][0] if catalogo else None), bool(vista_solicitada)
 
 
 def cerrar_sesion_boton(en_sidebar=False):
@@ -11797,35 +11830,66 @@ def cerrar_sesion_boton(en_sidebar=False):
         st.rerun()
 
 
-def render_vista_admin():
-    menu = st.sidebar.selectbox("Menu", ADMIN_MENU_OPTIONS)
-    st.sidebar.caption(f"Sesion: {st.session_state.user}")
+def render_menu_y_vista():
+    try:
+        usuario = refrescar_usuario_autenticado(st.session_state)
+    except Exception:
+        st.session_state.clear()
+        st.error("No fue posible validar tu sesión. Inicia sesión nuevamente.")
+        return
+    if not usuario:
+        st.error("Tu sesión ya no es válida. Inicia sesión nuevamente.")
+        return
+
+    rol = usuario["role"]
+    catalogo = catalogo_permitido(rol)
+    st.sidebar.caption(f"Sesión: {usuario['email']}")
+    st.sidebar.caption(f"Rol: {NOMBRES_ROLES.get(rol, rol)}")
     cerrar_sesion_boton(en_sidebar=True)
-    ADMIN_VIEWS[menu]()
+    if not catalogo:
+        st.warning("No tienes módulos autorizados.")
+        return
 
+    catalogo_por_id = {item[0]: item for item in catalogo}
+    solicitada = st.session_state.get("selected_view_id")
+    seleccion, acceso_rechazado = resolver_vista_permitida(rol, solicitada)
+    if solicitada != seleccion:
+        if acceso_rechazado:
+            st.error("No tienes permisos para acceder a este módulo")
+        st.session_state["selected_view_id"] = seleccion
 
-def render_vista_viewer():
-    cerrar_sesion_boton()
-    vista = st.radio(
-        "Vista",
-        VIEWER_MENU_OPTIONS,
-        horizontal=True,
-        label_visibility="collapsed",
-        key="viewer_vista",
-    )
-    ejecutar_con_carga(vista, VIEWER_VIEWS[vista])
+    for categoria in categorias_permitidas(rol):
+        st.sidebar.markdown(f"**{categoria}**")
+        for view_id, etiqueta, item_categoria, _, _ in catalogo:
+            if item_categoria != categoria:
+                continue
+            if st.sidebar.button(
+                etiqueta,
+                key=f"menu_{view_id}",
+                use_container_width=True,
+                type="primary" if view_id == seleccion else "secondary",
+            ):
+                seleccion = view_id
+                st.session_state["selected_view_id"] = view_id
+
+    item = catalogo_por_id.get(seleccion)
+    if not item or not puede_acceder(rol, seleccion):
+        st.error("No tienes permisos para acceder a este módulo")
+        return
+    tokens = establecer_contexto_autorizacion(usuario["email"], seleccion)
+    try:
+        ejecutar_con_carga(item[1], item[4])
+    finally:
+        restaurar_contexto_autorizacion(tokens)
 
 
 def run_app():
     aplicar_tema_visual()
     init_db()
-    if listar_usuarios().empty:
+    if not hay_usuarios():
         configurar_primer_admin()
         return
     if not login():
         return
 
-    if st.session_state.role == TEXT_ADMIN:
-        render_vista_admin()
-    else:
-        render_vista_viewer()
+    render_menu_y_vista()

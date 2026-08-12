@@ -4,10 +4,18 @@ import re
 
 import pandas as pd
 
+from core.auth_context import obtener_contexto_autorizacion
 from repositories.database import db_execute, get_conn, validar_identificador_sql
 
 
+def exigir_contexto_consulta():
+    actor_email, view_id = obtener_contexto_autorizacion()
+    if not actor_email or not view_id:
+        raise PermissionError("La consulta requiere un contexto autorizado")
+
+
 def read_table(table_name):
+    exigir_contexto_consulta()
     table_name = validar_identificador_sql(table_name)
     conn = get_conn()
     cursor = db_execute(conn, f"SELECT * FROM {table_name}")
@@ -77,6 +85,7 @@ def valor_filtro_activo(valor):
 
 
 def read_table_filtered(table_name, columns=None, anio=None, mes=None, equals=None, likes=None, limit=None):
+    exigir_contexto_consulta()
     table_name = validar_identificador_sql(table_name)
     conn = get_conn()
     column_sql, requested_columns, missing_columns = columnas_select_seguras(conn, table_name, columns)
@@ -128,6 +137,7 @@ def read_table_filtered(table_name, columns=None, anio=None, mes=None, equals=No
 
 
 def obtener_meses_disponibles(table_name):
+    exigir_contexto_consulta()
     table_name = validar_identificador_sql(table_name)
     conn = get_conn()
     cursor = db_execute(
@@ -150,6 +160,7 @@ def obtener_ultimo_mes_disponible(table_name):
 
 
 def read_table_years(table_name, years, columns=None):
+    exigir_contexto_consulta()
     table_name = validar_identificador_sql(table_name)
     years = [str(year).strip() for year in years if str(year).strip()]
     if not years:
@@ -182,4 +193,3 @@ def read_table_years(table_name, years, columns=None):
         df = df[requested_columns]
     df.attrs["missing_columns"] = missing_columns
     return df
-
