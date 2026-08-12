@@ -693,6 +693,29 @@ CASE_FIELDS_BUSQUEDA_GLOBAL = [
     TEXT_OBSERVACIONES_TRABAJO,
 ]
 
+INCIDENT_FIELDS_BUSQUEDA_GLOBAL = [
+    TEXT_NUMERO,
+    TEXT_SOLICITANTE,
+    TEXT_EMPRESA,
+    "creado_por",
+    TEXT_DESCRIPCION_2,
+    "breve_descripcion",
+    "categoria",
+    TEXT_SERVICIO_NEGOCIO,
+    "grupo_asignacion",
+    TEXT_ASIGNADO_A,
+    "tipo_falla",
+    "nombre_proveedor",
+    TEXT_TIPIFICACION_AUTO,
+    TEXT_TIPO_INCIDENTE_AUTO,
+    TEXT_CAUSA_RAIZ_AUTO,
+    TEXT_OBSERVACIONES_TRABAJO,
+    TEXT_OBSERVACIONES_ADICIONALES,
+    "actualizaciones",
+    "impacto",
+    "lista_notas_trabajo",
+]
+
 PATRONES_NO_RECIBIO_ACUSE = [
     r"\bno\s+(?:se\s+)?(?:ha\s+|han\s+)?recib(?:io|ido|ieron|e|en|imos)\s+(?:el\s+|los\s+|la\s+|las\s+)?acuses?(?:\s+de\s+recibo)?\b",
     r"\bno\s+(?:se\s+)?(?:esta|estan|estamos)\s+recibiendo\s+(?:el\s+|los\s+|la\s+|las\s+)?acuses?(?:\s+de\s+recibo)?\b",
@@ -11440,11 +11463,13 @@ def vista_incidentes():
     filtro_servicio = TEXT_TODOS
     filtro_alerta = TEXT_TODOS
     filtro_proveedor = TEXT_TODOS
+    filtro_empresa = ""
+    filtro_texto = ""
     if not df.empty:
         df = preparar_fechas_dashboard(df)
         df["mes"] = df[TEXT_CREADO_DT_DASHBOARD].dt.to_period("M").astype(str).replace("NaT", "Sin fecha")
 
-        filtro_col1, filtro_col2, filtro_col3, filtro_col4, filtro_col5 = st.columns([1, 1.4, 1.4, 1, 1.2])
+        filtro_col1, filtro_col2, filtro_col3 = st.columns(3)
         with filtro_col1:
             estados = sorted(df[TEXT_ESTADO].dropna().unique().tolist())
             filtro_estado = st.selectbox(TEXT_ESTADO_2, [TEXT_TODOS] + estados, key="estado_inc")
@@ -11457,6 +11482,7 @@ def vista_incidentes():
         with filtro_col3:
             servicios = opciones_filtro_servicio(df, TEXT_SERVICIO_NEGOCIO)
             filtro_servicio = st.selectbox("Servicio", [TEXT_TODOS] + servicios, key="servicio_inc")
+        filtro_col4, filtro_col5, filtro_col6 = st.columns([1, 1.2, 1.6])
         with filtro_col4:
             filtro_alerta = st.selectbox(
                 "Es alerta",
@@ -11472,6 +11498,22 @@ def vista_incidentes():
                 [TEXT_TODOS] + proveedores,
                 key="proveedor_inc",
             )
+        with filtro_col6:
+            filtro_empresa = st.text_input(
+                "Empresa",
+                placeholder="Buscar empresa o cliente",
+                key="empresa_inc",
+            )
+
+        filtro_texto = st.text_input(
+            "Buscar coincidencia por texto en los incidentes",
+            placeholder="Escribe el texto que deseas encontrar",
+            key="texto_global_incidentes",
+            help=(
+                "Busca en número, solicitante, empresa, creador, descripción, servicio, responsable, "
+                "proveedor, tipificación, causa, notas y actualizaciones. No distingue mayúsculas ni tildes."
+            ),
+        )
 
         filtro_estado_sql = filtro_estado if filtro_estado != TEXT_TODOS else ""
         filtro_tipificacion_sql = filtro_tipificacion if filtro_tipificacion != TEXT_TODOS else ""
@@ -11504,6 +11546,10 @@ def vista_incidentes():
             df = df[df[TEXT_ES_ALERTA_AUTO] == filtro_alerta]
         if filtro_proveedor != TEXT_TODOS:
             df = df[df["nombre_proveedor"] == filtro_proveedor]
+        if filtro_empresa:
+            df = filtrar_por_cliente_o_texto(df, [TEXT_EMPRESA, "creado_por"], filtro_empresa)
+        if filtro_texto:
+            df = filtrar_por_cliente_o_texto(df, INCIDENT_FIELDS_BUSQUEDA_GLOBAL, filtro_texto)
         columnas = [
             TEXT_NUMERO,
             TEXT_SOLICITANTE,
@@ -11551,7 +11597,17 @@ def vista_incidentes():
     dataframe_paginado(
         df,
         "vista_incidentes_tabla",
-        reset_token=(periodo_label, filtro_estado, filtro_tipificacion, filtro_servicio, filtro_alerta, len(df)),
+        reset_token=(
+            periodo_label,
+            filtro_estado,
+            filtro_tipificacion,
+            filtro_servicio,
+            filtro_alerta,
+            filtro_proveedor,
+            filtro_empresa,
+            filtro_texto,
+            len(df),
+        ),
     )
 
 
@@ -11583,9 +11639,22 @@ def vista_cargar_problemas():
     st.dataframe(df.head(), use_container_width=True, hide_index=True)
     if st.button("Procesar problemas", key="procesar_problemas"):
         actualizar = crear_barra_progreso_carga("Procesando problemas...")
-        cargados, actualizados = guardar_problemas(
-            df, progress_callback=actualizar, actor_email=st.session_state.get("user")
-        )
+        try:
+            cargados, actualizados = guardar_problemas(
+                df, progress_callback=actualizar, actor_email=st.session_state.get("user")
+            )
+        except Exception as error:
+            actualizar(1, "No se pudo completar la carga de problemas.")
+            sqlstate = getattr(error, "sqlstate", None) or getattr(error, "pgcode", None)
+            if sqlstate == "42P01":
+                st.error(
+                    "El almacenamiento de Problemas aún no está habilitado. "
+                    "Un administrador debe ejecutar primero la migración 006_problems_table.sql en Supabase."
+                )
+                return
+            LOGGER.exception("Fallo técnico durante la carga de problemas")
+            st.error("No fue posible guardar los problemas. Revisa el registro técnico de la aplicación.")
+            return
         limpiar_cache_datos()
         actualizar(1, "Carga de problemas finalizada.")
         st.success(f"Cargados: {cargados} | Registros existentes actualizados: {actualizados}")
