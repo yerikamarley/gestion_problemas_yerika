@@ -46,6 +46,7 @@ from app_logic import (
     es_error_db_transitorio,
     guardar_casos,
     guardar_incidentes,
+    guardar_problemas,
     guardar_usuario,
     hay_usuarios,
     init_db,
@@ -57,6 +58,7 @@ from app_logic import (
     load_incidentes,
     load_incidentes_anios,
     load_incidentes_filtrados,
+    load_problemas_filtrados,
     obtener_meses_disponibles,
     refrescar_usuario_autenticado,
     obtener_ultimo_mes_disponible,
@@ -76,12 +78,14 @@ from core.permissions import (
     VIEW_ADMINISTRAR_USUARIOS,
     VIEW_CARGAR_CASOS,
     VIEW_CARGAR_INCIDENTES,
+    VIEW_CARGAR_PROBLEMAS,
     VIEW_CASOS,
     VIEW_CLIENTES_CLAVE,
     VIEW_CONTROL_DIARIO_SOPORTE,
     VIEW_DASHBOARD_CASOS_SOPORTE,
     VIEW_DASHBOARD_INCIDENTES,
     VIEW_INCIDENTES,
+    VIEW_PROBLEMAS,
     VIEW_KPI_2025_2026,
     VIEW_KPI_CASOS_CLIENTE_EXTERNO,
     VIEW_KPI_CLIENTES_CLAVE,
@@ -433,6 +437,11 @@ def cargar_incidentes_filtrados_cache(
         tipificacion=tipificacion,
         es_alerta=es_alerta,
     )
+
+
+@st.cache_data(ttl=CACHE_TTL_SEGUNDOS, show_spinner=False)
+def cargar_problemas_filtrados_cache(anio=None, mes=None, estado="", prioridad="", asignado="", texto=""):
+    return load_problemas_filtrados(anio, mes, estado, prioridad, asignado, texto)
 
 
 @st.cache_data(ttl=CACHE_TTL_SEGUNDOS, show_spinner=False)
@@ -11564,6 +11573,104 @@ def vista_seguimiento_incidentes():
     render_seguimiento_operativo_incidentes(df)
 
 
+def vista_cargar_problemas():
+    st.subheader("Cargar Excel Problemas")
+    archivo = st.file_uploader("Sube Excel de problemas", type=["xlsx"], key="problemas_upload")
+    if not archivo:
+        return
+    df = pd.read_excel(archivo)
+    st.write(f"Filas detectadas: {len(df)}")
+    st.dataframe(df.head(), use_container_width=True, hide_index=True)
+    if st.button("Procesar problemas", key="procesar_problemas"):
+        actualizar = crear_barra_progreso_carga("Procesando problemas...")
+        cargados, actualizados = guardar_problemas(
+            df, progress_callback=actualizar, actor_email=st.session_state.get("user")
+        )
+        limpiar_cache_datos()
+        actualizar(1, "Carga de problemas finalizada.")
+        st.success(f"Cargados: {cargados} | Registros existentes actualizados: {actualizados}")
+
+
+def render_dashboard_problemas(df):
+    st.divider()
+    st.subheader("Dashboard de problemas")
+    if df.empty:
+        st.info("No hay información para construir el dashboard.")
+        return
+    trabajo = df.copy()
+    fechas = pd.to_datetime(trabajo["creado"], errors="coerce")
+    estados = trabajo["estado"].fillna("Sin estado").replace("", "Sin estado")
+    abiertos = ~estados.astype(str).str.casefold().str.contains("cerrad|resuelt|cancelad", regex=True)
+    relacionados = pd.to_numeric(trabajo["incidentes_relacionados"], errors="coerce").fillna(0)
+    render_tarjetas([
+        ("Total problemas", len(trabajo)),
+        ("Problemas abiertos", int(abiertos.sum())),
+        ("Problemas cerrados", int((~abiertos).sum())),
+        ("Incidentes relacionados", int(relacionados.sum())),
+    ])
+    col_estado, col_prioridad = st.columns(2)
+    with col_estado:
+        resumen = estados.value_counts().rename_axis("Estado").reset_index(name="Problemas")
+        fig = px.bar(resumen, x="Estado", y="Problemas", color="Estado", title="Problemas por estado")
+        st.plotly_chart(aplicar_estilo_figura(fig, "Problemas por estado"), use_container_width=True)
+    with col_prioridad:
+        prioridades = trabajo["prioridad"].fillna("Sin prioridad").replace("", "Sin prioridad")
+        resumen = prioridades.value_counts().rename_axis("Prioridad").reset_index(name="Problemas")
+        fig = px.pie(resumen, names="Prioridad", values="Problemas", title="Distribución por prioridad")
+        st.plotly_chart(fig, use_container_width=True)
+    mensual = fechas.dropna().dt.to_period("M").astype(str).value_counts().sort_index()
+    if not mensual.empty:
+        tendencia = mensual.rename_axis("Mes").reset_index(name="Problemas")
+        fig = px.line(tendencia, x="Mes", y="Problemas", markers=True, title="Problemas creados por mes")
+        st.plotly_chart(aplicar_estilo_figura(fig, "Problemas creados por mes"), use_container_width=True)
+
+
+def vista_problemas():
+    st.subheader("Problemas")
+    st.caption("Consulta, detalle y análisis de los problemas registrados.")
+    anio, mes, periodo_label = selector_periodo_sql("problems", "vista_problemas_periodo")
+    if not periodo_sql_valido(anio, "problemas"):
+        return
+    base = cargar_problemas_filtrados_cache(anio, mes)
+    if base.empty:
+        st.info(f"No hay problemas cargados para {periodo_label}.")
+        return
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        estado = st.selectbox("Estado", [TEXT_TODOS] + sorted(base["estado"].dropna().unique().tolist()), key="problemas_estado")
+    with col2:
+        prioridad = st.selectbox("Prioridad", [TEXT_TODOS] + sorted(base["prioridad"].dropna().unique().tolist()), key="problemas_prioridad")
+    with col3:
+        asignado = st.selectbox("Asignado a", [TEXT_TODOS] + sorted(base["asignado_a"].dropna().unique().tolist()), key="problemas_asignado")
+    with col4:
+        texto = st.text_input("Buscar en declaración", key="problemas_texto")
+    df = cargar_problemas_filtrados_cache(
+        anio, mes,
+        "" if estado == TEXT_TODOS else estado,
+        "" if prioridad == TEXT_TODOS else prioridad,
+        "" if asignado == TEXT_TODOS else asignado,
+        texto,
+    )
+    st.caption(f"Periodo: {periodo_label} | Registros: {len(df)}")
+    columnas = ["numero", "declaracion_problema", "creado", "estado", "prioridad", "asignado_a", "incidentes_relacionados"]
+    dataframe_liviano(df[columnas], limite=1000)
+    st.markdown("#### Información detallada")
+    for _, problema in df.iterrows():
+        titulo = f"{problema['numero']} · {problema['declaracion_problema']}"
+        with st.expander(titulo):
+            st.markdown(f"**Estado:** {problema['estado']}  |  **Prioridad:** {problema['prioridad']}  |  **Asignado a:** {problema['asignado_a']}")
+            for etiqueta, columna in (
+                ("Descripción", "descripcion"), ("Solución temporal", "solucion_temporal"),
+                ("Notas de cierre", "notas_cierre"), ("Comentarios", "comentarios"),
+                ("Notas del trabajo", "notas_trabajo"),
+            ):
+                valor = problema.get(columna)
+                if pd.notna(valor) and str(valor).strip():
+                    st.markdown(f"**{etiqueta}**")
+                    st.write(valor)
+    render_dashboard_problemas(df)
+
+
 def render_tabla_usuarios(usuarios):
     if usuarios.empty:
         st.info("Aun no hay usuarios configurados.")
@@ -11792,7 +11899,9 @@ VIEW_CATALOG = (
     (VIEW_CONTROL_DIARIO_SOPORTE, MENU_CONTROL_DIARIO_SOPORTE, CATEGORY_CASES, 40, vista_control_diario_soporte),
     (VIEW_KPI_CASOS_CLIENTE_EXTERNO, MENU_KPI_CASOS_CLIENTE_EXTERNO, CATEGORY_CASES, 50, dashboard_kpi_casos_cliente_externo),
     (VIEW_CARGAR_INCIDENTES, "Cargar Excel Incidentes", CATEGORY_INCIDENTS, 10, vista_cargar_incidentes),
+    (VIEW_CARGAR_PROBLEMAS, "Cargar Excel Problemas", CATEGORY_INCIDENTS, 15, vista_cargar_problemas),
     (VIEW_INCIDENTES, TEXT_INCIDENTES, CATEGORY_INCIDENTS, 20, vista_incidentes),
+    (VIEW_PROBLEMAS, "Problemas", CATEGORY_INCIDENTS, 25, vista_problemas),
     (VIEW_DASHBOARD_INCIDENTES, "Dashboard Incidentes", CATEGORY_INCIDENTS, 30, dashboard_incidentes),
     (VIEW_KPI_INCIDENTES, MENU_KPI_INCIDENTES, CATEGORY_INCIDENTS, 40, dashboard_kpi_incidentes),
     (VIEW_KPI_2025_2026, MENU_KPI_COMPARATIVO_ANUAL, CATEGORY_INCIDENTS, 50, dashboard_kpi_comparativo_anual),

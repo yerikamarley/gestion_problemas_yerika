@@ -22,6 +22,7 @@ from core.permissions import (
     ACTION_PURGE_INCIDENTS,
     ACTION_WRITE_CASES,
     ACTION_WRITE_INCIDENTS,
+    ACTION_WRITE_PROBLEMS,
     ROLE_ADMIN,
     ROLES_PERMITIDOS,
     normalizar_rol,
@@ -2354,6 +2355,85 @@ def preparar_incidentes(df):
     df["numero"] = df["numero"].apply(safe_text)
     df = df[df["numero"] != ""]
     return df.drop_duplicates(subset=["numero"], keep="last")
+
+
+PROBLEM_ALIASES = {
+    "numero": ["numero", "número"],
+    "declaracion_problema": ["declaracion de problema", "declaración de problema"],
+    "creado": ["creado"],
+    "descripcion": ["descripcion", "descripción"],
+    "solucion_temporal": ["solucion temporal", "solución temporal"],
+    "notas_cierre": ["notas de cierre"],
+    "diagnosticado_solucion_temporal": ["diagnosticado y solucion temporal", "diagnosticado y solución temporal"],
+    "asignado_a": ["asignado a"],
+    "comentarios": ["comentarios"],
+    "estado": ["estado"],
+    "incidentes_relacionados": ["incidentes relacionados"],
+    "notas_trabajo": ["notas del trabajo"],
+    "observaciones_trabajo": ["observaciones y notas de trabajo"],
+    "prioridad": ["prioridad"],
+}
+
+PROBLEM_DB_COLUMNS = list(PROBLEM_ALIASES)
+
+
+def preparar_problemas(df):
+    """Normaliza el formato exportado de problemas sin perder texto detallado."""
+    trabajo = renombrar_columnas(df, PROBLEM_ALIASES)
+    for columna in PROBLEM_DB_COLUMNS:
+        if columna not in trabajo.columns:
+            trabajo[columna] = None
+    trabajo = trabajo[PROBLEM_DB_COLUMNS].copy()
+    trabajo["numero"] = trabajo["numero"].apply(safe_text)
+    trabajo = trabajo[trabajo["numero"] != ""]
+    return trabajo.drop_duplicates(subset=["numero"], keep="last")
+
+
+def guardar_problemas(df, progress_callback=None, actor_email=None):
+    exigir_permiso_actor(actor_email, ACTION_WRITE_PROBLEMS)
+    trabajo = preparar_problemas(df)
+    if trabajo.empty:
+        return 0, 0
+    conn = get_conn()
+    try:
+        _bloquear_y_validar_admin(conn, actor_email)
+        numeros = trabajo["numero"].tolist()
+        existentes = numeros_existentes(conn, "problems", numeros)
+        filas = []
+        for _, row in trabajo.iterrows():
+            filas.append((
+                safe_text(row["numero"]), safe_text(row["declaracion_problema"]),
+                normalizar_fecha(row["creado"]), safe_text(row["descripcion"]),
+                safe_text(row["solucion_temporal"]), safe_text(row["notas_cierre"]),
+                safe_text(row["diagnosticado_solucion_temporal"]), safe_text(row["asignado_a"]),
+                safe_text(row["comentarios"]), safe_text(row["estado"]),
+                int(row["incidentes_relacionados"] or 0) if pd.notna(row["incidentes_relacionados"]) else 0,
+                safe_text(row["notas_trabajo"]), safe_text(row["observaciones_trabajo"]),
+                safe_text(row["prioridad"]),
+            ))
+        ejecutar_upserts_lote(
+            conn, "problems", PROBLEM_DB_COLUMNS, "numero", filas,
+            progress_callback=progress_callback, mensaje="Guardando problemas:",
+        )
+        conn.commit()
+        return len(filas), len(existentes)
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def load_problemas_filtrados(anio=None, mes=None, estado=None, prioridad=None, asignado=None, texto=None):
+    exigir_contexto_lectura()
+    return read_table_filtered(
+        "problems",
+        columns=PROBLEM_DB_COLUMNS,
+        anio=anio,
+        mes=mes,
+        equals={"estado": estado, "prioridad": prioridad, "asignado_a": asignado},
+        likes={"declaracion_problema": texto},
+    )
 
 
 INCIDENT_DB_COLUMNS = [
