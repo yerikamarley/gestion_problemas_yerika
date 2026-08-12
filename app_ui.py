@@ -29,6 +29,7 @@ from services.clientes_clave import (
 )
 from services.casos import (
     COL_SEGMENTO_ASIGNACION,
+    casos_para_metricas_soporte,
     resumen_diario_soporte,
     segmentar_casos_por_asignacion,
     top_categorias,
@@ -3148,7 +3149,7 @@ def conteo_top(serie, etiqueta_columna, top_n=5):
 
 
 def preparar_kpi_casos_cliente_externo(df):
-    trabajo = df.copy()
+    trabajo = casos_para_metricas_soporte(df, TEXT_ASIGNADO)
     if trabajo.empty:
         return trabajo, {}
 
@@ -5698,8 +5699,14 @@ def render_comparativo_visual_meses_kpi_casos(df, mes_base, mes_comparado):
     anio_comparado, mes_comparado_num = parse_mes_periodo(mes_comparado)
     etiqueta_base = etiqueta_mes_periodo(anio_base, mes_base_num)
     etiqueta_comparado = etiqueta_mes_periodo(anio_comparado, mes_comparado_num)
-    datos_base = filtrar_anio_mes_dashboard(df, anio_base, mes_base_num)
-    datos_comparado = filtrar_anio_mes_dashboard(df, anio_comparado, mes_comparado_num)
+    datos_base = casos_para_metricas_soporte(
+        filtrar_anio_mes_dashboard(df, anio_base, mes_base_num),
+        TEXT_ASIGNADO,
+    )
+    datos_comparado = casos_para_metricas_soporte(
+        filtrar_anio_mes_dashboard(df, anio_comparado, mes_comparado_num),
+        TEXT_ASIGNADO,
+    )
     comparativo = tabla_productos_comparativo_soporte(datos_base, datos_comparado)
     if comparativo.empty:
         st.info("No hay productos para calcular la distribucion de tickets de soporte por mes.")
@@ -7710,27 +7717,6 @@ def render_control_asignacion_casos(segmentos):
     )
 
 
-def render_casos_fuera_equipo(segmentos):
-    columnas = [TEXT_NUMERO, TEXT_ASIGNADO, TEXT_CUENTA, TEXT_ESTADO, TEXT_CREADO]
-    with st.expander(f"Casos asignados a otros responsables ({len(segmentos['otros'])})"):
-        st.caption("Estos registros se controlan por separado y no participan en las métricas del equipo de soporte.")
-        otros = segmentos["otros"]
-        if otros.empty:
-            st.success("No hay casos asignados a responsables externos al equipo.")
-        else:
-            st.dataframe(otros[[col for col in columnas if col in otros.columns]], use_container_width=True, hide_index=True)
-    with st.expander(f"Casos sin asignación ({len(segmentos['sin_asignacion'])})"):
-        sin_asignacion = segmentos["sin_asignacion"]
-        if sin_asignacion.empty:
-            st.success("No hay casos pendientes de asignación.")
-        else:
-            st.dataframe(
-                sin_asignacion[[col for col in columnas if col in sin_asignacion.columns]],
-                use_container_width=True,
-                hide_index=True,
-            )
-
-
 def dashboard_casos():
     st.subheader("Dashboard de casos")
     st.caption("Vista operativa de volumen, ANS, causas, servicios, tipologías y seguimiento.")
@@ -7747,43 +7733,24 @@ def dashboard_casos():
         st.info(f"No hay casos cargados para {periodo_label}.")
         return
 
-    segmentos_asignacion = segmentar_casos_por_asignacion(df, TEXT_ASIGNADO)
-    st.markdown("#### Control de asignación")
-    st.caption(
-        "Las métricas inferiores incluyen exclusivamente los casos asignados al equipo de soporte. "
-        "Otros responsables y casos sin asignación se muestran aparte."
-    )
-    render_control_asignacion_casos(segmentos_asignacion)
-    df = segmentos_asignacion["equipo"]
+    df, metricas = preparar_kpi_casos_cliente_externo(df)
     if df.empty:
-        st.warning("No hay casos asignados al equipo de soporte para calcular las métricas del periodo.")
-        render_casos_fuera_equipo(segmentos_asignacion)
+        st.warning("No hay casos de soporte ni casos sin asignación para calcular las métricas del periodo.")
         return
-
-    total = len(df)
-    cerrados_mask = mascara_cerrados(df)
-    cerrados = len(df[cerrados_mask])
-    abiertos = total - cerrados
-
-    df_cerrados = df[cerrados_mask]
-    tiempos_cerrados = pd.to_numeric(df_cerrados[TEXT_TIEMPO_RESPUESTA], errors=TEXT_COERCE).dropna()
-    promedio = round(tiempos_cerrados.mean(), 2) if len(tiempos_cerrados) > 0 else 0
-
-    total_cerrados = len(tiempos_cerrados)
-    cumplen = len(tiempos_cerrados[tiempos_cerrados < SLA_CASOS_HORAS])
-    porcentaje_sla = round((cumplen / total_cerrados) * 100, 2) if total_cerrados > 0 else 0
-    incumplen = total_cerrados - cumplen
 
     render_tarjetas(
         [
-            ("Casos equipo soporte", total),
-            (TEXT_CERRADOS, cerrados),
-            (TEXT_ABIERTOS, abiertos),
-            ("Promedio (h)", promedio),
-            (f"ANS <{SLA_CASOS_HORAS}h (%)", f"{porcentaje_sla}%"),
+            ("Casos soporte y sin asignación", metricas["total"]),
+            (TEXT_CERRADOS, metricas["cerrados"]),
+            (TEXT_ABIERTOS, metricas["abiertos"]),
+            ("Promedio (h)", metricas["promedio"]),
+            (f"ANS <={SLA_CASOS_HORAS}h (%)", f"{metricas['cumplimiento_sla']}%"),
         ]
     )
-    st.caption(f"{TEXT_PERIODO}{periodo_label} | Cumplen: {cumplen}{TEXT_NO_CUMPLEN}{incumplen}")
+    st.caption(
+        f"{TEXT_PERIODO}{periodo_label} | Base: equipo de soporte y casos sin asignación | "
+        f"Cumplen: {metricas['cumple_sla']}{TEXT_NO_CUMPLEN}{metricas['no_cumple_sla']}"
+    )
 
     st.divider()
     tab_resumen, tab_tipologias, tab_operacion = st.tabs(
@@ -7811,9 +7778,11 @@ def dashboard_casos():
         with st.expander("Análisis de agendamiento con histórico"):
             st.caption("Este bloque consulta más datos y se carga solo cuando lo solicitas.")
             if st.button("Calcular análisis de agendamiento", key="calcular_agendamiento_dashboard_casos"):
-                historico = preparar_fechas_dashboard(cargar_casos_soporte_cache())
+                historico = casos_para_metricas_soporte(
+                    preparar_fechas_dashboard(cargar_casos_soporte_cache()),
+                    TEXT_ASIGNADO,
+                )
                 render_analisis_agendamiento_mesa(df, historico, periodo_key_sql(anio, mes))
-        render_casos_fuera_equipo(segmentos_asignacion)
         render_seguimiento_casos(df)
 
 

@@ -56,6 +56,13 @@ def segmentar_casos_por_asignacion(df, columna_asignado="asignado"):
     }
 
 
+def casos_para_metricas_soporte(df, columna_asignado="asignado"):
+    """Devuelve la base oficial de métricas: soporte y casos sin asignación."""
+    trabajo = agregar_segmento_asignacion(df, columna_asignado)
+    segmentos_metricos = [SEGMENTO_EQUIPO_SOPORTE, SEGMENTO_SIN_ASIGNACION]
+    return trabajo[trabajo[COL_SEGMENTO_ASIGNACION].isin(segmentos_metricos)].copy()
+
+
 def top_categorias(df, columna, etiqueta, top_n=5, valor_vacio="Sin información"):
     """Agrupa una categoría y devuelve las de mayor volumen con su cantidad."""
     columnas = [etiqueta, "Cantidad"]
@@ -100,15 +107,14 @@ def resumen_diario_soporte(df, anio, mes, alcance="soporte_y_sin_asignacion"):
     if df.empty:
         return pd.DataFrame(columns=columnas)
 
-    trabajo = agregar_segmento_asignacion(df)
     if alcance == "soporte":
+        trabajo = agregar_segmento_asignacion(df)
         trabajo = trabajo[trabajo[COL_SEGMENTO_ASIGNACION] == SEGMENTO_EQUIPO_SOPORTE]
     elif alcance == "sin_asignacion":
+        trabajo = agregar_segmento_asignacion(df)
         trabajo = trabajo[trabajo[COL_SEGMENTO_ASIGNACION] == SEGMENTO_SIN_ASIGNACION]
     else:
-        trabajo = trabajo[
-            trabajo[COL_SEGMENTO_ASIGNACION].isin([SEGMENTO_EQUIPO_SOPORTE, SEGMENTO_SIN_ASIGNACION])
-        ]
+        trabajo = casos_para_metricas_soporte(df)
 
     creados = _serie_fechas(trabajo, "creado")
     en_mes = creados.dt.year.eq(int(anio)) & creados.dt.month.eq(int(mes))
