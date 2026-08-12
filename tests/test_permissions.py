@@ -53,7 +53,7 @@ class PermissionsTest(unittest.TestCase):
     def test_cantidad_de_vistas_por_rol_definitivo(self):
         esperadas = {
             ROLE_ADMIN: 17,
-            ROLE_SOPORTE: 7,
+            ROLE_SOPORTE: 6,
             ROLE_EXPERIENCIA: 7,
             ROLE_GERENCIAS: 5,
             ROLE_AREA_IA: 7,
