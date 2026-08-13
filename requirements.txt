@@ -1,0 +1,7 @@
+streamlit
+pandas
+openpyxl
+plotly
+psycopg[binary]
+pillow
+starlette==0.50.0
