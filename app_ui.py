@@ -7740,7 +7740,7 @@ def dashboard_casos():
 
     render_tarjetas(
         [
-            ("Casos soporte y sin asignación", metricas["total"]),
+            ("Casos", metricas["total"]),
             (TEXT_CERRADOS, metricas["cerrados"]),
             (TEXT_ABIERTOS, metricas["abiertos"]),
             ("Promedio (h)", metricas["promedio"]),
