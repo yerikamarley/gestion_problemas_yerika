@@ -2857,8 +2857,22 @@ PROBLEMAS_SUGERIDOS_COLUMNS = [
 MATRIZ_RIESGO_INCIDENTES_COLUMNS = [
     "id_matriz", "riesgo_materializado", "dueno_riesgo", "impacto_escala",
     "cantidad_incidentes", "incidentes_asociados", "problemas_plan_trabajo",
+    "criterio_similitud", "evidencia_analizada",
     "asignacion_operativa", "estado_mejora", "causa_raiz", "mejoras",
     "justificacion_metodologica", "ejemplos_reales",
+]
+
+# El orden resuelve ambigüedades: una evidencia explícita de canal de ventas o
+# instalación tiene más peso que el servicio técnico registrado en el ticket.
+INCIDENT_REINCIDENCE_THEMES = [
+    ("Canal de ventas - despliegue o funcionalidad", ("canal de ventas", "nuevo canal", "bd de cuentas", "cuentas bancarias", "homologacion")),
+    ("Actualización de CLR o listas", ("actualizacion de clr", "actualizar clr", " clr ", "lista de revocacion", "lista de certificados revocados")),
+    ("Instalación o configuración", ("instalacion", "instalar", "configuracion", "configurar", "driver", "middleware", "nuevo pc")),
+    ("Firma - dificultad al firmar", ("dificultad para firmar", "no puede firmar", "no permite firmar", "error al firmar", "proceso de firma", "firma digital")),
+    ("Portal - caída o indisponibilidad", ("caida del portal", "portal caido", "portal no responde", "indisponibilidad del portal", "error 500", "error 503", "error 504")),
+    ("SSPS - operación propia del servicio", ("ssps", "servicio ssps")),
+    ("Base de datos - disponibilidad o datos", ("base de datos", "bd ", "database", "datos inconsistentes")),
+    ("Mensajería - OTP, SMS o correo", ("otp", "sms", "correo de validacion", "no llega el codigo", "no recibe codigo")),
 ]
 
 REINCIDENCIA_GROUP_COLUMNS = ["tipo_registro", "cliente_analisis", "servicio_producto", "causa"]
@@ -3420,6 +3434,47 @@ def _es_plan_trabajo(valor):
     return "plan de trabajo" in normalizar_texto(valor)
 
 
+def texto_analisis_reincidencia_incidente(row):
+    """Prioriza el diagnóstico humano antes de campos generales del ticket."""
+    campos_prioritarios = (
+        "observaciones_trabajo", "lista_notas_trabajo", "actualizaciones",
+        "observaciones_adicionales", "descripcion", "breve_descripcion",
+        "impacto", "tipo_falla", "causa_raiz_original", "causa_raiz_auto",
+        "servicio_negocio",
+    )
+    return " ".join(safe_text(valor_fila(row, campo)) for campo in campos_prioritarios if safe_text(valor_fila(row, campo)))
+
+
+def tema_reincidencia_incidente(row):
+    texto = f" {normalizar_texto(texto_analisis_reincidencia_incidente(row))} "
+    for tema, terminos in INCIDENT_REINCIDENCE_THEMES:
+        if any(normalizar_texto(termino) in texto for termino in terminos):
+            return tema
+    causa = primera_columna_con_valor(row, ["causa_raiz_original", "causa_raiz_auto", "tipo_falla"])
+    return causa if es_valor_informativo_analisis(causa) else "Sin tema concluyente"
+
+
+def evidencia_reincidencia_incidente(row, limite=280):
+    for campo in ("observaciones_trabajo", "lista_notas_trabajo", "actualizaciones", "observaciones_adicionales", "descripcion", "breve_descripcion"):
+        valor = " ".join(safe_text(valor_fila(row, campo)).split())
+        if valor:
+            return valor if len(valor) <= limite else valor[: limite - 3] + "..."
+    return "Sin evidencia textual registrada"
+
+
+def enriquecer_base_reincidencias(base, incidentes_df):
+    if base.empty or incidentes_df is None or incidentes_df.empty:
+        return base
+    analisis = {}
+    for _, row in incidentes_df.iterrows():
+        numero = safe_text(valor_fila(row, "numero"))
+        analisis[numero] = (tema_reincidencia_incidente(row), evidencia_reincidencia_incidente(row))
+    trabajo = base.copy()
+    trabajo["tema_reincidencia"] = trabajo["numero"].map(lambda numero: analisis.get(safe_text(numero), ("Sin tema concluyente", ""))[0])
+    trabajo["evidencia_reincidencia"] = trabajo["numero"].map(lambda numero: analisis.get(safe_text(numero), ("", ""))[1])
+    return trabajo
+
+
 def _problemas_plan_asociados(grupo, problemas):
     if problemas is None or problemas.empty:
         return ""
@@ -3445,16 +3500,19 @@ def _problemas_plan_asociados(grupo, problemas):
 def construir_matriz_riesgo_incidentes(incidentes_df, problemas_df=None, ediciones_df=None):
     """Agrupa únicamente incidentes y enriquece con problemas en Plan de trabajo."""
     base = base_unificada_reincidencias(pd.DataFrame(), incidentes_df, incluir_sla=False)
+    base = enriquecer_base_reincidencias(base, incidentes_df)
     if base.empty:
         return pd.DataFrame(columns=MATRIZ_RIESGO_INCIDENTES_COLUMNS)
     filas = []
-    for claves, grupo in base.groupby(["servicio_producto", "tipificacion", "causa"], dropna=False):
-        servicio, tipificacion, causa = claves
-        id_matriz = "|".join(normalizar_texto(x) for x in claves)
+    for tema, grupo in base.groupby("tema_reincidencia", dropna=False):
+        servicio = valor_mas_frecuente_analisis(grupo["servicio_producto"], SIN_SERVICIO_PRODUCTO_ANALISIS)
+        tipificacion = valor_mas_frecuente_analisis(grupo["tipificacion"], SIN_TIPIFICACION_ANALISIS)
+        causa = tema
+        id_matriz = normalizar_texto(tema)
         numeros = [safe_text(x) for x in grupo["numero"].tolist() if safe_text(x)]
         ejemplos = []
         for _, incidente in grupo.head(3).iterrows():
-            ejemplos.append(f"{incidente['numero']}: {safe_text(incidente['descripcion'])}")
+            ejemplos.append(f"{incidente['numero']}: {safe_text(incidente['evidencia_reincidencia'])}")
         filas.append({
             "id_matriz": id_matriz,
             "riesgo_materializado": f"Falla materializada en {servicio}: {tipificacion}",
@@ -3463,12 +3521,14 @@ def construir_matriz_riesgo_incidentes(incidentes_df, problemas_df=None, edicion
             "cantidad_incidentes": len(numeros),
             "incidentes_asociados": ", ".join(numeros),
             "problemas_plan_trabajo": _problemas_plan_asociados(grupo, problemas_df),
+            "criterio_similitud": tema,
+            "evidencia_analizada": "\n".join(ejemplos),
             "asignacion_operativa": "Por definir",
             "estado_mejora": "Pendiente de análisis",
             "causa_raiz": causa,
             "mejoras": "Revisar incidentes asociados y definir acción correctiva o preventiva.",
             "justificacion_metodologica": (
-                "Agrupación por servicio/producto, tipificación y causa raíz similar; "
+                "Agrupación semántica por coincidencias en observaciones de trabajo, notas, actualizaciones y descripciones; "
                 f"se identificaron {len(numeros)} incidentes en el periodo."
             ),
             "ejemplos_reales": "\n".join(ejemplos),
@@ -3515,9 +3575,11 @@ def guardar_ediciones_matriz_riesgo(df, actor_email=None):
 def construir_analisis_anual_reincidencias_incidentes(incidentes_df):
     """Resume por causa raíz y mes los incidentes de un año ya filtrado."""
     base = base_unificada_reincidencias(pd.DataFrame(), incidentes_df, incluir_sla=False)
+    base = enriquecer_base_reincidencias(base, incidentes_df)
     if base.empty:
         return pd.DataFrame(), pd.DataFrame()
-    trabajo = base[base["causa"].apply(es_valor_informativo_analisis)].copy()
+    trabajo = base[base["tema_reincidencia"].apply(es_valor_informativo_analisis)].copy()
+    trabajo = trabajo.rename(columns={"causa": "causa_registrada", "tema_reincidencia": "causa"})
     trabajo = trabajo[trabajo["fecha_dt"].notna()].copy()
     if trabajo.empty:
         return pd.DataFrame(), pd.DataFrame()

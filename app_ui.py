@@ -9102,7 +9102,8 @@ def dashboard_reincidencias_problemas():
     )
     st.caption(
         f"Periodo analizado: {periodo_incidentes}. La agrupación automática usa servicio/producto, "
-        "tipificación y causa raíz; el detalle de incidentes siempre permanece visible y trazable."
+        "pero prioriza las observaciones de trabajo, notas, actualizaciones y descripciones para determinar "
+        "la similitud real; el detalle de incidentes permanece visible y trazable."
     )
     st.markdown("#### Matriz editable")
     st.caption(
@@ -9126,6 +9127,8 @@ def dashboard_reincidencias_problemas():
             "cantidad_incidentes": st.column_config.NumberColumn("Cantidad de incidentes"),
             "incidentes_asociados": st.column_config.TextColumn("Incidentes asociados", width="large"),
             "problemas_plan_trabajo": st.column_config.TextColumn("Problemas en plan de trabajo"),
+            "criterio_similitud": st.column_config.TextColumn("Tema común detectado"),
+            "evidencia_analizada": st.column_config.TextColumn("Evidencia textual analizada", width="large"),
             "asignacion_operativa": st.column_config.TextColumn("Asignación operativa / RACI"),
             "estado_mejora": st.column_config.TextColumn("Estado de mejora"),
             "causa_raiz": st.column_config.TextColumn("Causa raíz"),
@@ -9147,7 +9150,9 @@ def dashboard_reincidencias_problemas():
     with st.expander("Ver criterios de inclusión y asociación"):
         st.markdown(
             "- Se incluyen únicamente registros de la tabla de incidentes del periodo seleccionado.\n"
-            "- Se agrupan incidentes con servicio/producto, tipificación y causa raíz coincidentes.\n"
+            "- Se leen primero observaciones de trabajo, notas, actualizaciones, descripción e impacto.\n"
+            "- El servicio registrado se usa como contexto, pero no decide por sí solo la agrupación.\n"
+            "- Se agrupan incidentes por el tema operativo encontrado: firma, CLR, canal de ventas, instalación, caídas de portal, SSPS u otros patrones.\n"
             "- Solo se consideran problemas cuyo estado contiene **Plan de trabajo**.\n"
             "- Un problema se asocia cuando su declaración o detalle contiene términos del servicio, "
             "la tipificación o la causa del grupo de incidentes."
@@ -9194,6 +9199,17 @@ def dashboard_reincidencias_problemas():
         use_container_width=True,
         hide_index=True,
     )
+    with st.expander("Ver detalle mensual e incidentes exactos"):
+        st.dataframe(
+            mensual_anual.rename(columns={
+                "causa": "Causa temática",
+                "mes": "Mes",
+                "incidentes": "Cantidad",
+                "incidentes_asociados": "Incidentes asociados",
+            }).drop(columns=["mes_num"], errors="ignore"),
+            use_container_width=True,
+            hide_index=True,
+        )
 
 
 def dashboard_incidentes():

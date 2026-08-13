@@ -58,6 +58,25 @@ class MatrizRiesgoIncidentesTest(unittest.TestCase):
         self.assertEqual(2, resumen.iloc[0]["meses_con_eventos"])
         self.assertEqual([2, 1], mensual["incidentes"].tolist())
 
+    def test_observaciones_prevalecen_sobre_servicio_ssps(self):
+        incidentes = pd.DataFrame([
+            {
+                "numero": "INC1", "servicio_negocio": "SSPS", "creado": "2026-08-03",
+                "breve_descripcion": "Novedad SSPS",
+                "observaciones_trabajo": "Al validar corresponde al despliegue del nuevo canal de ventas y la BD de cuentas.",
+            },
+            {
+                "numero": "INC2", "servicio_negocio": "SSPS", "creado": "2026-08-05",
+                "descripcion": "Se ajusta tabla de homologación de cuentas bancarias del canal de ventas.",
+            },
+        ])
+
+        matriz = construir_matriz_riesgo_incidentes(incidentes)
+
+        self.assertEqual(1, len(matriz))
+        self.assertEqual("Canal de ventas - despliegue o funcionalidad", matriz.iloc[0]["criterio_similitud"])
+        self.assertIn("INC1", matriz.iloc[0]["evidencia_analizada"])
+
 
 if __name__ == "__main__":
     unittest.main()
