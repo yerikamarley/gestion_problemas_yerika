@@ -1704,6 +1704,21 @@ def init_db():
         },
     )
     ensure_indexes(conn)
+    db_execute(
+        conn,
+        """CREATE TABLE IF NOT EXISTS incident_risk_matrix_edits (
+            id_matriz TEXT PRIMARY KEY,
+            dueno_riesgo TEXT,
+            impacto_escala TEXT,
+            asignacion_operativa TEXT,
+            estado_mejora TEXT,
+            causa_raiz TEXT,
+            mejoras TEXT,
+            justificacion_metodologica TEXT,
+            ejemplos_reales TEXT,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )""",
+    )
     conn.commit()
     conn.close()
 
@@ -2837,6 +2852,13 @@ PROBLEMAS_SUGERIDOS_COLUMNS = [
     "nivel_prioridad",
 ]
 
+MATRIZ_RIESGO_INCIDENTES_COLUMNS = [
+    "id_matriz", "riesgo_materializado", "dueno_riesgo", "impacto_escala",
+    "cantidad_incidentes", "incidentes_asociados", "problemas_plan_trabajo",
+    "asignacion_operativa", "estado_mejora", "causa_raiz", "mejoras",
+    "justificacion_metodologica", "ejemplos_reales",
+]
+
 REINCIDENCIA_GROUP_COLUMNS = ["tipo_registro", "cliente_analisis", "servicio_producto", "causa"]
 PROBLEMA_PATTERN_COLUMNS = ["servicio_producto", "tipificacion", "causa"]
 PROBLEMA_DIMENSIONES = [
@@ -3383,6 +3405,109 @@ def analizar_reincidencias_y_problemas(casos_df, incidentes_df, filtros=None):
     reincidencias_cliente = resumir_reincidencias_cliente(base)
     problemas_sugeridos = construir_problemas_sugeridos(base, None)
     return base, reincidencias_cliente, problemas_sugeridos
+
+
+def _texto_problema_plan(row):
+    return " ".join(
+        safe_text(valor_fila(row, columna))
+        for columna in ("declaracion_problema", "descripcion", "comentarios", "notas_trabajo", "observaciones_trabajo")
+    )
+
+
+def _es_plan_trabajo(valor):
+    return "plan de trabajo" in normalizar_texto(valor)
+
+
+def _problemas_plan_asociados(grupo, problemas):
+    if problemas is None or problemas.empty:
+        return ""
+    candidatos = problemas[problemas["estado"].apply(_es_plan_trabajo)].copy()
+    if candidatos.empty:
+        return ""
+    terminos = {
+        normalizar_texto(valor)
+        for columna in ("servicio_producto", "tipificacion", "causa")
+        for valor in grupo[columna].dropna().tolist()
+        if len(normalizar_texto(valor)) >= 5 and valor not in VALORES_NO_INFORMATIVOS_ANALISIS
+    }
+    numeros = []
+    for _, problema in candidatos.iterrows():
+        texto = normalizar_texto(_texto_problema_plan(problema))
+        if any(termino in texto or texto in termino for termino in terminos if texto):
+            numero = safe_text(valor_fila(problema, "numero"))
+            if numero and numero not in numeros:
+                numeros.append(numero)
+    return ", ".join(numeros)
+
+
+def construir_matriz_riesgo_incidentes(incidentes_df, problemas_df=None, ediciones_df=None):
+    """Agrupa únicamente incidentes y enriquece con problemas en Plan de trabajo."""
+    base = base_unificada_reincidencias(pd.DataFrame(), incidentes_df, incluir_sla=False)
+    if base.empty:
+        return pd.DataFrame(columns=MATRIZ_RIESGO_INCIDENTES_COLUMNS)
+    filas = []
+    for claves, grupo in base.groupby(["servicio_producto", "tipificacion", "causa"], dropna=False):
+        servicio, tipificacion, causa = claves
+        id_matriz = "|".join(normalizar_texto(x) for x in claves)
+        numeros = [safe_text(x) for x in grupo["numero"].tolist() if safe_text(x)]
+        ejemplos = []
+        for _, incidente in grupo.head(3).iterrows():
+            ejemplos.append(f"{incidente['numero']}: {safe_text(incidente['descripcion'])}")
+        filas.append({
+            "id_matriz": id_matriz,
+            "riesgo_materializado": f"Falla materializada en {servicio}: {tipificacion}",
+            "dueno_riesgo": valor_mas_frecuente_analisis(grupo["cliente_analisis"], "Por definir"),
+            "impacto_escala": nivel_reincidencia(len(grupo)) or "Aislado",
+            "cantidad_incidentes": len(numeros),
+            "incidentes_asociados": ", ".join(numeros),
+            "problemas_plan_trabajo": _problemas_plan_asociados(grupo, problemas_df),
+            "asignacion_operativa": "Por definir",
+            "estado_mejora": "Pendiente de análisis",
+            "causa_raiz": causa,
+            "mejoras": "Revisar incidentes asociados y definir acción correctiva o preventiva.",
+            "justificacion_metodologica": (
+                "Agrupación por servicio/producto, tipificación y causa raíz similar; "
+                f"se identificaron {len(numeros)} incidentes en el periodo."
+            ),
+            "ejemplos_reales": "\n".join(ejemplos),
+        })
+    matriz = pd.DataFrame(filas)
+    if ediciones_df is not None and not ediciones_df.empty:
+        editables = ["estado_mejora", "causa_raiz", "mejoras", "justificacion_metodologica", "ejemplos_reales", "dueno_riesgo", "impacto_escala", "asignacion_operativa"]
+        guardado = ediciones_df.set_index("id_matriz")
+        for indice, row in matriz.iterrows():
+            if row["id_matriz"] not in guardado.index:
+                continue
+            for columna in editables:
+                valor = safe_text(guardado.at[row["id_matriz"], columna]) if columna in guardado.columns else ""
+                if valor:
+                    matriz.at[indice, columna] = valor
+    return matriz[MATRIZ_RIESGO_INCIDENTES_COLUMNS].sort_values("cantidad_incidentes", ascending=False)
+
+
+def cargar_ediciones_matriz_riesgo():
+    exigir_contexto_lectura()
+    try:
+        return read_table("incident_risk_matrix_edits")
+    except Exception:
+        return pd.DataFrame(columns=MATRIZ_RIESGO_INCIDENTES_COLUMNS)
+
+
+def guardar_ediciones_matriz_riesgo(df, actor_email=None):
+    exigir_permiso_actor(actor_email, ACTION_WRITE_PROBLEMS)
+    columnas = ["id_matriz", "dueno_riesgo", "impacto_escala", "asignacion_operativa", "estado_mejora", "causa_raiz", "mejoras", "justificacion_metodologica", "ejemplos_reales"]
+    trabajo = df[columnas].copy().drop_duplicates("id_matriz", keep="last")
+    conn = get_conn()
+    try:
+        filas = [tuple(safe_text(row[col]) for col in columnas) for _, row in trabajo.iterrows()]
+        ejecutar_upserts_lote(conn, "incident_risk_matrix_edits", columnas, "id_matriz", filas)
+        conn.commit()
+        return len(filas)
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
 # ============================================================================

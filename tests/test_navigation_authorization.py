@@ -27,7 +27,7 @@ class NavigationAuthorizationTest(unittest.TestCase):
             ROLE_EXPERIENCIA: 7,
             ROLE_GERENCIAS: 4,
             ROLE_AREA_IA: 7,
-            ROLE_VIEWER_LEGACY: 13,
+            ROLE_VIEWER_LEGACY: 12,
         }
         self.assertEqual(esperadas, {rol: len(app_ui.catalogo_permitido(rol)) for rol in esperadas})
 

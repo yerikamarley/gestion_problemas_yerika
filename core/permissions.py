@@ -113,7 +113,7 @@ _PERMISOS_GERENCIAS = frozenset(
 )
 _PERMISOS_AREA_IA = _PERMISOS_EXPERIENCIA
 
-# Conserva las 13 opciones no administrativas que hoy recibe ``viewer``.
+# Conserva temporalmente las opciones no administrativas que recibe ``viewer``.
 # Se eliminará después de migrar todos los usuarios a uno de los cinco roles.
 _PERMISOS_VIEWER_LEGACY = frozenset(
     {
@@ -124,7 +124,6 @@ _PERMISOS_VIEWER_LEGACY = frozenset(
         VIEW_INCIDENTES,
         VIEW_PROBLEMAS,
         VIEW_KPI_INCIDENTES,
-        VIEW_REINCIDENCIAS_PROBLEMAS,
         VIEW_SEGUIMIENTO_RPOST,
         VIEW_SEGUIMIENTO_AUTENTIC,
         VIEW_SEGUIMIENTO_INCIDENTES,

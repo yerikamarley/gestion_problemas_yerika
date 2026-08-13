@@ -66,6 +66,7 @@ class PermissionsTest(unittest.TestCase):
             VIEW_CARGAR_CASOS,
             VIEW_CARGAR_INCIDENTES,
             VIEW_CARGAR_PROBLEMAS,
+            VIEW_REINCIDENCIAS_PROBLEMAS,
             VIEW_ADMINISTRAR_USUARIOS,
         )
         for vista in exclusivas:
@@ -81,8 +82,8 @@ class PermissionsTest(unittest.TestCase):
 
     def test_viewer_conserva_temporalmente_el_acceso_actual(self):
         vistas = obtener_permisos_rol(ROLE_VIEWER_LEGACY)
-        self.assertEqual(13, len(vistas))
-        self.assertIn(VIEW_REINCIDENCIAS_PROBLEMAS, vistas)
+        self.assertEqual(12, len(vistas))
+        self.assertNotIn(VIEW_REINCIDENCIAS_PROBLEMAS, vistas)
         self.assertNotIn(VIEW_DASHBOARD_INCIDENTES, vistas)
         self.assertNotIn(VIEW_ADMINISTRAR_USUARIOS, vistas)
 

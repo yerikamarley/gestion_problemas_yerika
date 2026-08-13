@@ -39,6 +39,9 @@ from app_logic import (
     agregar_campos_sla_incidentes,
     agregar_campos_sla_respuesta,
     analizar_reincidencias_y_problemas,
+    construir_matriz_riesgo_incidentes,
+    cargar_ediciones_matriz_riesgo,
+    guardar_ediciones_matriz_riesgo,
     autenticar_usuario,
     calcular_disponibilidad_por_mes,
     contar_incidentes,
@@ -526,7 +529,7 @@ MENU_DASHBOARD_CASOS_SOPORTE = "Dashboard Casos Soporte"
 MENU_CONTROL_DIARIO_SOPORTE = "Control diario de Soporte"
 MENU_KPI_CASOS_CLIENTE_EXTERNO = "KPI Casos Cliente Externo"
 MENU_KPI_INCIDENTES = "KPI Incidentes"
-MENU_REINCIDENCIAS_PROBLEMAS = "Reincidencias y problemas sugeridos"
+MENU_REINCIDENCIAS_PROBLEMAS = "Matriz de riesgos de incidentes"
 MENU_SEGUIMIENTO_INCIDENTES_VIEWER = "Seguimiento incidentes"
 MENU_SEGUIMIENTO_INCIDENTES_ADMIN = "Seguimiento Incidentes"
 MENU_SEGUIMIENTO_RPOST = "Seguimiento de RPost"
@@ -9070,71 +9073,84 @@ def seleccionar_meses_reincidencias(casos, incidentes):
 
 def dashboard_reincidencias_problemas():
     st.subheader(MENU_REINCIDENCIAS_PROBLEMAS)
-    st.caption("Selecciona el periodo antes de calcular. La vista solo consulta esos cortes para mantenerla rapida.")
-    col_casos, col_incidentes = st.columns(2)
-    with col_casos:
-        st.markdown("##### Casos")
-        anio_casos, mes_casos_num, periodo_casos = selector_periodo_sql("cases", "reincidencias_periodo_casos")
-    with col_incidentes:
-        st.markdown("##### Incidentes")
-        anio_incidentes, mes_incidentes_num, periodo_incidentes = selector_periodo_sql(
-            "incidents",
-            "reincidencias_periodo_incidentes",
-        )
-
-    with st.spinner("Cargando casos e incidentes del periodo seleccionado..."):
-        casos = (
-            cargar_casos_filtrados_cache(anio_casos, mes_casos_num)
-            if anio_casos is not None
-            else pd.DataFrame()
-        )
-        incidentes = (
-            cargar_incidentes_filtrados_cache(anio_incidentes, mes_incidentes_num)
-            if anio_incidentes is not None
-            else pd.DataFrame()
-        )
-    if casos.empty and incidentes.empty:
-        st.info("No hay casos ni incidentes para los periodos seleccionados.")
-        return
-
-    with st.spinner("Calculando reincidencias y problemas sugeridos..."):
-        base, reincidencias, problemas = analizar_reincidencias_y_problemas(casos, incidentes)
-    if base.empty:
-        st.info("No hay registros analizables para construir reincidencias.")
-        return
-
-    clientes_reincidentes = (
-        reincidencias["cliente_analisis"].replace("", pd.NA).dropna().nunique()
-        if not reincidencias.empty
-        else 0
+    st.caption(
+        "Analiza únicamente incidentes. Los problemas se usan solo cuando están en estado Plan de trabajo "
+        "y presentan similitud con el servicio, la tipificación o la causa del incidente."
     )
-    registros_asociados = 0
-    if not problemas.empty:
-        registros_asociados = int(pd.to_numeric(problemas["total_registros"], errors=TEXT_COERCE).sum())
-    elif not reincidencias.empty:
-        registros_asociados = int(pd.to_numeric(reincidencias["total_registros"], errors=TEXT_COERCE).sum())
+    anio_incidentes, mes_incidentes_num, periodo_incidentes = selector_periodo_sql(
+        "incidents", "matriz_riesgo_periodo_incidentes"
+    )
+    if not periodo_sql_valido(anio_incidentes, "incidentes"):
+        return
+    with st.spinner("Construyendo la matriz de riesgos materializados..."):
+        incidentes = cargar_incidentes_filtrados_cache(anio_incidentes, mes_incidentes_num)
+        problemas = cargar_problemas_filtrados_cache(None, None)
+        ediciones = cargar_ediciones_matriz_riesgo()
+        matriz = construir_matriz_riesgo_incidentes(incidentes, problemas, ediciones)
+    if matriz.empty:
+        st.info(f"No hay incidentes analizables para {periodo_incidentes}.")
+        return
+
+    problemas_asociados = matriz["problemas_plan_trabajo"].fillna("").ne("").sum()
     render_tarjetas(
         [
-            ("Clientes con reincidencia", clientes_reincidentes),
-            ("Problemas sugeridos", len(problemas)),
-            ("Registros asociados", registros_asociados),
+            ("Riesgos materializados", len(matriz)),
+            ("Incidentes analizados", int(matriz["cantidad_incidentes"].sum())),
+            ("Riesgos con plan de trabajo", int(problemas_asociados)),
         ]
     )
     st.caption(
-        f"Periodo analizado: casos {periodo_casos} | incidentes {periodo_incidentes}. "
-        "Lectura simple: reincidencias de casos/incidentes y posibles problemas cuando una misma causa raiz se repite. "
-        "No modifica datos ni crea registros nuevos."
+        f"Periodo analizado: {periodo_incidentes}. La agrupación automática usa servicio/producto, "
+        "tipificación y causa raíz; el detalle de incidentes siempre permanece visible y trazable."
     )
+    st.markdown("#### Matriz editable")
+    st.caption(
+        "Puedes ajustar dueño, impacto, asignación, estado y causa raíz, mejoras, justificación y ejemplos. "
+        "La volumetría, los incidentes y los problemas asociados se recalculan desde la data y son de solo lectura."
+    )
+    columnas_deshabilitadas = [
+        "id_matriz", "riesgo_materializado", "cantidad_incidentes",
+        "incidentes_asociados", "problemas_plan_trabajo",
+    ]
+    editada = st.data_editor(
+        matriz,
+        use_container_width=True,
+        hide_index=True,
+        disabled=columnas_deshabilitadas,
+        column_config={
+            "id_matriz": None,
+            "riesgo_materializado": st.column_config.TextColumn("Riesgo materializado", width="large"),
+            "dueno_riesgo": st.column_config.TextColumn("Dueño del riesgo"),
+            "impacto_escala": st.column_config.TextColumn("Impacto / escala"),
+            "cantidad_incidentes": st.column_config.NumberColumn("Cantidad de incidentes"),
+            "incidentes_asociados": st.column_config.TextColumn("Incidentes asociados", width="large"),
+            "problemas_plan_trabajo": st.column_config.TextColumn("Problemas en plan de trabajo"),
+            "asignacion_operativa": st.column_config.TextColumn("Asignación operativa / RACI"),
+            "estado_mejora": st.column_config.TextColumn("Estado de mejora"),
+            "causa_raiz": st.column_config.TextColumn("Causa raíz"),
+            "mejoras": st.column_config.TextColumn("Mejoras", width="large"),
+            "justificacion_metodologica": st.column_config.TextColumn("Justificación metodológica", width="large"),
+            "ejemplos_reales": st.column_config.TextColumn("Ejemplos reales extraídos de la data", width="large"),
+        },
+        key="editor_matriz_riesgo_incidentes",
+    )
+    if st.button("Guardar cambios de la matriz", type="primary"):
+        try:
+            guardadas = guardar_ediciones_matriz_riesgo(editada, st.session_state.get("user"))
+        except AutorizacionError:
+            st.error("Tu rol permite consultar la matriz, pero no guardar cambios.")
+        else:
+            st.success(f"Se guardaron {guardadas} filas de la matriz.")
+            st.rerun()
 
-    tab_reincidencias, tab_problemas, tab_detalle = st.tabs(
-        ["Reincidencias casos/incidentes", "Problemas por causa", "Detalle asociado"]
-    )
-    with tab_reincidencias:
-        render_tabla_reincidencias(reincidencias)
-    with tab_problemas:
-        render_tabla_problemas_sugeridos(problemas)
-    with tab_detalle:
-        render_detalle_reincidencias(base, problemas)
+    with st.expander("Ver criterios de inclusión y asociación"):
+        st.markdown(
+            "- Se incluyen únicamente registros de la tabla de incidentes del periodo seleccionado.\n"
+            "- Se agrupan incidentes con servicio/producto, tipificación y causa raíz coincidentes.\n"
+            "- Solo se consideran problemas cuyo estado contiene **Plan de trabajo**.\n"
+            "- Un problema se asocia cuando su declaración o detalle contiene términos del servicio, "
+            "la tipificación o la causa del grupo de incidentes."
+        )
 
 
 def dashboard_incidentes():
