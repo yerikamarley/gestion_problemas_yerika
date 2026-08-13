@@ -9072,6 +9072,45 @@ def seleccionar_meses_reincidencias(casos, incidentes):
     return casos, incidentes, mes_casos, mes_incidentes
 
 
+def render_guia_mensual_reincidencias(matriz, periodo_incidentes):
+    st.markdown(f"#### Guía mensual: temas comunes e incidentes asociados · {periodo_incidentes}")
+    st.caption(
+        "Esta es la tabla principal de lectura. Usa los mismos temas del análisis anual y solo muestra "
+        "reincidencias con dos o más incidentes en el periodo."
+    )
+    reincidencias_mes = matriz[matriz["cantidad_incidentes"] >= 2].copy()
+    if reincidencias_mes.empty:
+        st.info("En este mes no hay temas comunes con dos o más incidentes asociados.")
+        return
+    render_tarjetas([
+        ("Temas comunes del mes", len(reincidencias_mes)),
+        ("Incidentes asociados", int(reincidencias_mes["cantidad_incidentes"].sum())),
+        ("Tema principal", str(reincidencias_mes.iloc[0]["criterio_similitud"] or "")),
+    ])
+    resumen_mes = reincidencias_mes[[
+        "criterio_similitud", "componente_detectado", "cantidad_incidentes",
+        "incidentes_asociados", "comentario_analisis", "evidencia_analizada",
+    ]].rename(columns={
+        "criterio_similitud": "Tema común",
+        "componente_detectado": "Componente",
+        "cantidad_incidentes": "Cantidad",
+        "incidentes_asociados": "Incidentes asociados",
+        "comentario_analisis": "Comentario del análisis",
+        "evidencia_analizada": "Evidencia revisada",
+    })
+    st.dataframe(resumen_mes, use_container_width=True, hide_index=True)
+    st.markdown("##### Detalle por tema común")
+    for _, fila_tema in reincidencias_mes.iterrows():
+        titulo_tema = f"{fila_tema['criterio_similitud']} · {int(fila_tema['cantidad_incidentes'])} incidentes"
+        with st.expander(titulo_tema):
+            st.markdown(f"**Componente:** {fila_tema['componente_detectado']}")
+            st.markdown(f"**Incidentes asociados:** {fila_tema['incidentes_asociados']}")
+            st.markdown("**Comentario del análisis**")
+            st.write(fila_tema["comentario_analisis"])
+            st.markdown("**Evidencia encontrada en observaciones y descripciones**")
+            st.text(fila_tema["evidencia_analizada"])
+
+
 def dashboard_reincidencias_problemas():
     st.subheader(MENU_REINCIDENCIAS_PROBLEMAS)
     st.caption(
@@ -9105,6 +9144,8 @@ def dashboard_reincidencias_problemas():
         "pero prioriza las observaciones de trabajo, notas, actualizaciones y descripciones para determinar "
         "la similitud real; el detalle de incidentes permanece visible y trazable."
     )
+    render_guia_mensual_reincidencias(matriz, periodo_incidentes)
+    st.divider()
     st.markdown("#### Matriz editable")
     st.caption(
         "Puedes ajustar dueño, impacto, asignación, estado y causa raíz, mejoras, justificación y ejemplos. "
