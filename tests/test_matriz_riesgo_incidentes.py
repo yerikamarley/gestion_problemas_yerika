@@ -2,7 +2,10 @@ import unittest
 
 import pandas as pd
 
-from app_logic import construir_matriz_riesgo_incidentes
+from app_logic import (
+    construir_analisis_anual_reincidencias_incidentes,
+    construir_matriz_riesgo_incidentes,
+)
 
 
 class MatrizRiesgoIncidentesTest(unittest.TestCase):
@@ -39,6 +42,21 @@ class MatrizRiesgoIncidentesTest(unittest.TestCase):
         self.assertEqual("En ejecución", matriz.iloc[0]["estado_mejora"])
         self.assertEqual("Configuración de red validada", matriz.iloc[0]["causa_raiz"])
         self.assertEqual("Automatizar recuperación", matriz.iloc[0]["mejoras"])
+
+    def test_analisis_anual_segmenta_la_misma_causa_por_mes(self):
+        incidentes = pd.DataFrame([
+            {"numero": "INC1", "creado": "2026-01-05", "causa_raiz_auto": "Base de datos"},
+            {"numero": "INC2", "creado": "2026-01-20", "causa_raiz_auto": "Base de datos"},
+            {"numero": "INC3", "creado": "2026-03-02", "causa_raiz_auto": "Base de datos"},
+            {"numero": "INC4", "creado": "2026-02-01", "causa_raiz_auto": "Red"},
+        ])
+
+        resumen, mensual = construir_analisis_anual_reincidencias_incidentes(incidentes)
+
+        self.assertEqual(1, len(resumen))
+        self.assertEqual(3, resumen.iloc[0]["total_anual"])
+        self.assertEqual(2, resumen.iloc[0]["meses_con_eventos"])
+        self.assertEqual([2, 1], mensual["incidentes"].tolist())
 
 
 if __name__ == "__main__":

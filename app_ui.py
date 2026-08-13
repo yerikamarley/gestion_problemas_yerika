@@ -40,6 +40,7 @@ from app_logic import (
     agregar_campos_sla_respuesta,
     analizar_reincidencias_y_problemas,
     construir_matriz_riesgo_incidentes,
+    construir_analisis_anual_reincidencias_incidentes,
     cargar_ediciones_matriz_riesgo,
     guardar_ediciones_matriz_riesgo,
     autenticar_usuario,
@@ -9110,7 +9111,7 @@ def dashboard_reincidencias_problemas():
     )
     columnas_deshabilitadas = [
         "id_matriz", "riesgo_materializado", "cantidad_incidentes",
-        "incidentes_asociados", "problemas_plan_trabajo",
+        "incidentes_asociados",
     ]
     editada = st.data_editor(
         matriz,
@@ -9151,6 +9152,48 @@ def dashboard_reincidencias_problemas():
             "- Un problema se asocia cuando su declaración o detalle contiene términos del servicio, "
             "la tipificación o la causa del grupo de incidentes."
         )
+
+    st.divider()
+    st.markdown(f"#### Reincidencias anuales por causa raíz · {anio_incidentes}")
+    st.caption(
+        "Este bloque siempre toma el año completo, aunque arriba hayas seleccionado un mes. "
+        "Se actualiza automáticamente cuando cargas o actualizas incidentes."
+    )
+    incidentes_anuales = cargar_incidentes_filtrados_cache(anio_incidentes, None)
+    resumen_anual, mensual_anual = construir_analisis_anual_reincidencias_incidentes(incidentes_anuales)
+    if resumen_anual.empty:
+        st.info("Todavía no hay causas repetidas suficientes para construir el análisis anual.")
+        return
+    render_tarjetas([
+        ("Causas reincidentes", len(resumen_anual)),
+        ("Incidentes reincidentes", int(resumen_anual["total_anual"].sum())),
+        ("Causas presentes en varios meses", int((resumen_anual["meses_con_eventos"] > 1).sum())),
+    ])
+    causas_top = resumen_anual.head(10)["causa"].tolist()
+    tendencia = mensual_anual[mensual_anual["causa"].isin(causas_top)]
+    if not tendencia.empty:
+        fig = px.line(
+            tendencia,
+            x="mes",
+            y="incidentes",
+            color="causa",
+            markers=True,
+            title="Comportamiento mensual de las causas más reincidentes",
+        )
+        st.plotly_chart(aplicar_estilo_figura(fig, "Reincidencias anuales por causa raíz"), use_container_width=True)
+    st.dataframe(
+        resumen_anual.rename(columns={
+            "causa": "Causa raíz",
+            "total_anual": "Total anual",
+            "meses_con_eventos": "Meses con eventos",
+            "primer_incidente": "Primer incidente",
+            "ultimo_incidente": "Último incidente",
+            "incidentes_asociados": "Incidentes asociados",
+            "nivel_reincidencia": "Nivel",
+        }),
+        use_container_width=True,
+        hide_index=True,
+    )
 
 
 def dashboard_incidentes():
@@ -11705,7 +11748,36 @@ def vista_problemas():
     )
     st.caption(f"Periodo: {periodo_label} | Registros: {len(df)}")
     columnas = ["numero", "declaracion_problema", "creado", "estado", "prioridad", "asignado_a", "incidentes_relacionados"]
-    dataframe_liviano(df[columnas], limite=1000)
+    st.markdown("#### Gestión editable")
+    st.caption("Edita directamente los problemas y guarda los cambios. El número del problema se conserva como identificador.")
+    editado = st.data_editor(
+        df,
+        use_container_width=True,
+        hide_index=True,
+        disabled=["numero"],
+        column_config={
+            "numero": st.column_config.TextColumn("Número"),
+            "declaracion_problema": st.column_config.TextColumn("Declaración del problema", width="large"),
+            "descripcion": st.column_config.TextColumn("Descripción", width="large"),
+            "solucion_temporal": st.column_config.TextColumn("Solución temporal", width="large"),
+            "notas_cierre": st.column_config.TextColumn("Notas de cierre", width="large"),
+            "diagnosticado_solucion_temporal": st.column_config.TextColumn("Diagnóstico y solución temporal", width="large"),
+            "comentarios": st.column_config.TextColumn("Comentarios", width="large"),
+            "notas_trabajo": st.column_config.TextColumn("Notas de trabajo", width="large"),
+            "observaciones_trabajo": st.column_config.TextColumn("Observaciones de trabajo", width="large"),
+            "incidentes_relacionados": st.column_config.NumberColumn("Incidentes relacionados", min_value=0, step=1),
+        },
+        key="editor_gestion_problemas",
+    )
+    if st.button("Guardar cambios de problemas", type="primary"):
+        try:
+            guardados, actualizados = guardar_problemas(editado, actor_email=st.session_state.get("user"))
+        except (AutorizacionError, ValueError) as error:
+            st.error(str(error))
+        else:
+            limpiar_cache_datos()
+            st.success(f"Problemas guardados: {guardados} | Actualizados: {actualizados}")
+            st.rerun()
     st.markdown("#### Información detallada")
     for _, problema in df.iterrows():
         titulo = f"{problema['numero']} · {problema['declaracion_problema']}"

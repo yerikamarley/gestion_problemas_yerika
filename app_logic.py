@@ -1716,9 +1716,11 @@ def init_db():
             mejoras TEXT,
             justificacion_metodologica TEXT,
             ejemplos_reales TEXT,
+            problemas_plan_trabajo TEXT,
             updated_at TEXT DEFAULT CURRENT_TIMESTAMP
         )""",
     )
+    ensure_table_columns(conn, "incident_risk_matrix_edits", {"problemas_plan_trabajo": "TEXT"})
     conn.commit()
     conn.close()
 
@@ -3473,7 +3475,7 @@ def construir_matriz_riesgo_incidentes(incidentes_df, problemas_df=None, edicion
         })
     matriz = pd.DataFrame(filas)
     if ediciones_df is not None and not ediciones_df.empty:
-        editables = ["estado_mejora", "causa_raiz", "mejoras", "justificacion_metodologica", "ejemplos_reales", "dueno_riesgo", "impacto_escala", "asignacion_operativa"]
+        editables = ["estado_mejora", "causa_raiz", "mejoras", "justificacion_metodologica", "ejemplos_reales", "dueno_riesgo", "impacto_escala", "asignacion_operativa", "problemas_plan_trabajo"]
         guardado = ediciones_df.set_index("id_matriz")
         for indice, row in matriz.iterrows():
             if row["id_matriz"] not in guardado.index:
@@ -3495,7 +3497,7 @@ def cargar_ediciones_matriz_riesgo():
 
 def guardar_ediciones_matriz_riesgo(df, actor_email=None):
     exigir_permiso_actor(actor_email, ACTION_WRITE_PROBLEMS)
-    columnas = ["id_matriz", "dueno_riesgo", "impacto_escala", "asignacion_operativa", "estado_mejora", "causa_raiz", "mejoras", "justificacion_metodologica", "ejemplos_reales"]
+    columnas = ["id_matriz", "dueno_riesgo", "impacto_escala", "asignacion_operativa", "estado_mejora", "causa_raiz", "mejoras", "justificacion_metodologica", "ejemplos_reales", "problemas_plan_trabajo"]
     trabajo = df[columnas].copy().drop_duplicates("id_matriz", keep="last")
     conn = get_conn()
     try:
@@ -3508,6 +3510,41 @@ def guardar_ediciones_matriz_riesgo(df, actor_email=None):
         raise
     finally:
         conn.close()
+
+
+def construir_analisis_anual_reincidencias_incidentes(incidentes_df):
+    """Resume por causa raíz y mes los incidentes de un año ya filtrado."""
+    base = base_unificada_reincidencias(pd.DataFrame(), incidentes_df, incluir_sla=False)
+    if base.empty:
+        return pd.DataFrame(), pd.DataFrame()
+    trabajo = base[base["causa"].apply(es_valor_informativo_analisis)].copy()
+    trabajo = trabajo[trabajo["fecha_dt"].notna()].copy()
+    if trabajo.empty:
+        return pd.DataFrame(), pd.DataFrame()
+    trabajo["mes_num"] = trabajo["fecha_dt"].dt.month
+    trabajo["mes"] = trabajo["fecha_dt"].dt.strftime("%Y-%m")
+    mensual = (
+        trabajo.groupby(["causa", "mes", "mes_num"], as_index=False)
+        .agg(incidentes=("numero", "count"), incidentes_asociados=("numero", lambda serie: resumir_registros(serie, 20)))
+        .sort_values(["mes_num", "incidentes"], ascending=[True, False])
+    )
+    resumen = (
+        trabajo.groupby("causa", as_index=False)
+        .agg(
+            total_anual=("numero", "count"),
+            meses_con_eventos=("mes", "nunique"),
+            primer_incidente=("fecha_dt", "min"),
+            ultimo_incidente=("fecha_dt", "max"),
+            incidentes_asociados=("numero", lambda serie: resumir_registros(serie, 30)),
+        )
+    )
+    resumen = resumen[resumen["total_anual"] >= 2].copy()
+    resumen["nivel_reincidencia"] = resumen["total_anual"].apply(nivel_reincidencia)
+    resumen["primer_incidente"] = resumen["primer_incidente"].apply(formatear_fecha_resumen)
+    resumen["ultimo_incidente"] = resumen["ultimo_incidente"].apply(formatear_fecha_resumen)
+    causas = set(resumen["causa"])
+    mensual = mensual[mensual["causa"].isin(causas)].copy()
+    return resumen.sort_values("total_anual", ascending=False), mensual
 
 
 # ============================================================================
