@@ -2857,7 +2857,7 @@ PROBLEMAS_SUGERIDOS_COLUMNS = [
 MATRIZ_RIESGO_INCIDENTES_COLUMNS = [
     "id_matriz", "riesgo_materializado", "dueno_riesgo", "impacto_escala",
     "cantidad_incidentes", "incidentes_asociados", "problemas_plan_trabajo",
-    "criterio_similitud", "evidencia_analizada",
+    "componente_detectado", "criterio_similitud", "comentario_analisis", "evidencia_analizada",
     "asignacion_operativa", "estado_mejora", "causa_raiz", "mejoras",
     "justificacion_metodologica", "ejemplos_reales",
 ]
@@ -2873,6 +2873,24 @@ INCIDENT_REINCIDENCE_THEMES = [
     ("SSPS - operación propia del servicio", ("ssps", "servicio ssps")),
     ("Base de datos - disponibilidad o datos", ("base de datos", "bd ", "database", "datos inconsistentes")),
     ("Mensajería - OTP, SMS o correo", ("otp", "sms", "correo de validacion", "no llega el codigo", "no recibe codigo")),
+]
+
+INCIDENT_REINCIDENCE_COMPONENTS = [
+    ("Canal de ventas", ("canal de ventas", "nuevo canal", "bd de cuentas", "cuentas bancarias", "homologacion")),
+    ("GAIA", ("gaia",)),
+    ("CLR / PKI", ("actualizacion de clr", "actualizar clr", " clr ", "pki", "lista de revocacion", "certificados revocados")),
+    ("RPOST", ("rpost",)),
+    ("OCSP", ("ocsp",)),
+    ("Certitoken", ("certitoken", "certi token", "token virtual", "tokensafe", "token safe")),
+    ("Portal", ("portal",)),
+    ("SSPS", ("ssps",)),
+]
+
+INCIDENT_REINCIDENCE_SYMPTOMS = [
+    ("problema de firma", ("dificultad para firmar", "no puede firmar", "no permite firmar", "error al firmar", "proceso de firma", "firma digital", "firmar")),
+    ("caída o indisponibilidad", ("caida", "caido", "indisponibilidad", "no responde", "error 500", "error 503", "error 504")),
+    ("actualización o sincronización", ("actualizacion", "actualizar", "sincronizacion", "sincronizar")),
+    ("instalación o configuración", ("instalacion", "instalar", "configuracion", "configurar", "driver", "middleware")),
 ]
 
 REINCIDENCIA_GROUP_COLUMNS = ["tipo_registro", "cliente_analisis", "servicio_producto", "causa"]
@@ -3447,11 +3465,33 @@ def texto_analisis_reincidencia_incidente(row):
 
 def tema_reincidencia_incidente(row):
     texto = f" {normalizar_texto(texto_analisis_reincidencia_incidente(row))} "
+    componente = componente_reincidencia_incidente(row)
+    sintoma = sintoma_reincidencia_incidente(row)
+    if componente and sintoma:
+        return f"{componente} · {sintoma}"
+    if componente:
+        return componente
     for tema, terminos in INCIDENT_REINCIDENCE_THEMES:
         if any(normalizar_texto(termino) in texto for termino in terminos):
             return tema
     causa = primera_columna_con_valor(row, ["causa_raiz_original", "causa_raiz_auto", "tipo_falla"])
     return causa if es_valor_informativo_analisis(causa) else "Sin tema concluyente"
+
+
+def _primera_regla_reincidencia(texto, reglas):
+    texto = f" {normalizar_texto(texto)} "
+    for etiqueta, terminos in reglas:
+        if any(normalizar_texto(termino) in texto for termino in terminos):
+            return etiqueta
+    return ""
+
+
+def componente_reincidencia_incidente(row):
+    return _primera_regla_reincidencia(texto_analisis_reincidencia_incidente(row), INCIDENT_REINCIDENCE_COMPONENTS)
+
+
+def sintoma_reincidencia_incidente(row):
+    return _primera_regla_reincidencia(texto_analisis_reincidencia_incidente(row), INCIDENT_REINCIDENCE_SYMPTOMS)
 
 
 def evidencia_reincidencia_incidente(row, limite=280):
@@ -3468,10 +3508,15 @@ def enriquecer_base_reincidencias(base, incidentes_df):
     analisis = {}
     for _, row in incidentes_df.iterrows():
         numero = safe_text(valor_fila(row, "numero"))
-        analisis[numero] = (tema_reincidencia_incidente(row), evidencia_reincidencia_incidente(row))
+        analisis[numero] = (
+            tema_reincidencia_incidente(row),
+            evidencia_reincidencia_incidente(row),
+            componente_reincidencia_incidente(row) or "Otro componente",
+        )
     trabajo = base.copy()
-    trabajo["tema_reincidencia"] = trabajo["numero"].map(lambda numero: analisis.get(safe_text(numero), ("Sin tema concluyente", ""))[0])
-    trabajo["evidencia_reincidencia"] = trabajo["numero"].map(lambda numero: analisis.get(safe_text(numero), ("", ""))[1])
+    trabajo["tema_reincidencia"] = trabajo["numero"].map(lambda numero: analisis.get(safe_text(numero), ("Sin tema concluyente", "", "Otro componente"))[0])
+    trabajo["evidencia_reincidencia"] = trabajo["numero"].map(lambda numero: analisis.get(safe_text(numero), ("", "", "Otro componente"))[1])
+    trabajo["componente_reincidencia"] = trabajo["numero"].map(lambda numero: analisis.get(safe_text(numero), ("", "", "Otro componente"))[2])
     return trabajo
 
 
@@ -3510,6 +3555,8 @@ def construir_matriz_riesgo_incidentes(incidentes_df, problemas_df=None, edicion
         causa = tema
         id_matriz = normalizar_texto(tema)
         numeros = [safe_text(x) for x in grupo["numero"].tolist() if safe_text(x)]
+        componentes = [x for x in grupo["componente_reincidencia"].dropna().unique().tolist() if x != "Otro componente"]
+        componente_texto = ", ".join(componentes) if componentes else "Otro componente"
         ejemplos = []
         for _, incidente in grupo.head(3).iterrows():
             ejemplos.append(f"{incidente['numero']}: {safe_text(incidente['evidencia_reincidencia'])}")
@@ -3521,7 +3568,12 @@ def construir_matriz_riesgo_incidentes(incidentes_df, problemas_df=None, edicion
             "cantidad_incidentes": len(numeros),
             "incidentes_asociados": ", ".join(numeros),
             "problemas_plan_trabajo": _problemas_plan_asociados(grupo, problemas_df),
+            "componente_detectado": componente_texto,
             "criterio_similitud": tema,
+            "comentario_analisis": (
+                f"Se asociaron {len(numeros)} incidentes al componente {componente_texto}. "
+                f"El patrón común identificado en comentarios y descripciones es: {tema}."
+            ),
             "evidencia_analizada": "\n".join(ejemplos),
             "asignacion_operativa": "Por definir",
             "estado_mejora": "Pendiente de análisis",

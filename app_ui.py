@@ -9112,7 +9112,8 @@ def dashboard_reincidencias_problemas():
     )
     columnas_deshabilitadas = [
         "id_matriz", "riesgo_materializado", "cantidad_incidentes",
-        "incidentes_asociados",
+        "incidentes_asociados", "componente_detectado", "criterio_similitud",
+        "comentario_analisis", "evidencia_analizada",
     ]
     editada = st.data_editor(
         matriz,
@@ -9127,7 +9128,9 @@ def dashboard_reincidencias_problemas():
             "cantidad_incidentes": st.column_config.NumberColumn("Cantidad de incidentes"),
             "incidentes_asociados": st.column_config.TextColumn("Incidentes asociados", width="large"),
             "problemas_plan_trabajo": st.column_config.TextColumn("Problemas en plan de trabajo"),
+            "componente_detectado": st.column_config.TextColumn("Componente detectado"),
             "criterio_similitud": st.column_config.TextColumn("Tema común detectado"),
+            "comentario_analisis": st.column_config.TextColumn("Comentario del análisis", width="large"),
             "evidencia_analizada": st.column_config.TextColumn("Evidencia textual analizada", width="large"),
             "asignacion_operativa": st.column_config.TextColumn("Asignación operativa / RACI"),
             "estado_mejora": st.column_config.TextColumn("Estado de mejora"),
@@ -9152,7 +9155,8 @@ def dashboard_reincidencias_problemas():
             "- Se incluyen únicamente registros de la tabla de incidentes del periodo seleccionado.\n"
             "- Se leen primero observaciones de trabajo, notas, actualizaciones, descripción e impacto.\n"
             "- El servicio registrado se usa como contexto, pero no decide por sí solo la agrupación.\n"
-            "- Se agrupan incidentes por el tema operativo encontrado: firma, CLR, canal de ventas, instalación, caídas de portal, SSPS u otros patrones.\n"
+            "- Se identifican explícitamente Canal de ventas, GAIA, CLR/PKI, RPOST, OCSP, Certitoken, Portal y SSPS.\n"
+            "- El componente se combina con el síntoma cuando hay evidencia, por ejemplo Certitoken · problema de firma.\n"
             "- Solo se consideran problemas cuyo estado contiene **Plan de trabajo**.\n"
             "- Un problema se asocia cuando su declaración o detalle contiene términos del servicio, "
             "la tipificación o la causa del grupo de incidentes."

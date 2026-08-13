@@ -74,8 +74,25 @@ class MatrizRiesgoIncidentesTest(unittest.TestCase):
         matriz = construir_matriz_riesgo_incidentes(incidentes)
 
         self.assertEqual(1, len(matriz))
-        self.assertEqual("Canal de ventas - despliegue o funcionalidad", matriz.iloc[0]["criterio_similitud"])
+        self.assertEqual("Canal de ventas", matriz.iloc[0]["criterio_similitud"])
         self.assertIn("INC1", matriz.iloc[0]["evidencia_analizada"])
+
+    def test_clasifica_componentes_comunes_y_problemas_de_firma(self):
+        incidentes = pd.DataFrame([
+            {"numero": "INC1", "descripcion": "Certitoken no permite firmar el documento"},
+            {"numero": "INC2", "observaciones_trabajo": "Se presenta error al firmar con Certi Token"},
+            {"numero": "INC3", "descripcion": "Caída del servicio OCSP"},
+            {"numero": "INC4", "descripcion": "OCSP no responde"},
+        ])
+
+        matriz = construir_matriz_riesgo_incidentes(incidentes)
+
+        temas = set(matriz["criterio_similitud"])
+        self.assertIn("Certitoken · problema de firma", temas)
+        self.assertIn("OCSP · caída o indisponibilidad", temas)
+        fila_token = matriz[matriz["componente_detectado"] == "Certitoken"].iloc[0]
+        self.assertIn("INC1", fila_token["incidentes_asociados"])
+        self.assertIn("Certitoken", fila_token["comentario_analisis"])
 
 
 if __name__ == "__main__":
