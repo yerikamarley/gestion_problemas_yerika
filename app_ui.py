@@ -34,6 +34,7 @@ from services.casos import (
     segmentar_casos_por_asignacion,
     top_categorias,
 )
+from dashboards.riesgos_materializados import render_riesgos_materializados
 from app_logic import (
     AutorizacionError,
     agregar_campos_sla_incidentes,
@@ -9202,6 +9203,8 @@ def dashboard_reincidencias_problemas():
             "- Un problema se asocia cuando su declaración o detalle contiene términos del servicio, "
             "la tipificación o la causa del grupo de incidentes."
         )
+
+    render_riesgos_materializados()
 
     st.divider()
     st.markdown(f"#### Reincidencias anuales por causa raíz · {anio_incidentes}")

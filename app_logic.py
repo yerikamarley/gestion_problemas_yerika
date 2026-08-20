@@ -1721,6 +1721,21 @@ def init_db():
         )""",
     )
     ensure_table_columns(conn, "incident_risk_matrix_edits", {"problemas_plan_trabajo": "TEXT"})
+    db_execute(
+        conn,
+        """CREATE TABLE IF NOT EXISTS incident_risk_classification_overrides (
+            incident_number TEXT PRIMARY KEY,
+            automatic_classification_type TEXT,
+            automatic_risk_id TEXT,
+            automatic_exclusion_category TEXT,
+            final_classification_type TEXT NOT NULL,
+            final_risk_id TEXT,
+            final_exclusion_category TEXT,
+            modified_by TEXT NOT NULL,
+            modified_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            change_reason TEXT NOT NULL
+        )""",
+    )
     conn.commit()
     conn.close()
 
