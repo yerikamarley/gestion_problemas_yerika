@@ -77,7 +77,7 @@ RISK_CATALOG = (
           "Caídas de infraestructura core, portales, RPOST, OCSP y MongoDB.", "DIR. DE INFRAESTRUCTURA DE TI",
           "MAYOR (80%)", 0.80, ("NOC / Soporte TI", "Dir. Infra. TI", "Ciberseguridad", "Dir. Registro y Uso"),
           {"product": ("infraestructura core", "ocsp", "rpost", "mongodb", "portal"),
-           "failure": ("caida", "indisponibilidad", "no responde", "alarma real", "interrupcion"),
+           "failure": ("caida", "caido", "indisponibilidad", "no responde", "alarma real", "interrupcion"),
            "strong": ("caida ocsp", "ocsp no responde", "indisponibilidad ocsp")},
           exclusions=("ec2", "maquina virtual", "despliegue", "integracion", "api", "error 500", "error 503", "error 504"), priority=60),
     _risk("R47", "Posibilidad de pérdida parcial o total de información.",

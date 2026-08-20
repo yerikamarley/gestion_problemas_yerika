@@ -2,6 +2,7 @@
 
 import re
 import unicodedata
+import hashlib
 from collections import Counter
 
 import pandas as pd
@@ -137,6 +138,52 @@ def classify_incidents(df, overrides=None):
     return apply_overrides(detail, overrides)
 
 
+def group_materialized_events(detail, window_hours=6):
+    """Agrupa tickets próximos del mismo riesgo/componente en un evento auditable."""
+    risk_rows = detail[detail["classification_type"] == "RISK"].copy()
+    columns = ["event_id", "risk_id", "component", "event_start", "event_end", "ticket_count",
+               "tickets", "affected_clients", "event_status", "root_cause_status", "root_cause"]
+    if risk_rows.empty:
+        return pd.DataFrame(columns=columns)
+    risk_rows["component"] = risk_rows["servicio_negocio"].fillna("").apply(normalize_text).replace("", "sin componente")
+    risk_rows = risk_rows.sort_values(["risk_id", "component", "creado_dt", "numero"])
+    events = []
+    for (risk_id, component), group in risk_rows.groupby(["risk_id", "component"], dropna=False):
+        current = []
+        previous = None
+        for _, row in group.iterrows():
+            moment = row["creado_dt"]
+            if current and (pd.isna(moment) or pd.isna(previous) or moment - previous > pd.Timedelta(hours=window_hours)):
+                events.append(_event_record(risk_id, component, current))
+                current = []
+            current.append(row)
+            previous = moment
+        if current:
+            events.append(_event_record(risk_id, component, current))
+    result = pd.DataFrame(events, columns=columns)
+    event_counts = result.groupby("risk_id")["event_id"].transform("nunique")
+    result["event_status"] = event_counts.map(lambda count: "REINCIDENTE" if count >= 2 else "AISLADO")
+    return result
+
+
+def _event_record(risk_id, component, rows):
+    frame = pd.DataFrame(rows)
+    tickets = sorted(frame["numero"].unique())
+    start, end = frame["creado_dt"].min(), frame["creado_dt"].max()
+    seed = f"{risk_id}|{component}|{start}|{'|'.join(tickets)}"
+    causes = frame.get("causa_raiz_original", pd.Series(dtype=str)).fillna("").astype(str).str.strip()
+    causes = causes[~causes.str.casefold().isin(("", "sin inferencia"))]
+    inferred = frame.get("causa_raiz_auto", pd.Series(dtype=str)).fillna("").astype(str).str.strip()
+    inferred = inferred[~inferred.str.casefold().isin(("", "sin inferencia"))]
+    root_cause = causes.iloc[0] if not causes.empty else (inferred.iloc[0] if not inferred.empty else "")
+    status = "Causa confirmada" if not causes.empty else ("Causa probable" if root_cause else "Pendiente de investigación")
+    clients = frame.get("empresa", pd.Series(dtype=str)).fillna("").astype(str).str.strip()
+    return {"event_id": "EVT-" + hashlib.sha1(seed.encode()).hexdigest()[:10].upper(), "risk_id": risk_id,
+            "component": component, "event_start": start, "event_end": end, "ticket_count": len(tickets),
+            "tickets": ", ".join(tickets), "affected_clients": clients[clients.ne("")].nunique(),
+            "event_status": "", "root_cause_status": status, "root_cause": root_cause}
+
+
 def validate_reconciliation(detail):
     conflicts = []
     duplicated = detail[detail["numero"].duplicated(False)]
@@ -158,24 +205,33 @@ def validate_reconciliation(detail):
             "conflicts": pd.DataFrame(conflicts)}
 
 
-def build_analysis(detail, months):
+def build_analysis(detail, months, problem_links=None):
     validation = validate_reconciliation(detail)
     month_labels = {1:"Ene",2:"Feb",3:"Mar",4:"Abr",5:"May",6:"Jun",7:"Jul",8:"Ago",9:"Sep",10:"Oct",11:"Nov",12:"Dic"}
+    events = group_materialized_events(detail)
+    links = problem_links.copy() if problem_links is not None else pd.DataFrame()
     risks = []
     risk_rows = detail[detail["classification_type"] == "RISK"]
     for risk_id, group in risk_rows.groupby("risk_id"):
         risk = RISK_BY_ID.get(risk_id, {"name":"Riesgo no catalogado", "owner":"", "impact":"", "responsible_r":"", "accountable_a":"", "consulted_c":"", "informed_i":""})
         tickets = sorted(group["numero"].unique())
+        risk_events = events[events["risk_id"] == risk_id]
         row = {"ID": risk_id, "Riesgo Materializado": risk["name"], "Dueño del Riesgo": risk["owner"],
                "Impacto Escala": risk["impact"], "Cantidad tickets asociados": len(tickets),
                "Tickets Asociados": ", ".join(tickets), "Asignación Operativa RACI": f"R: {risk['responsible_r']} | A: {risk['accountable_a']} | C: {risk['consulted_c']} | I: {risk['informed_i']}",
-               "Estado": recurrence_status(len(tickets)), "R": risk["responsible_r"], "A": risk["accountable_a"], "C": risk["consulted_c"], "I": risk["informed_i"]}
+               "Estado": recurrence_status(risk_events["event_id"].nunique()), "R": risk["responsible_r"], "A": risk["accountable_a"], "C": risk["consulted_c"], "I": risk["informed_i"]}
+        risk_links = links[links["risk_id"] == risk_id] if not links.empty and "risk_id" in links else pd.DataFrame()
+        row["Eventos reales"] = int(risk_events["event_id"].nunique())
+        row["Problemas asociados"] = ", ".join(sorted(risk_links["problem_number"].astype(str).unique())) if not risk_links.empty else ""
+        row["Estado del problema"] = ", ".join(sorted(risk_links["problem_status"].fillna("Sin estado").astype(str).unique())) if not risk_links.empty else "Sin problema asociado"
+        row["Estado causa raíz"] = ", ".join(sorted(risk_events["root_cause_status"].unique())) if not risk_events.empty else "Pendiente de investigación"
         for month in months:
             row[month_labels[month]] = int(group.loc[group["mes_num"] == month, "numero"].nunique())
         risks.append(row)
     risk_columns = ["ID", "Riesgo Materializado", "Dueño del Riesgo", "Impacto Escala",
                     "Cantidad tickets asociados", "Tickets Asociados", "Asignación Operativa RACI", "Estado",
-                    *[month_labels[m] for m in months], "R", "A", "C", "I"]
+                    *[month_labels[m] for m in months], "Eventos reales", "Problemas asociados", "Estado del problema",
+                    "Estado causa raíz", "R", "A", "C", "I"]
     risks_df = pd.DataFrame(risks, columns=risk_columns)
     if not risks_df.empty:
         risks_df = risks_df.sort_values("Cantidad tickets asociados", ascending=False)
@@ -200,6 +256,7 @@ def build_analysis(detail, months):
     stats = {"rules": Counter(detail.loc[detail["classification_type"] != "PENDING", "classification_reason"].str.split(":").str[0]),
              "pending": validation["pending"], "manual_overrides": int((detail["classification_source"] == "MANUAL").sum()),
              "ambiguous": detail[detail["candidate_risks"].fillna("").str.contains(",")]}
-    return {"detail": detail, "risks": risks_df, "reconciliation": reconciliation,
+    return {"detail": detail, "risks": risks_df, "events": events, "problem_links": links,
+            "reconciliation": reconciliation,
             "exclusions": pd.DataFrame(exclusions), "pending": detail[detail["classification_type"] == "PENDING"].copy(),
             "validation": validation, "statistics": stats}

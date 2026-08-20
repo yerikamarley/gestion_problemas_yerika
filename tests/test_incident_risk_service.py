@@ -3,7 +3,7 @@ import unittest
 import pandas as pd
 from openpyxl import load_workbook
 
-from services.incident_risk_service import build_analysis, classify_incident, classify_incidents
+from services.incident_risk_service import build_analysis, classify_incident, classify_incidents, group_materialized_events
 from utils.risk_excel_export import build_risk_workbook
 
 
@@ -55,7 +55,21 @@ class IncidentRiskServiceTest(unittest.TestCase):
         analysis = build_analysis(classify_incidents(df), [1])
         from io import BytesIO
         wb = load_workbook(BytesIO(build_risk_workbook(analysis, 2026, 1, 1)))
-        self.assertEqual({"Resumen","Riesgos","Conciliación","Exclusiones","Detalle","Pendientes"}, set(wb.sheetnames))
+        required = {"Informe Ejecutivo","Resumen","Riesgos","Eventos","Problemas Asociados",
+                    "Conciliación","Exclusiones","Detalle Incidentes","Pendientes","Historial"}
+        self.assertEqual(required, set(wb.sheetnames))
+        self.assertEqual("Riesgos Materializados, Volumetría, Responsabilidades y Tratamiento", wb["Informe Ejecutivo"]["A1"].value)
+
+    def test_groups_multiple_tickets_into_one_event_and_separates_recurrence(self):
+        df = pd.DataFrame([
+            {"numero":"INC1", "creado":"2026-01-01 08:00", "servicio_negocio":"OCSP", "descripcion":"Caída OCSP no responde"},
+            {"numero":"INC2", "creado":"2026-01-01 09:30", "servicio_negocio":"OCSP", "descripcion":"OCSP continúa caído"},
+            {"numero":"INC3", "creado":"2026-01-03 08:00", "servicio_negocio":"OCSP", "descripcion":"Nueva caída OCSP no responde"},
+        ])
+        events = group_materialized_events(classify_incidents(df))
+        self.assertEqual(2, len(events))
+        self.assertEqual(2, int(events.iloc[0]["ticket_count"]))
+        self.assertTrue((events["event_status"] == "REINCIDENTE").all())
 
 
 if __name__ == "__main__": unittest.main()

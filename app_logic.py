@@ -1736,6 +1736,31 @@ def init_db():
             change_reason TEXT NOT NULL
         )""",
     )
+    db_execute(
+        conn,
+        """CREATE TABLE IF NOT EXISTS risk_problem_links (
+            risk_id TEXT NOT NULL,
+            problem_number TEXT NOT NULL,
+            link_status TEXT NOT NULL DEFAULT 'CONFIRMED',
+            notes TEXT,
+            created_by TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (risk_id, problem_number)
+        )""",
+    )
+    db_execute(
+        conn,
+        """CREATE TABLE IF NOT EXISTS risk_problem_link_history (
+            history_id BIGSERIAL PRIMARY KEY,
+            risk_id TEXT NOT NULL,
+            problem_number TEXT NOT NULL,
+            action TEXT NOT NULL,
+            notes TEXT,
+            changed_by TEXT NOT NULL,
+            changed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )""",
+    )
     conn.commit()
     conn.close()
 
