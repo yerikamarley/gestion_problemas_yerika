@@ -77,13 +77,13 @@ def render_riesgos_materializados():
     else:
         st.error("Error de conciliación de incidentes")
         if not validation["conflicts"].empty: st.dataframe(validation["conflicts"], hide_index=True)
-    st.markdown("#### Riesgos materializados por patrón operativo")
-    st.caption("Cada fila conserva la relación riesgo + componente + síntoma, siguiendo la misma estructura de la gráfica anual.")
+    st.markdown("#### Riesgos materializados por servicio o componente")
+    st.caption("Cada servicio aparece una sola vez. Las caídas, alertas, fallas de firma y demás naturalezas se consolidan dentro de esa fila.")
     if patterns.empty: st.info("No hay patrones con evidencia suficiente de materialización para los filtros actuales.")
     else:
         pattern_columns = ["id_riesgo", "riesgo_materializado", "criterio_similitud", "dominio_evento", "proveedor_evento", "naturaleza_evento", "causa_probable", "estado_causa", "cantidad_incidentes", "incidentes_asociados", "impacto_escala"]
         st.dataframe(patterns[[column for column in pattern_columns if column in patterns]], use_container_width=True, hide_index=True)
-    st.markdown("#### Causa y tratamiento por patrón")
+    st.markdown("#### Causa y tratamiento por servicio")
     risk_treatment = analysis["risks"][["ID", "Problemas asociados", "Estado del problema"]].copy() if not analysis["risks"].empty else pd.DataFrame(columns=["ID", "Problemas asociados", "Estado del problema"])
     treatment = patterns.merge(risk_treatment, left_on="id_riesgo", right_on="ID", how="left") if not patterns.empty else pd.DataFrame()
     treatment_columns = ["id_riesgo", "criterio_similitud", "causa_probable", "estado_causa", "incidentes_asociados", "problemas_plan_trabajo", "Problemas asociados", "Estado del problema"]
@@ -105,7 +105,7 @@ def render_riesgos_materializados():
             st.info("No hay problemas registrados. Créalo primero desde el módulo Problemas.")
         else:
             pattern_choice = st.selectbox(
-                "Patrón operativo", pattern_options, key="link_pattern",
+                "Servicio o componente", pattern_options, key="link_pattern",
                 format_func=lambda key: f"{pattern_risks.get(key, '')} · {pattern_labels.get(key, key)}",
             )
             risk_choice = pattern_risks[pattern_choice]
@@ -117,7 +117,7 @@ def render_riesgos_materializados():
             col_link, col_unlink = st.columns(2)
             if col_link.button("Vincular problema", type="primary"):
                 try:
-                    traceable_note = f"Patrón operativo: {pattern_labels.get(pattern_choice, pattern_choice)}. {link_note}".strip()
+                    traceable_note = f"Servicio o componente: {pattern_labels.get(pattern_choice, pattern_choice)}. {link_note}".strip()
                     save_risk_problem_link(risk_choice, problem_choice, traceable_note, st.session_state.get("user"))
                 except (PermissionError, ValueError) as error:
                     st.error(str(error))

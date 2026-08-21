@@ -86,8 +86,8 @@ class MatrizRiesgoIncidentesTest(unittest.TestCase):
         matriz = construir_matriz_riesgo_incidentes(incidentes)
 
         temas = set(matriz["criterio_similitud"])
-        self.assertIn("Certitoken · problema de firma", temas)
-        self.assertIn("OCSP · caída o indisponibilidad", temas)
+        self.assertIn("Certitoken", temas)
+        self.assertIn("OCSP", temas)
         fila_token = matriz[matriz["componente_detectado"] == "Certitoken"].iloc[0]
         self.assertIn("INC1", fila_token["incidentes_asociados"])
         self.assertIn("Certitoken", fila_token["comentario_analisis"])
@@ -120,6 +120,28 @@ class MatrizRiesgoIncidentesTest(unittest.TestCase):
         self.assertIn("SSPS", componentes)
         self.assertIn("OCSP", componentes)
         self.assertNotIn("Monitoreo / NOC", componentes)
+
+    def test_consolida_alertas_caidas_y_firma_del_mismo_servicio(self):
+        incidentes = pd.DataFrame([
+            {"numero": "INC1", "descripcion": "Alerta NOC asociada a RPOST"},
+            {"numero": "INC2", "descripcion": "Portal RPOST caído y no responde"},
+            {"numero": "INC3", "descripcion": "RPOST presenta error al firmar"},
+        ])
+        matriz = construir_matriz_riesgo_incidentes(incidentes)
+        rpost = matriz[matriz["componente_detectado"] == "RPOST"]
+        self.assertEqual(1, len(rpost))
+        self.assertEqual(3, rpost.iloc[0]["cantidad_incidentes"])
+        self.assertIn("alertamiento", rpost.iloc[0]["naturaleza_evento"])
+        self.assertIn("caída o indisponibilidad", rpost.iloc[0]["naturaleza_evento"])
+        self.assertIn("problema de firma", rpost.iloc[0]["naturaleza_evento"])
+
+    def test_no_mezcla_servicios_no_catalogados_en_otro_componente(self):
+        incidentes = pd.DataFrame([
+            {"numero": "INC1", "servicio_negocio": "Servicio Alfa", "descripcion": "Servicio caído y no responde"},
+            {"numero": "INC2", "servicio_negocio": "Servicio Beta", "descripcion": "Servicio caído y no responde"},
+        ])
+        matriz = construir_matriz_riesgo_incidentes(incidentes)
+        self.assertEqual({"Servicio Alfa", "Servicio Beta"}, set(matriz["componente_detectado"]))
 
     def test_reconoce_autentic_tokens_crl_y_canal_ventas(self):
         incidentes = pd.DataFrame([

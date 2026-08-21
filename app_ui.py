@@ -9232,10 +9232,10 @@ def dashboard_reincidencias_problemas():
     render_riesgos_materializados()
 
     st.divider()
-    st.markdown(f"#### Reincidencias anuales por patrón operativo · {anio_incidentes}")
+    st.markdown(f"#### Reincidencias anuales por servicio o componente · {anio_incidentes}")
     st.caption(
         "Este bloque siempre toma el año completo, aunque arriba hayas seleccionado un mes. "
-        "Muestra patrones de componente + síntoma, no causas raíz confirmadas. Excluye instalaciones/solicitudes BAU "
+        "Cada línea representa un servicio o componente consolidado; los síntomas se conservan como desglose interno. Excluye instalaciones/solicitudes BAU "
         "y alertas de monitoreo sin afectación; se actualiza automáticamente cuando cargas o actualizas incidentes."
     )
     incidentes_anuales = cargar_incidentes_filtrados_cache(anio_incidentes, None)
@@ -9244,9 +9244,9 @@ def dashboard_reincidencias_problemas():
         st.info("Todavía no hay causas repetidas suficientes para construir el análisis anual.")
         return
     render_tarjetas([
-        ("Patrones recurrentes", len(resumen_anual)),
+        ("Servicios recurrentes", len(resumen_anual)),
         ("Incidentes reincidentes", int(resumen_anual["total_anual"].sum())),
-        ("Patrones presentes en varios meses", int((resumen_anual["meses_con_eventos"] > 1).sum())),
+        ("Servicios presentes en varios meses", int((resumen_anual["meses_con_eventos"] > 1).sum())),
     ])
     causas_top = resumen_anual.head(10)["causa"].tolist()
     tendencia = mensual_anual[mensual_anual["causa"].isin(causas_top)]
@@ -9257,12 +9257,12 @@ def dashboard_reincidencias_problemas():
             y="incidentes",
             color="causa",
             markers=True,
-            title="Comportamiento mensual de los patrones operativos más recurrentes",
+            title="Comportamiento mensual de los servicios o componentes más recurrentes",
         )
-        st.plotly_chart(aplicar_estilo_figura(fig, "Reincidencias anuales por patrón operativo"), use_container_width=True)
+        st.plotly_chart(aplicar_estilo_figura(fig, "Reincidencias anuales por servicio o componente"), use_container_width=True)
     st.dataframe(
         resumen_anual.rename(columns={
-            "causa": "Patrón operativo (componente · síntoma)",
+            "causa": "Servicio o componente",
             "total_anual": "Total anual",
             "meses_con_eventos": "Meses con eventos",
             "primer_incidente": "Primer incidente",
@@ -9276,7 +9276,7 @@ def dashboard_reincidencias_problemas():
     with st.expander("Ver detalle mensual e incidentes exactos"):
         st.dataframe(
             mensual_anual.rename(columns={
-                "causa": "Patrón operativo",
+                "causa": "Servicio o componente",
                 "mes": "Mes",
                 "incidentes": "Cantidad",
                 "incidentes_asociados": "Incidentes asociados",

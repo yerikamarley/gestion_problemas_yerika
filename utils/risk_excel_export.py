@@ -103,7 +103,7 @@ def _public_patterns(patterns):
     result = patterns.reindex(columns=columns).copy()
     return result.rename(columns={
         "id_riesgo": "ID riesgo", "riesgo_materializado": "Riesgo materializado",
-        "criterio_similitud": "Patrón operativo (componente · síntoma)", "dominio_evento": "Dominio",
+        "criterio_similitud": "Servicio o componente", "dominio_evento": "Dominio",
         "proveedor_evento": "Proveedor", "naturaleza_evento": "Naturaleza",
         "causa_probable": "Causa probable", "estado_causa": "Estado de la causa",
         "cantidad_incidentes": "Cantidad de INC", "incidentes_asociados": "INC asociados",

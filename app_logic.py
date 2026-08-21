@@ -3025,6 +3025,8 @@ INCIDENT_REINCIDENCE_COMPONENTS = [
     ("Firma digital", ("firma digital", "proceso de firma", "firmar", "firma")),
     ("Servicio de autenticación", ("servicio de autenticacion", "autenticacion por certificado", "falla de autenticacion")),
     ("GAIA", ("gaia",)),
+    ("Base de datos", ("base de datos", "database", "mssql", "mongodb")),
+    ("Red / Conectividad", ("red", "conectividad", "conexion", "ldap")),
     ("Portal", ("portal",)),
     ("Monitoreo / NOC", ("alerta", "alarma", "monitoreo", "noc", "zabbix", "grafana", "prometheus", "solarwinds")),
 ]
@@ -3655,12 +3657,16 @@ def enriquecer_base_reincidencias(base, incidentes_df):
     analisis = {}
     for _, row in incidentes_df.iterrows():
         numero = safe_text(valor_fila(row, "numero"))
+        componente = componente_reincidencia_incidente(row)
+        if not componente:
+            servicio_informado = safe_text(valor_fila(row, "servicio_negocio"))
+            componente = servicio_informado if servicio_informado and servicio_informado != SIN_SERVICIO_PRODUCTO_ANALISIS else "Otro componente"
         elegibilidad, criterio = clasificar_elegibilidad_matriz_incidente(row)
         risk_id, risk_name, domain, nature = mapear_riesgo_operativo_matriz(row)
         technical_cause, cause_status = causa_tecnica_reincidencia_incidente(row)
         analisis[numero] = (
             tema_reincidencia_incidente(row), evidencia_reincidencia_incidente(row),
-            componente_reincidencia_incidente(row) or "Otro componente",
+            componente,
             elegibilidad, criterio, risk_id, risk_name, domain, nature,
             proveedor_reincidencia_incidente(row), technical_cause, cause_status,
         )
@@ -3710,10 +3716,16 @@ def construir_matriz_riesgo_incidentes(incidentes_df, problemas_df=None, edicion
     if base.empty:
         return pd.DataFrame(columns=MATRIZ_RIESGO_INCIDENTES_COLUMNS)
     filas = []
-    group_columns = ["id_riesgo_matriz", "riesgo_matriz", "dominio_evento", "componente_reincidencia", "naturaleza_evento"]
-    for keys, grupo in base.groupby(group_columns, dropna=False):
-        id_riesgo, riesgo_materializado, dominio, componente_grupo, naturaleza = keys
-        tema = f"{componente_grupo} · {naturaleza}"
+    for componente_grupo, grupo in base.groupby("componente_reincidencia", dropna=False):
+        riesgos_ids = [value for value in grupo["id_riesgo_matriz"].dropna().astype(str).unique().tolist() if value]
+        riesgos_nombres = [value for value in grupo["riesgo_matriz"].dropna().astype(str).unique().tolist() if value]
+        dominios = [value for value in grupo["dominio_evento"].dropna().astype(str).unique().tolist() if value]
+        naturalezas = [value for value in grupo["naturaleza_evento"].dropna().astype(str).unique().tolist() if value]
+        id_riesgo = " | ".join(riesgos_ids)
+        riesgo_materializado = " | ".join(riesgos_nombres)
+        dominio = " | ".join(dominios)
+        naturaleza = " | ".join(naturalezas)
+        tema = componente_grupo
         servicio = valor_mas_frecuente_analisis(grupo["servicio_producto"], SIN_SERVICIO_PRODUCTO_ANALISIS)
         tipificacion = valor_mas_frecuente_analisis(grupo["tipificacion"], SIN_TIPIFICACION_ANALISIS)
         causa = causa_probable_grupo(grupo)
@@ -3721,7 +3733,7 @@ def construir_matriz_riesgo_incidentes(incidentes_df, problemas_df=None, edicion
         proveedor = " | ".join(proveedores) if proveedores else "No identificado / no aplica"
         estados_causa = [value for value in grupo["estado_causa_tecnica"].dropna().unique().tolist() if value]
         estado_causa = "Causa confirmada" if "Causa confirmada" in estados_causa else ("Causa probable" if causa != "En proceso de análisis" else "Pendiente de investigación")
-        id_matriz = normalizar_texto(f"{id_riesgo}|{componente_grupo}|{naturaleza}")
+        id_matriz = normalizar_texto(componente_grupo)
         numeros = [safe_text(x) for x in grupo["numero"].tolist() if safe_text(x)]
         componentes = [x for x in grupo["componente_reincidencia"].dropna().unique().tolist() if x != "Otro componente"]
         componente_texto = ", ".join(componentes) if componentes else "Otro componente"
@@ -3747,7 +3759,7 @@ def construir_matriz_riesgo_incidentes(incidentes_df, problemas_df=None, edicion
             "criterio_similitud": tema,
             "comentario_analisis": (
                 f"Se asociaron {len(numeros)} incidentes al componente {componente_texto}. "
-                f"El patrón común identificado en comentarios y descripciones es: {tema}."
+                f"Naturalezas observadas dentro del mismo servicio: {naturaleza}."
             ),
             "evidencia_analizada": "\n".join(ejemplos),
             "asignacion_operativa": "Por definir",
@@ -3756,7 +3768,7 @@ def construir_matriz_riesgo_incidentes(incidentes_df, problemas_df=None, edicion
             "mejoras": "Revisar incidentes asociados y definir acción correctiva o preventiva.",
             "justificacion_metodologica": (
                 "Agrupación semántica por coincidencias en observaciones de trabajo, notas, actualizaciones y descripciones; "
-                f"se identificaron {len(numeros)} incidentes en el periodo."
+                f"se identificaron {len(numeros)} incidentes del mismo servicio o componente en el periodo."
             ),
             "ejemplos_reales": "\n".join(ejemplos),
         })
@@ -3823,8 +3835,8 @@ def construir_analisis_anual_reincidencias_incidentes(incidentes_df):
     base = base[base["elegibilidad_matriz"].isin(("MATERIAL", "ALERTA_SERVICIO"))].copy()
     if base.empty:
         return pd.DataFrame(), pd.DataFrame()
-    trabajo = base[base["tema_reincidencia"].apply(es_valor_informativo_analisis)].copy()
-    trabajo = trabajo.rename(columns={"causa": "causa_registrada", "tema_reincidencia": "causa"})
+    trabajo = base[base["componente_reincidencia"].apply(es_valor_informativo_analisis)].copy()
+    trabajo = trabajo.rename(columns={"causa": "causa_registrada", "componente_reincidencia": "causa"})
     trabajo = trabajo[trabajo["fecha_dt"].notna()].copy()
     if trabajo.empty:
         return pd.DataFrame(), pd.DataFrame()
