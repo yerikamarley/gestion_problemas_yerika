@@ -13,6 +13,7 @@ incidents = pd.DataFrame([
     {"numero": "INC-DEMO-04", "creado": "2026-04-13", "servicio_negocio": "Facturación", "descripcion": "Inconsistencia de facturación"},
     {"numero": "INC-DEMO-05", "creado": "2026-05-14", "servicio_negocio": "ERP", "descripcion": "Caso de soporte bloqueado"},
     {"numero": "INC-DEMO-06", "creado": "2026-06-15", "servicio_negocio": "OCSP", "descripcion": "Caída OCSP no responde"},
+    {"numero": "INC-DEMO-10", "creado": "2026-06-18", "servicio_negocio": "OCSP", "descripcion": "Nueva caída OCSP no responde"},
     {"numero": "INC-DEMO-07", "creado": "2026-07-16", "servicio_negocio": "AWS S3", "descripcion": "Pérdida de información por falla almacenamiento bucket"},
     {"numero": "INC-DEMO-08", "creado": "2026-08-17", "descripcion": "Novedad pendiente de análisis"},
     {"numero": "INC-DEMO-09", "creado": "2026-08-18", "descripcion": "Olvido de contraseña"},

@@ -15,10 +15,13 @@ for (const sheetName of sheets) {
 
 const overview = await workbook.inspect({ kind: "sheet", include: "id,name", maxChars: 4000 });
 const executive = await workbook.inspect({ kind: "table", range: "Informe Ejecutivo!A1:G24", tableMaxRows: 24, tableMaxCols: 7, maxChars: 12000 });
-const sensitive = await workbook.inspect({ kind: "match", searchTerm: "INC-DEMO|breve_descripcion|descripcion|notes|solicitudes", options: { useRegex: true, maxResults: 100 }, maxChars: 4000 });
+const traceability = await workbook.inspect({ kind: "match", searchTerm: "INC-DEMO", options: { useRegex: false, maxResults: 100 }, maxChars: 4000 });
+const sensitive = await workbook.inspect({ kind: "match", searchTerm: "Error 504|Falla OTP|Caída OCSP|breve_descripcion|descripcion|notes", options: { useRegex: true, maxResults: 100 }, maxChars: 4000 });
 const errors = await workbook.inspect({ kind: "match", searchTerm: "#REF!|#DIV/0!|#VALUE!|#NAME\\?|#N/A", options: { useRegex: true, maxResults: 100 }, maxChars: 4000 });
 console.log(overview.ndjson);
 console.log(executive.ndjson);
+console.log("TRACEABILITY_SCAN");
+console.log(traceability.ndjson);
 console.log("SENSITIVE_SCAN");
 console.log(sensitive.ndjson);
 console.log("ERROR_SCAN");

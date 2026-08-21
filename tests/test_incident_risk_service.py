@@ -51,13 +51,20 @@ class IncidentRiskServiceTest(unittest.TestCase):
         self.assertTrue(all(analysis["risks"]["Cantidad tickets asociados"] == analysis["risks"]["Tickets Asociados"].str.split(", ").str.len()))
 
     def test_excel_has_required_sheets(self):
-        df = pd.DataFrame([{"numero":"INC1", "creado":"2026-01-01", "descripcion":"Novedad"}])
+        df = pd.DataFrame([
+            {"numero":"INC1", "creado":"2026-01-01", "servicio_negocio":"OCSP", "descripcion":"Caída OCSP no responde"},
+            {"numero":"INC2", "creado":"2026-01-03", "servicio_negocio":"OCSP", "descripcion":"Nueva caída OCSP no responde"},
+        ])
         analysis = build_analysis(classify_incidents(df), [1])
         from io import BytesIO
         wb = load_workbook(BytesIO(build_risk_workbook(analysis, 2026, 1, 1)))
         required = {"Informe Ejecutivo", "Resumen", "Riesgos", "Conciliación", "Exclusiones", "Metodología"}
         self.assertEqual(required, set(wb.sheetnames))
         self.assertEqual("Matriz ejecutiva de riesgos materializados", wb["Informe Ejecutivo"]["A1"].value)
+        self.assertEqual("INC asociados", wb["Informe Ejecutivo"]["F8"].value)
+        self.assertEqual("Nivel de recurrencia", wb["Informe Ejecutivo"]["G8"].value)
+        self.assertIn("INC1", wb["Informe Ejecutivo"]["F9"].value)
+        self.assertEqual("REINCIDENTE", wb["Informe Ejecutivo"]["G9"].value)
         self.assertEqual(required, set(wb.sheetnames))
         for sheet in wb.worksheets:
             for row in sheet.iter_rows():

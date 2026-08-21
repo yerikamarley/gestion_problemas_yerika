@@ -74,9 +74,15 @@ def _treatment(row):
 
 
 def _public_risks(risks):
-    columns = ["ID", "Riesgo Materializado", "Dueño del Riesgo", "Impacto Escala", "Cantidad tickets asociados", "Eventos reales", "Asignación Operativa RACI", "Estado"]
+    columns = ["ID", "Riesgo Materializado", "Dueño del Riesgo", "Impacto Escala", "Cantidad tickets asociados", "Tickets Asociados", "Eventos reales", "Estado", "Asignación Operativa RACI"]
     result = risks[[column for column in columns if column in risks]].copy()
-    return result.rename(columns={"Cantidad tickets asociados": "Cantidad de casos asociados"})
+    if "Estado" in result:
+        result["Estado"] = result["Estado"].astype(str).str.replace("🔥 ", "", regex=False)
+    return result.rename(columns={
+        "Cantidad tickets asociados": "Cantidad de casos asociados",
+        "Tickets Asociados": "INC asociados",
+        "Estado": "Nivel de recurrencia",
+    })
 
 
 def _public_exclusions(exclusions):
@@ -93,7 +99,7 @@ def _executive(wb, analysis, year, month_from, month_to):
     ws = wb.create_sheet("Informe Ejecutivo")
     ws.sheet_view.showGridLines = False
     period = f"Año {year}" if (month_from, month_to) == (1, 12) else f"{year} · {MONTHS[month_from]}-{MONTHS[month_to]}"
-    ws.merge_cells("A1:G1")
+    ws.merge_cells("A1:I1")
     ws["A1"] = "Matriz ejecutiva de riesgos materializados"
     ws["A1"].font = _font(bold=True)
     ws["A1"].fill = PatternFill("solid", fgColor=PURPLE)
@@ -101,39 +107,44 @@ def _executive(wb, analysis, year, month_from, month_to):
     ws.row_dimensions[1].height = 28
 
     validation = analysis["validation"]
-    ws.merge_cells("A2:G2")
+    ws.merge_cells("A2:I2")
     ws["A2"] = f"Periodo: {period} | {validation['total']} casos únicos analizados"
     ws["A2"].font = _font(italic=True)
     ws["A2"].fill = PatternFill("solid", fgColor=YELLOW)
     ws["A2"].alignment = Alignment(horizontal="center", vertical="center")
-    ws.merge_cells("A3:G3")
-    ws["A3"] = "Informe anonimizado: no contiene números de caso, notas, solicitudes, datos personales ni detalles técnicos."
+    ws.merge_cells("A3:I3")
+    ws["A3"] = "Trazabilidad controlada: se incluyen los números de INC asociados, sin notas, solicitudes, datos personales ni detalles técnicos."
     ws["A3"].font = _font(bold=True)
     ws["A3"].fill = PatternFill("solid", fgColor=ORANGE)
     ws["A3"].alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
 
-    ws.merge_cells("A5:G5")
+    ws.merge_cells("A5:I5")
     _section(ws["A5"], "Tabla 1. Matriz de riesgos materializados")
     risk_count = int(analysis["risks"]["ID"].nunique()) if not analysis["risks"].empty else 0
     ws["A6"] = f"Total de riesgos materializados en el periodo: {risk_count}"
     ws["A6"].font = _font(bold=True)
-    headers = ["ID", "Riesgo materializado", "Dueño del riesgo", "Impacto", "Volumetría consolidada", "Asignación RACI", "Estado de causa y tratamiento"]
+    headers = ["ID", "Riesgo materializado", "Dueño del riesgo", "Impacto", "Volumetría consolidada", "INC asociados", "Nivel de recurrencia", "Asignación RACI", "Estado de causa y tratamiento"]
     for col, value in enumerate(headers, 1):
         ws.cell(8, col, value)
-    _header(ws, 8, 1, 7)
+    _header(ws, 8, 1, 9)
 
     row_no = 9
     month_cols = [MONTHS[month] for month in range(month_from, month_to + 1)]
     for _, row in analysis["risks"].iterrows():
         volume = [f"Total del periodo: {int(row['Cantidad tickets asociados'])}"]
         volume.extend(f"{month}: {int(row.get(month, 0) or 0)}" for month in month_cols)
-        volume.extend([f"Eventos estimados: {int(row.get('Eventos reales', 0) or 0)}", f"Estado: {row['Estado']}"])
-        values = [row["ID"], row["Riesgo Materializado"], row["Dueño del Riesgo"], row["Impacto Escala"], "\n".join(volume), row["Asignación Operativa RACI"], _treatment(row)]
+        volume.append(f"Eventos estimados: {int(row.get('Eventos reales', 0) or 0)}")
+        recurrence = str(row["Estado"]).replace("🔥 ", "")
+        values = [row["ID"], row["Riesgo Materializado"], row["Dueño del Riesgo"], row["Impacto Escala"], "\n".join(volume), row["Tickets Asociados"], recurrence, row["Asignación Operativa RACI"], _treatment(row)]
         for col, value in enumerate(values, 1):
             ws.cell(row_no, col, _safe(value))
         ws.row_dimensions[row_no].height = 240
         row_no += 1
-    _body(ws, 9, row_no - 1, 1, 7)
+    _body(ws, 9, row_no - 1, 1, 9)
+    for current_row in range(9, row_no):
+        if ws.cell(current_row, 7).value == "REINCIDENTE":
+            ws.cell(current_row, 7).fill = PatternFill("solid", fgColor=ORANGE)
+            ws.cell(current_row, 7).font = _font(bold=True)
 
     row_no += 2
     ws.merge_cells(start_row=row_no, start_column=1, end_row=row_no, end_column=3)
@@ -159,10 +170,10 @@ def _executive(wb, analysis, year, month_from, month_to):
         for cell in ws[row_no - 1][:3]:
             cell.fill = PatternFill("solid", fgColor=ORANGE)
 
-    for index, width in enumerate([15, 48, 30, 22, 30, 38, 50], 1):
+    for index, width in enumerate([12, 44, 28, 18, 27, 28, 20, 36, 46], 1):
         ws.column_dimensions[get_column_letter(index)].width = width
     ws.freeze_panes = "A9"
-    ws.auto_filter.ref = f"A8:G{max(8, 8 + len(analysis['risks']))}"
+    ws.auto_filter.ref = f"A8:I{max(8, 8 + len(analysis['risks']))}"
     ws.page_setup.orientation = "landscape"
     ws.page_setup.fitToWidth = 1
     ws.sheet_properties.pageSetUpPr.fitToPage = True
@@ -189,7 +200,8 @@ def build_risk_workbook(analysis, year, month_from, month_to):
     ], columns=["Indicador", "Valor"])
     methodology = pd.DataFrame([
         ("Alcance", "Informe ejecutivo consolidado y anonimizado."),
-        ("Información excluida", "Números de caso, nombres, notas, solicitudes, descripciones, evidencias técnicas, componentes específicos y números de problemas."),
+        ("Trazabilidad incluida", "Números de los INC asociados a cada riesgo y su nivel de recurrencia."),
+        ("Información excluida", "Nombres, notas, solicitudes, descripciones, evidencias técnicas, componentes específicos y números de problemas."),
         ("Causa pendiente", "Se reporta como 'Causa en proceso de análisis' hasta confirmar la causa raíz."),
         ("Acceso al detalle", "El detalle permanece en el sistema de gestión y requiere autorización según el rol."),
         ("Uso", "Seguimiento directivo, control de tendencias y toma de decisiones."),
