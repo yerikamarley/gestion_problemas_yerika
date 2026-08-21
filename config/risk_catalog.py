@@ -42,20 +42,20 @@ def _risk(risk_id, name, failure, owner, impact, impact_pct, raci, rules, exclus
 
 # Una regla exige evidencia de al menos dos grupos, salvo que ``strong`` coincida.
 RISK_CATALOG = (
-    _risk("R164", "Fallas en despliegue, configuración e integración en entornos nube, on-premise o híbridos.",
+    _risk("R164", "Posibilidad de fallas en el despliegue, la configuración o la integración en entornos de nube, on-premise o híbridos.",
           "Caída de máquinas virtuales/EC2, despliegues, configuración, APIs e integraciones técnicas.",
           "DIR. DE INFRAESTRUCTURA DE TI", "MENOR (40%)", 0.40,
           ("Analista Ciberseg.", "Dir. Infra. TI", "Gestor Capacidad", "Dir. Registro y Uso"),
           {"technical": ("ec2", "maquina virtual", "maquinas virtuales", "despliegue", "configuracion", "api", "integracion", "consulta de listas"),
            "failure": ("error 500", "error 503", "error 504", "caida", "indisponibilidad", "perdida de integracion", "no responde"),
            "strong": ("ec2 error 504", "error 504 integracion", "falla de despliegue", "caida ec2")}, priority=10),
-    _risk("R76", "Inadecuación o debilidades en los procesos de validación de identidad.",
+    _risk("R76", "Posibilidad de inadecuación o debilidades en los procesos de validación de identidad.",
           "Problemas de biometría, VDI, correos de validación, OTP y SMS.", "DIR. DE REGISTRO Y USO",
           "MODERADO (60%)", 0.60, ("Soporte Nivel 2 / Oficial Revisión", "Dir. Registro y Uso", "Dir. Registro y Uso", "Cliente"),
           {"product": ("biometria", "biometrico", "vdi", "validacion de identidad"),
            "failure": ("otp", "sms", "correo de validacion", "codigo de validacion", "no recibe codigo", "no llega codigo", "falla", "error"),
            "strong": ("validacion biometrica", "validacion de identidad")}, priority=20),
-    _risk("R75", "Fallas y/o debilidades en los procesos de revisión, aprobación y emisión de certificados digitales.",
+    _risk("R75", "Posibilidad de fallas o debilidades en los procesos de revisión, aprobación y emisión de certificados digitales.",
           "Errores de emisión en portal y fallas en descarga de Tokens.", "DIR. DE REGISTRO Y USO",
           "MODERADO (60%)", 0.60, ("Soporte Nivel 2", "Dir. Registro y Uso", "Desarrollo", "Negocios"),
           {"product": ("certificado digital", "token", "portal"),

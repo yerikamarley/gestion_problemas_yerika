@@ -55,10 +55,17 @@ class IncidentRiskServiceTest(unittest.TestCase):
         analysis = build_analysis(classify_incidents(df), [1])
         from io import BytesIO
         wb = load_workbook(BytesIO(build_risk_workbook(analysis, 2026, 1, 1)))
-        required = {"Informe Ejecutivo","Resumen","Riesgos","Eventos","Problemas Asociados",
-                    "Conciliación","Exclusiones","Detalle Incidentes","Pendientes","Historial"}
+        required = {"Informe Ejecutivo", "Resumen", "Riesgos", "Conciliación", "Exclusiones", "Metodología"}
         self.assertEqual(required, set(wb.sheetnames))
-        self.assertEqual("Riesgos Materializados, Volumetría, Responsabilidades y Tratamiento", wb["Informe Ejecutivo"]["A1"].value)
+        self.assertEqual("Matriz ejecutiva de riesgos materializados", wb["Informe Ejecutivo"]["A1"].value)
+        self.assertEqual(required, set(wb.sheetnames))
+        for sheet in wb.worksheets:
+            for row in sheet.iter_rows():
+                for cell in row:
+                    if cell.value is not None:
+                        self.assertEqual("Arial", cell.font.name)
+                        self.assertEqual(12, cell.font.sz)
+                        self.assertEqual("000000", cell.font.color.rgb[-6:])
 
     def test_groups_multiple_tickets_into_one_event_and_separates_recurrence(self):
         df = pd.DataFrame([
