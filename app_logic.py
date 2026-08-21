@@ -2918,9 +2918,12 @@ def clasificar_elegibilidad_matriz_incidente(row):
     tiene_falla = any(termino in texto for termino in MATRIX_FAILURE_TERMS)
     es_instalacion = any(termino in texto for termino in MATRIX_INSTALLATION_TERMS)
     es_alerta = any(termino in texto for termino in MATRIX_ALERT_ONLY_TERMS)
+    componente = componente_reincidencia_incidente(row)
     if es_instalacion and not tiene_falla:
         return "EXCLUIDO_BAU", "Instalación, activación o configuración sin evidencia de falla o afectación."
     if es_alerta and not tiene_falla:
+        if componente and componente != "Monitoreo / NOC":
+            return "ALERTA_SERVICIO", f"Alertamiento asociado a {componente}; la afectación debe confirmarse antes de declarar el riesgo materializado."
         return "EXCLUIDO_ALERTA", "Alerta o consulta de monitoreo sin indisponibilidad o afectación confirmada."
     if not tiene_falla:
         return "PENDIENTE", "No existe evidencia suficiente para afirmar materialización de un riesgo."
@@ -2932,10 +2935,13 @@ def mapear_riesgo_operativo_matriz(row):
     componente = componente_reincidencia_incidente(row) or "Otro componente"
     sintoma = sintoma_reincidencia_incidente(row) or "falla operativa"
     texto = normalizar_texto(texto_analisis_reincidencia_incidente(row))
+    if sintoma == "alertamiento" and componente != "Monitoreo / NOC":
+        dominio = "Proveedor externo" if componente in ("RPOST", "Autentic", "SSPS", "EPSS") else "Servicio o producto"
+        return "R-OBS", "Evento de alertamiento asociado a un servicio; materialización pendiente de confirmar.", dominio, sintoma
     if componente == "Monitoreo / NOC":
         return "R-MON", "Posibilidad de fallas en la detección, generación o atención oportuna de alertas tecnológicas.", "Monitoreo y alertamiento", sintoma
     if sintoma == "caída o indisponibilidad":
-        dominio = "Proveedor externo" if componente in ("RPOST", "SSPS", "EPSS") else "Disponibilidad de servicios"
+        dominio = "Proveedor externo" if componente in ("RPOST", "Autentic", "SSPS", "EPSS") else "Disponibilidad de servicios"
         return "R140", "Posibilidad de interrupción del funcionamiento de la infraestructura tecnológica.", dominio, sintoma
     if sintoma == "instalación o configuración":
         return "R164", "Posibilidad de fallas en el despliegue, la configuración o la integración en entornos de nube, on-premise o híbridos.", "Cambios y configuración", sintoma
@@ -2943,6 +2949,10 @@ def mapear_riesgo_operativo_matriz(row):
         return "R75", "Posibilidad de fallas o debilidades en los procesos de revisión, aprobación y emisión de certificados digitales.", "Firma digital", sintoma
     if any(termino in texto for termino in ("otp", "biometr", "validacion de identidad")):
         return "R76", "Posibilidad de inadecuación o debilidades en los procesos de validación de identidad.", "Validación de identidad", sintoma
+    if componente in ("Autentic",) and sintoma == "falla de autenticación o acceso":
+        return "R76", "Posibilidad de inadecuación o debilidades en los procesos de validación de identidad.", "Proveedor de autenticación", sintoma
+    if componente in ("Certitoken", "Token virtual", "Token físico", "Firma digital", "CLR / PKI") and sintoma == "problema de firma":
+        return "R75", "Posibilidad de fallas o debilidades en los procesos de revisión, aprobación y emisión de certificados digitales.", "Firma y certificados", sintoma
     return "R132", "Posibilidad de que no se gestionen o atiendan con soluciones de fondo los casos de soporte radicados.", "Operación y soporte", sintoma
 
 
@@ -2968,16 +2978,20 @@ INCIDENT_REINCIDENCE_THEMES = [
 ]
 
 INCIDENT_REINCIDENCE_COMPONENTS = [
-    ("Monitoreo / NOC", ("alerta", "alarma", "monitoreo", "noc", "zabbix", "grafana", "prometheus", "solarwinds")),
     ("Canal de ventas", ("canal de ventas", "nuevo canal", "bd de cuentas", "cuentas bancarias", "homologacion")),
-    ("GAIA", ("gaia",)),
-    ("CLR / PKI", ("actualizacion de clr", "actualizar clr", " clr ", "pki", "lista de revocacion", "certificados revocados")),
     ("RPOST", ("rpost",)),
+    ("Autentic", ("autentic", "authentic")),
+    ("SSPS", ("ssps", "servicio ssp", "ssp")),
     ("EPSS", ("epss",)),
-    ("OCSP", ("ocsp",)),
-    ("Certitoken", ("certitoken", "certi token", "token virtual", "tokensafe", "token safe")),
+    ("OCSP", ("ocsp", "osps")),
+    ("Token físico", ("token fisico", "token físico", "etoken", "e-token", "usb token")),
+    ("Certitoken", ("certitoken", "certi token", "tokensafe", "token safe")),
+    ("Token virtual", ("token virtual",)),
+    ("CLR / PKI", ("actualizacion de clr", "actualizar clr", "crl", "clr", "pki", "lista de revocacion", "certificados revocados")),
+    ("Firma digital", ("firma digital", "proceso de firma", "firmar", "firma")),
+    ("GAIA", ("gaia",)),
     ("Portal", ("portal",)),
-    ("SSPS", ("ssps",)),
+    ("Monitoreo / NOC", ("alerta", "alarma", "monitoreo", "noc", "zabbix", "grafana", "prometheus", "solarwinds")),
 ]
 
 INCIDENT_REINCIDENCE_SYMPTOMS = [
@@ -2985,6 +2999,8 @@ INCIDENT_REINCIDENCE_SYMPTOMS = [
     ("caída o indisponibilidad", ("caida", "caido", "indisponibilidad", "no responde", "error 500", "error 503", "error 504")),
     ("actualización o sincronización", ("actualizacion", "actualizar", "sincronizacion", "sincronizar")),
     ("instalación o configuración", ("instalacion", "instalar", "configuracion", "configurar", "driver", "middleware")),
+    ("falla de autenticación o acceso", ("autenticacion", "login", "acceso", "credenciales", "no autentica")),
+    ("alertamiento", ("alerta", "alarma", "monitoreo", "noc")),
 ]
 
 REINCIDENCIA_GROUP_COLUMNS = ["tipo_registro", "cliente_analisis", "servicio_producto", "causa"]
@@ -3649,7 +3665,7 @@ def construir_matriz_riesgo_incidentes(incidentes_df, problemas_df=None, edicion
     """Agrupa únicamente incidentes y enriquece con problemas en Plan de trabajo."""
     base = base_unificada_reincidencias(pd.DataFrame(), incidentes_df, incluir_sla=False)
     base = enriquecer_base_reincidencias(base, incidentes_df)
-    base = base[base["elegibilidad_matriz"] == "MATERIAL"].copy()
+    base = base[base["elegibilidad_matriz"].isin(("MATERIAL", "ALERTA_SERVICIO"))].copy()
     if base.empty:
         return pd.DataFrame(columns=MATRIZ_RIESGO_INCIDENTES_COLUMNS)
     filas = []
@@ -3718,9 +3734,9 @@ def resumir_elegibilidad_matriz_incidentes(incidentes_df):
     base = base_unificada_reincidencias(pd.DataFrame(), incidentes_df, incluir_sla=False)
     base = enriquecer_base_reincidencias(base, incidentes_df)
     if base.empty:
-        return {"MATERIAL": 0, "EXCLUIDO_BAU": 0, "EXCLUIDO_ALERTA": 0, "PENDIENTE": 0}
+        return {"MATERIAL": 0, "ALERTA_SERVICIO": 0, "EXCLUIDO_BAU": 0, "EXCLUIDO_ALERTA": 0, "PENDIENTE": 0}
     counts = base["elegibilidad_matriz"].value_counts().to_dict()
-    return {key: int(counts.get(key, 0)) for key in ("MATERIAL", "EXCLUIDO_BAU", "EXCLUIDO_ALERTA", "PENDIENTE")}
+    return {key: int(counts.get(key, 0)) for key in ("MATERIAL", "ALERTA_SERVICIO", "EXCLUIDO_BAU", "EXCLUIDO_ALERTA", "PENDIENTE")}
 
 
 def detalle_elegibilidad_matriz_incidentes(incidentes_df):
@@ -3759,7 +3775,7 @@ def construir_analisis_anual_reincidencias_incidentes(incidentes_df):
     """Resume patrones operativos materiales por mes, no supuestas causas raíz."""
     base = base_unificada_reincidencias(pd.DataFrame(), incidentes_df, incluir_sla=False)
     base = enriquecer_base_reincidencias(base, incidentes_df)
-    base = base[base["elegibilidad_matriz"] == "MATERIAL"].copy()
+    base = base[base["elegibilidad_matriz"].isin(("MATERIAL", "ALERTA_SERVICIO"))].copy()
     if base.empty:
         return pd.DataFrame(), pd.DataFrame()
     trabajo = base[base["tema_reincidencia"].apply(es_valor_informativo_analisis)].copy()

@@ -9137,6 +9137,7 @@ def dashboard_reincidencias_problemas():
         [
             ("Patrones materiales", len(matriz)),
             ("INC incluidos", elegibilidad["MATERIAL"]),
+            ("Alertas asociadas a servicio", elegibilidad["ALERTA_SERVICIO"]),
             ("BAU excluidos", elegibilidad["EXCLUIDO_BAU"]),
             ("Alertas sin afectación", elegibilidad["EXCLUIDO_ALERTA"]),
             ("Pendientes de validar", elegibilidad["PENDIENTE"]),

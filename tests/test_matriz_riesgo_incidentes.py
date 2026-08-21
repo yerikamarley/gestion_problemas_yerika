@@ -108,6 +108,31 @@ class MatrizRiesgoIncidentesTest(unittest.TestCase):
         self.assertEqual({"R140", "R-MON"}, set(matriz["id_riesgo"]))
         self.assertEqual("Proveedor externo", matriz[matriz["id_riesgo"] == "R140"].iloc[0]["dominio_evento"])
 
+    def test_prioriza_servicio_sobre_canal_noc(self):
+        incidentes = pd.DataFrame([
+            {"numero": "INC1", "descripcion": "Alerta NOC: RPOST caído y no responde"},
+            {"numero": "INC2", "descripcion": "Alerta de SSPS relacionada con problema de firma"},
+            {"numero": "INC3", "descripcion": "Monitoreo reporta caída de OCSP"},
+        ])
+        matriz = construir_matriz_riesgo_incidentes(incidentes)
+        componentes = set(matriz["componente_detectado"])
+        self.assertIn("RPOST", componentes)
+        self.assertIn("SSPS", componentes)
+        self.assertIn("OCSP", componentes)
+        self.assertNotIn("Monitoreo / NOC", componentes)
+
+    def test_reconoce_autentic_tokens_crl_y_canal_ventas(self):
+        incidentes = pd.DataFrame([
+            {"numero": "INC1", "descripcion": "Autentic presenta falla de autenticación y acceso"},
+            {"numero": "INC2", "descripcion": "Token físico no permite firmar"},
+            {"numero": "INC3", "descripcion": "Token virtual no permite firmar"},
+            {"numero": "INC4", "descripcion": "CRL presenta error de sincronización y falla"},
+            {"numero": "INC5", "descripcion": "Canal de ventas caído y no responde"},
+        ])
+        matriz = construir_matriz_riesgo_incidentes(incidentes)
+        componentes = set(matriz["componente_detectado"])
+        self.assertTrue({"Autentic", "Token físico", "Token virtual", "CLR / PKI", "Canal de ventas"}.issubset(componentes))
+
 
 if __name__ == "__main__":
     unittest.main()
