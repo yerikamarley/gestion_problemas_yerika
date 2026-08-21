@@ -2976,6 +2976,21 @@ def causa_probable_grupo(grupo):
     return " | ".join(valores[:3]) if valores else "En proceso de análisis"
 
 
+def resumen_naturaleza_grupo(grupo, componente):
+    conteos = grupo["naturaleza_evento"].fillna("").astype(str).replace("", "Sin naturaleza definida").value_counts()
+    partes = [f"{int(total)} de {naturaleza}" for naturaleza, total in conteos.items()]
+    detalle = "; ".join(partes)
+    return f"En {componente} se registraron {len(grupo)} INC: {detalle}."
+
+
+def resumen_causa_grupo(causa, grupo):
+    if causa == "En proceso de análisis":
+        return "La causa raíz continúa en análisis y debe validarse con la evidencia de los INC asociados."
+    if " | " in causa:
+        return f"Se identificaron causas diferentes: {causa.replace(' | ', '; ')}. Deben validarse por evento antes de definir el tratamiento."
+    return f"La causa identificada es: {causa}."
+
+
 def proveedor_reincidencia_incidente(row):
     informado = safe_text(valor_fila(row, "nombre_proveedor"))
     escalado = safe_text(valor_fila(row, "escalado_proveedor"))
@@ -3729,6 +3744,8 @@ def construir_matriz_riesgo_incidentes(incidentes_df, problemas_df=None, edicion
         servicio = valor_mas_frecuente_analisis(grupo["servicio_producto"], SIN_SERVICIO_PRODUCTO_ANALISIS)
         tipificacion = valor_mas_frecuente_analisis(grupo["tipificacion"], SIN_TIPIFICACION_ANALISIS)
         causa = causa_probable_grupo(grupo)
+        resumen_naturaleza = resumen_naturaleza_grupo(grupo, componente_grupo)
+        resumen_causa = resumen_causa_grupo(causa, grupo)
         proveedores = [value for value in grupo["proveedor_evento"].dropna().astype(str).unique().tolist() if value]
         proveedor = " | ".join(proveedores) if proveedores else "No identificado / no aplica"
         estados_causa = [value for value in grupo["estado_causa_tecnica"].dropna().unique().tolist() if value]
@@ -3746,8 +3763,8 @@ def construir_matriz_riesgo_incidentes(incidentes_df, problemas_df=None, edicion
             "riesgo_materializado": riesgo_materializado,
             "dominio_evento": dominio,
             "proveedor_evento": proveedor,
-            "naturaleza_evento": naturaleza,
-            "causa_probable": causa,
+            "naturaleza_evento": resumen_naturaleza,
+            "causa_probable": resumen_causa,
             "estado_causa": estado_causa,
             "criterio_inclusion": valor_mas_frecuente_analisis(grupo["criterio_inclusion"], "Evidencia de materialización"),
             "dueno_riesgo": valor_mas_frecuente_analisis(grupo["cliente_analisis"], "Por definir"),

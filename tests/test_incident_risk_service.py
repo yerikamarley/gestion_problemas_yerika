@@ -75,17 +75,21 @@ class IncidentRiskServiceTest(unittest.TestCase):
             {"numero":"INC2", "creado":"2026-01-03", "servicio_negocio":"OCSP", "descripcion":"Nueva caída OCSP no responde", "tipificacion_auto":"Indisponibilidad", "causa_raiz_auto":"Agotamiento de conexiones"},
         ])
         analysis = build_analysis(classify_incidents(df), [1])
+        from app_logic import construir_analisis_anual_reincidencias_incidentes, construir_matriz_riesgo_incidentes
+        analysis["patterns"] = construir_matriz_riesgo_incidentes(df)
+        analysis["pattern_summary"], analysis["pattern_monthly"] = construir_analisis_anual_reincidencias_incidentes(df)
         from io import BytesIO
         wb = load_workbook(BytesIO(build_risk_workbook(analysis, 2026, 1, 1)))
-        required = {"Informe Ejecutivo", "Resumen", "Patrones Operativos", "Riesgos", "Conciliación", "Exclusiones", "Metodología"}
+        required = {"Informe Ejecutivo", "Tendencia Servicios", "Resumen", "Patrones Operativos", "Riesgos", "Conciliación", "Exclusiones", "Metodología"}
         self.assertEqual(required, set(wb.sheetnames))
-        self.assertEqual("Matriz ejecutiva de riesgos materializados", wb["Informe Ejecutivo"]["A1"].value)
+        self.assertEqual("Matriz ejecutiva de riesgos materializados por servicio o componente", wb["Informe Ejecutivo"]["A1"].value)
         self.assertEqual("INC asociados", wb["Informe Ejecutivo"]["F8"].value)
         self.assertEqual("Nivel de recurrencia", wb["Informe Ejecutivo"]["G8"].value)
         self.assertIn("INC1", wb["Informe Ejecutivo"]["F9"].value)
-        self.assertEqual("REINCIDENTE", wb["Informe Ejecutivo"]["G9"].value)
-        self.assertEqual("Indisponibilidad", wb["Informe Ejecutivo"]["C9"].value)
-        self.assertEqual("Agotamiento de conexiones", wb["Informe Ejecutivo"]["D9"].value)
+        self.assertEqual("Baja", wb["Informe Ejecutivo"]["G9"].value)
+        self.assertIn("2 INC", wb["Informe Ejecutivo"]["C9"].value)
+        self.assertIn("Agotamiento de conexiones", wb["Informe Ejecutivo"]["D9"].value)
+        self.assertEqual(1, len(wb["Tendencia Servicios"]._charts))
         self.assertEqual(required, set(wb.sheetnames))
         for sheet in wb.worksheets:
             for row in sheet.iter_rows():

@@ -4,6 +4,7 @@ from io import BytesIO
 
 import pandas as pd
 from openpyxl import Workbook
+from openpyxl.chart import LineChart, Reference
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
@@ -116,7 +117,7 @@ def _executive(wb, analysis, year, month_from, month_to):
     ws.sheet_view.showGridLines = False
     period = f"Año {year}" if (month_from, month_to) == (1, 12) else f"{year} · {MONTHS[month_from]}-{MONTHS[month_to]}"
     ws.merge_cells("A1:L1")
-    ws["A1"] = "Matriz ejecutiva de riesgos materializados"
+    ws["A1"] = "Matriz ejecutiva de riesgos materializados por servicio o componente"
     ws["A1"].font = _font(bold=True)
     ws["A1"].fill = PatternFill("solid", fgColor=PURPLE)
     ws["A1"].alignment = Alignment(horizontal="center", vertical="center")
@@ -135,30 +136,26 @@ def _executive(wb, analysis, year, month_from, month_to):
     ws["A3"].alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
 
     ws.merge_cells("A5:L5")
-    _section(ws["A5"], "Tabla 1. Matriz de riesgos materializados")
+    _section(ws["A5"], "Tabla 1. Riesgos materializados consolidados por servicio o componente")
     risk_count = int(analysis["risks"]["ID"].nunique()) if not analysis["risks"].empty else 0
     ws["A6"] = f"Total de riesgos materializados en el periodo: {risk_count}"
     ws["A6"].font = _font(bold=True)
-    headers = ["ID", "Riesgo materializado", "Naturaleza de los INC", "Causa raíz consolidada", "Estado de la causa", "INC asociados", "Nivel de recurrencia", "Volumetría", "Impacto", "Problema y tratamiento", "Dueño del riesgo", "Asignación RACI"]
+    headers = ["Servicio o componente", "Riesgo relacionado", "Naturaleza de los INC", "Causa raíz consolidada", "Estado de la causa", "INC asociados", "Nivel de recurrencia", "Cantidad de INC", "Proveedor", "Dominio", "Problemas asociados", "ID del riesgo"]
     for col, value in enumerate(headers, 1):
         ws.cell(8, col, value)
     _header(ws, 8, 1, 12)
 
     row_no = 9
-    month_cols = [MONTHS[month] for month in range(month_from, month_to + 1)]
-    for _, row in analysis["risks"].iterrows():
-        volume = [f"Total del periodo: {int(row['Cantidad tickets asociados'])}"]
-        volume.extend(f"{month}: {int(row.get(month, 0) or 0)}" for month in month_cols)
-        volume.append(f"Eventos estimados: {int(row.get('Eventos reales', 0) or 0)}")
-        recurrence = str(row["Estado"]).replace("🔥 ", "")
-        values = [row["ID"], row["Riesgo Materializado"], row["Naturaleza consolidada de los INC"], row["Causa raíz consolidada"], row["Estado causa raíz"], row["Tickets Asociados"], recurrence, "\n".join(volume), row["Impacto Escala"], _treatment(row), row["Dueño del Riesgo"], row["Asignación Operativa RACI"]]
+    patterns = analysis.get("patterns", pd.DataFrame())
+    for _, row in patterns.iterrows():
+        values = [row.get("criterio_similitud"), row.get("riesgo_materializado"), row.get("naturaleza_evento"), row.get("causa_probable"), row.get("estado_causa"), row.get("incidentes_asociados"), row.get("impacto_escala"), row.get("cantidad_incidentes"), row.get("proveedor_evento"), row.get("dominio_evento"), row.get("problemas_plan_trabajo"), row.get("id_riesgo")]
         for col, value in enumerate(values, 1):
             ws.cell(row_no, col, _safe(value))
-        ws.row_dimensions[row_no].height = 240
+        ws.row_dimensions[row_no].height = 105
         row_no += 1
     _body(ws, 9, row_no - 1, 1, 12)
     for current_row in range(9, row_no):
-        if ws.cell(current_row, 7).value == "REINCIDENTE":
+        if str(ws.cell(current_row, 7).value).upper() in {"ALTA", "REINCIDENTE"}:
             ws.cell(current_row, 7).fill = PatternFill("solid", fgColor=ORANGE)
             ws.cell(current_row, 7).font = _font(bold=True)
 
@@ -186,13 +183,64 @@ def _executive(wb, analysis, year, month_from, month_to):
         for cell in ws[row_no - 1][:3]:
             cell.fill = PatternFill("solid", fgColor=ORANGE)
 
-    for index, width in enumerate([12, 40, 30, 34, 22, 26, 20, 27, 18, 46, 26, 34], 1):
+    for index, width in enumerate([25, 42, 48, 48, 23, 38, 20, 17, 22, 22, 35, 15], 1):
         ws.column_dimensions[get_column_letter(index)].width = width
     ws.freeze_panes = "A9"
-    ws.auto_filter.ref = f"A8:L{max(8, 8 + len(analysis['risks']))}"
+    ws.auto_filter.ref = f"A8:L{max(8, 8 + len(patterns))}"
     ws.page_setup.orientation = "landscape"
     ws.page_setup.fitToWidth = 1
     ws.sheet_properties.pageSetUpPr.fitToPage = True
+
+
+def _trend_sheet(wb, summary, monthly):
+    """Crea una vista gráfica y tabular de recurrencia mensual por servicio."""
+    ws = wb.create_sheet("Tendencia Servicios")
+    ws.sheet_view.showGridLines = False
+    ws["A1"] = "Reincidencias mensuales por servicio o componente"
+    ws["A1"].font = _font(bold=True)
+    ws["A1"].fill = PatternFill("solid", fgColor=PURPLE)
+    ws.merge_cells("A1:L1")
+    ws["A2"] = "Cada servicio aparece una sola vez; la tabla inferior muestra su recurrencia y los INC que sustentan el consolidado."
+    ws["A2"].fill = PatternFill("solid", fgColor=YELLOW)
+    ws.merge_cells("A2:L2")
+    if monthly is None or monthly.empty:
+        ws["A4"] = "No hay datos mensuales disponibles para el periodo seleccionado."
+        return
+    pivot = monthly.pivot_table(index="mes", columns="causa", values="incidentes", aggfunc="sum", fill_value=0).sort_index()
+    hidden_col = 14
+    ws.cell(1, hidden_col, "Mes")
+    for col, component in enumerate(pivot.columns, hidden_col + 1):
+        ws.cell(1, col, component)
+    for excel_row, (month, values) in enumerate(pivot.iterrows(), 2):
+        ws.cell(excel_row, hidden_col, month)
+        for col, value in enumerate(values, hidden_col + 1):
+            ws.cell(excel_row, col, int(value))
+    chart = LineChart()
+    chart.title = "Reincidencias mensuales por servicio o componente"
+    chart.y_axis.title = "Incidentes"
+    chart.x_axis.title = "Mes"
+    chart.height, chart.width = 11, 24
+    chart.add_data(Reference(ws, min_col=hidden_col + 1, max_col=hidden_col + len(pivot.columns), min_row=1, max_row=1 + len(pivot)), titles_from_data=True)
+    chart.set_categories(Reference(ws, min_col=hidden_col, min_row=2, max_row=1 + len(pivot)))
+    for index, series in enumerate(chart.series):
+        series.graphicalProperties.line.solidFill = [PURPLE, ORANGE, YELLOW][index % 3]
+        series.graphicalProperties.line.width = 22000
+    ws.add_chart(chart, "A4")
+    table_row = 26
+    public = summary.rename(columns={"causa": "Servicio o componente", "total_anual": "Total del periodo", "meses_con_eventos": "Meses con eventos", "primer_incidente": "Primer incidente", "ultimo_incidente": "Último incidente", "incidentes_asociados": "INC asociados", "nivel": "Nivel de recurrencia", "nivel_reincidencia": "Nivel de recurrencia"})
+    for col, value in enumerate(public.columns, 1):
+        ws.cell(table_row, col, value)
+    _header(ws, table_row, 1, len(public.columns))
+    for row in public.itertuples(index=False, name=None):
+        table_row += 1
+        for col, value in enumerate(row, 1):
+            ws.cell(table_row, col, _safe(value))
+    _body(ws, 27, table_row, 1, len(public.columns))
+    ws.freeze_panes = "A27"
+    for index, width in enumerate([28, 18, 20, 18, 18, 48, 20], 1):
+        ws.column_dimensions[get_column_letter(index)].width = width
+    for col in range(hidden_col, hidden_col + len(pivot.columns) + 1):
+        ws.column_dimensions[get_column_letter(col)].hidden = True
 
 
 def build_risk_workbook(analysis, year, month_from, month_to):
@@ -200,6 +248,7 @@ def build_risk_workbook(analysis, year, month_from, month_to):
     wb = Workbook()
     wb.remove(wb.active)
     _executive(wb, analysis, year, month_from, month_to)
+    _trend_sheet(wb, analysis.get("pattern_summary", pd.DataFrame()), analysis.get("pattern_monthly", pd.DataFrame()))
 
     validation = analysis["validation"]
     top = analysis["risks"].iloc[0]["ID"] if not analysis["risks"].empty else "N/A"
@@ -217,7 +266,7 @@ def build_risk_workbook(analysis, year, month_from, month_to):
     methodology = pd.DataFrame([
         ("Alcance", "Informe ejecutivo consolidado y anonimizado."),
         ("Trazabilidad incluida", "Números de los INC asociados a cada riesgo y su nivel de recurrencia."),
-        ("Información excluida", "Nombres, notas, solicitudes, descripciones, evidencias técnicas, componentes específicos y números de problemas."),
+        ("Información excluida", "Nombres, notas, solicitudes, descripciones completas, evidencias técnicas sensibles y datos personales."),
         ("Causa pendiente", "Se reporta como 'Causa en proceso de análisis' hasta confirmar la causa raíz."),
         ("Acceso al detalle", "El detalle permanece en el sistema de gestión y requiere autorización según el rol."),
         ("Uso", "Seguimiento directivo, control de tendencias y toma de decisiones."),

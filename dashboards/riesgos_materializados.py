@@ -3,7 +3,7 @@
 import pandas as pd
 import streamlit as st
 
-from app_logic import construir_matriz_riesgo_incidentes
+from app_logic import construir_analisis_anual_reincidencias_incidentes, construir_matriz_riesgo_incidentes
 from config.risk_catalog import EXCLUSION_CATEGORIES, RISK_CATALOG
 from repositories.incident_risk_repository import (
     available_incident_years, fetch_available_problems, fetch_classification_overrides,
@@ -59,6 +59,7 @@ def render_riesgos_materializados():
     source_filtered = source[source["numero"].astype(str).isin(filtered["numero"].astype(str))].copy()
     patterns = construir_matriz_riesgo_incidentes(source_filtered)
     analysis["patterns"] = patterns
+    analysis["pattern_summary"], analysis["pattern_monthly"] = construir_analisis_anual_reincidencias_incidentes(source_filtered)
     analysis["link_history"] = fetch_risk_problem_link_history()
     validation = analysis["validation"]
     cards = st.columns(5)
