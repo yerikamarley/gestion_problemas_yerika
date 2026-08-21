@@ -41,6 +41,8 @@ from app_logic import (
     agregar_campos_sla_respuesta,
     analizar_reincidencias_y_problemas,
     construir_matriz_riesgo_incidentes,
+    resumir_elegibilidad_matriz_incidentes,
+    detalle_elegibilidad_matriz_incidentes,
     construir_analisis_anual_reincidencias_incidentes,
     cargar_ediciones_matriz_riesgo,
     guardar_ediciones_matriz_riesgo,
@@ -9128,18 +9130,30 @@ def dashboard_reincidencias_problemas():
         problemas = cargar_problemas_filtrados_cache(None, None)
         ediciones = cargar_ediciones_matriz_riesgo()
         matriz = construir_matriz_riesgo_incidentes(incidentes, problemas, ediciones)
-    if matriz.empty:
-        st.info(f"No hay incidentes analizables para {periodo_incidentes}.")
-        return
-
-    problemas_asociados = matriz["problemas_plan_trabajo"].fillna("").ne("").sum()
+        elegibilidad = resumir_elegibilidad_matriz_incidentes(incidentes)
+        detalle_elegibilidad = detalle_elegibilidad_matriz_incidentes(incidentes)
+    problemas_asociados = matriz["problemas_plan_trabajo"].fillna("").ne("").sum() if not matriz.empty else 0
     render_tarjetas(
         [
-            ("Riesgos materializados", len(matriz)),
-            ("Incidentes analizados", int(matriz["cantidad_incidentes"].sum())),
-            ("Riesgos con plan de trabajo", int(problemas_asociados)),
+            ("Patrones materiales", len(matriz)),
+            ("INC incluidos", elegibilidad["MATERIAL"]),
+            ("BAU excluidos", elegibilidad["EXCLUIDO_BAU"]),
+            ("Alertas sin afectación", elegibilidad["EXCLUIDO_ALERTA"]),
+            ("Pendientes de validar", elegibilidad["PENDIENTE"]),
+            ("Patrones con problema", int(problemas_asociados)),
         ]
     )
+    with st.expander("Ver control de inclusión y exclusión de INC"):
+        st.dataframe(
+            detalle_elegibilidad.rename(columns={
+                "numero": "INC", "elegibilidad_matriz": "Clasificación", "criterio_inclusion": "Justificación",
+                "componente_reincidencia": "Componente", "naturaleza_evento": "Naturaleza", "tema_reincidencia": "Patrón detectado",
+            }),
+            use_container_width=True, hide_index=True,
+        )
+    if matriz.empty:
+        st.info(f"No hay INC con evidencia suficiente de materialización para {periodo_incidentes}.")
+        return
     st.caption(
         f"Periodo analizado: {periodo_incidentes}. La agrupación automática usa servicio/producto, "
         "pero prioriza las observaciones de trabajo, notas, actualizaciones y descripciones para determinar "
@@ -9147,13 +9161,14 @@ def dashboard_reincidencias_problemas():
     )
     render_guia_mensual_reincidencias(matriz, periodo_incidentes)
     st.divider()
-    st.markdown("#### Matriz editable")
+    st.markdown("#### Matriz operativa por patrón material")
     st.caption(
         "Puedes ajustar dueño, impacto, asignación, estado y causa raíz, mejoras, justificación y ejemplos. "
         "La volumetría, los incidentes y los problemas asociados se recalculan desde la data y son de solo lectura."
     )
     columnas_deshabilitadas = [
-        "id_matriz", "riesgo_materializado", "cantidad_incidentes",
+        "id_matriz", "id_riesgo", "riesgo_materializado", "dominio_evento", "naturaleza_evento",
+        "causa_probable", "estado_causa", "criterio_inclusion", "cantidad_incidentes",
         "incidentes_asociados", "componente_detectado", "criterio_similitud",
         "comentario_analisis", "evidencia_analizada",
     ]
@@ -9164,7 +9179,13 @@ def dashboard_reincidencias_problemas():
         disabled=columnas_deshabilitadas,
         column_config={
             "id_matriz": None,
+            "id_riesgo": st.column_config.TextColumn("ID riesgo"),
             "riesgo_materializado": st.column_config.TextColumn("Riesgo materializado", width="large"),
+            "dominio_evento": st.column_config.TextColumn("Dominio / origen"),
+            "naturaleza_evento": st.column_config.TextColumn("Naturaleza del evento"),
+            "causa_probable": st.column_config.TextColumn("Causa probable", width="large"),
+            "estado_causa": st.column_config.TextColumn("Estado de la causa"),
+            "criterio_inclusion": st.column_config.TextColumn("Por qué se incluye", width="large"),
             "dueno_riesgo": st.column_config.TextColumn("Dueño del riesgo"),
             "impacto_escala": st.column_config.TextColumn("Impacto / escala"),
             "cantidad_incidentes": st.column_config.NumberColumn("Cantidad de incidentes"),
@@ -9176,7 +9197,7 @@ def dashboard_reincidencias_problemas():
             "evidencia_analizada": st.column_config.TextColumn("Evidencia textual analizada", width="large"),
             "asignacion_operativa": st.column_config.TextColumn("Asignación operativa / RACI"),
             "estado_mejora": st.column_config.TextColumn("Estado de mejora"),
-            "causa_raiz": st.column_config.TextColumn("Causa raíz"),
+            "causa_raiz": st.column_config.TextColumn("Causa raíz validada"),
             "mejoras": st.column_config.TextColumn("Mejoras", width="large"),
             "justificacion_metodologica": st.column_config.TextColumn("Justificación metodológica", width="large"),
             "ejemplos_reales": st.column_config.TextColumn("Ejemplos reales extraídos de la data", width="large"),
@@ -9194,7 +9215,9 @@ def dashboard_reincidencias_problemas():
 
     with st.expander("Ver criterios de inclusión y asociación"):
         st.markdown(
-            "- Se incluyen únicamente registros de la tabla de incidentes del periodo seleccionado.\n"
+            "- Solo ingresan a la matriz los INC con evidencia de falla, indisponibilidad, degradación o error operativo.\n"
+            "- Instalaciones, activaciones o configuraciones sin falla se excluyen como BAU.\n"
+            "- Alertas NOC sin afectación confirmada se excluyen; fallas del propio monitoreo se clasifican en el riesgo de alertamiento.\n"
             "- Se leen primero observaciones de trabajo, notas, actualizaciones, descripción e impacto.\n"
             "- El servicio registrado se usa como contexto, pero no decide por sí solo la agrupación.\n"
             "- Se identifican explícitamente Canal de ventas, GAIA, CLR/PKI, RPOST, OCSP, Certitoken, Portal y SSPS.\n"
@@ -9207,10 +9230,11 @@ def dashboard_reincidencias_problemas():
     render_riesgos_materializados()
 
     st.divider()
-    st.markdown(f"#### Reincidencias anuales por causa raíz · {anio_incidentes}")
+    st.markdown(f"#### Reincidencias anuales por patrón operativo · {anio_incidentes}")
     st.caption(
         "Este bloque siempre toma el año completo, aunque arriba hayas seleccionado un mes. "
-        "Se actualiza automáticamente cuando cargas o actualizas incidentes."
+        "Muestra patrones de componente + síntoma, no causas raíz confirmadas. Excluye instalaciones/solicitudes BAU "
+        "y alertas de monitoreo sin afectación; se actualiza automáticamente cuando cargas o actualizas incidentes."
     )
     incidentes_anuales = cargar_incidentes_filtrados_cache(anio_incidentes, None)
     resumen_anual, mensual_anual = construir_analisis_anual_reincidencias_incidentes(incidentes_anuales)
@@ -9218,9 +9242,9 @@ def dashboard_reincidencias_problemas():
         st.info("Todavía no hay causas repetidas suficientes para construir el análisis anual.")
         return
     render_tarjetas([
-        ("Causas reincidentes", len(resumen_anual)),
+        ("Patrones recurrentes", len(resumen_anual)),
         ("Incidentes reincidentes", int(resumen_anual["total_anual"].sum())),
-        ("Causas presentes en varios meses", int((resumen_anual["meses_con_eventos"] > 1).sum())),
+        ("Patrones presentes en varios meses", int((resumen_anual["meses_con_eventos"] > 1).sum())),
     ])
     causas_top = resumen_anual.head(10)["causa"].tolist()
     tendencia = mensual_anual[mensual_anual["causa"].isin(causas_top)]
@@ -9231,12 +9255,12 @@ def dashboard_reincidencias_problemas():
             y="incidentes",
             color="causa",
             markers=True,
-            title="Comportamiento mensual de las causas más reincidentes",
+            title="Comportamiento mensual de los patrones operativos más recurrentes",
         )
-        st.plotly_chart(aplicar_estilo_figura(fig, "Reincidencias anuales por causa raíz"), use_container_width=True)
+        st.plotly_chart(aplicar_estilo_figura(fig, "Reincidencias anuales por patrón operativo"), use_container_width=True)
     st.dataframe(
         resumen_anual.rename(columns={
-            "causa": "Causa raíz",
+            "causa": "Patrón operativo (componente · síntoma)",
             "total_anual": "Total anual",
             "meses_con_eventos": "Meses con eventos",
             "primer_incidente": "Primer incidente",
@@ -9250,7 +9274,7 @@ def dashboard_reincidencias_problemas():
     with st.expander("Ver detalle mensual e incidentes exactos"):
         st.dataframe(
             mensual_anual.rename(columns={
-                "causa": "Causa temática",
+                "causa": "Patrón operativo",
                 "mes": "Mes",
                 "incidentes": "Cantidad",
                 "incidentes_asociados": "Incidentes asociados",

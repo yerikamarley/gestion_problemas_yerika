@@ -14,6 +14,8 @@ incidents = pd.DataFrame([
     {"numero": "INC-DEMO-05", "creado": "2026-05-14", "servicio_negocio": "ERP", "descripcion": "Caso de soporte bloqueado"},
     {"numero": "INC-DEMO-06", "creado": "2026-06-15", "servicio_negocio": "OCSP", "descripcion": "Caída OCSP no responde", "tipificacion_auto": "Indisponibilidad", "causa_raiz_auto": "Agotamiento de conexiones"},
     {"numero": "INC-DEMO-10", "creado": "2026-06-18", "servicio_negocio": "OCSP", "descripcion": "Nueva caída OCSP no responde", "tipificacion_auto": "Indisponibilidad", "causa_raiz_auto": "Agotamiento de conexiones"},
+    {"numero": "INC-DEMO-11", "creado": "2026-06-18", "servicio_negocio": "NOC", "descripcion": "El monitoreo no generó alerta durante la caída", "tipificacion_auto": "Falla de alertamiento", "causa_raiz_auto": "Regla de monitoreo incompleta"},
+    {"numero": "INC-DEMO-12", "creado": "2026-06-20", "servicio_negocio": "Certitoken", "descripcion": "Solicitud de instalación y activación en nuevo PC"},
     {"numero": "INC-DEMO-07", "creado": "2026-07-16", "servicio_negocio": "AWS S3", "descripcion": "Pérdida de información por falla almacenamiento bucket"},
     {"numero": "INC-DEMO-08", "creado": "2026-08-17", "descripcion": "Novedad pendiente de análisis"},
     {"numero": "INC-DEMO-09", "creado": "2026-08-18", "descripcion": "Olvido de contraseña"},

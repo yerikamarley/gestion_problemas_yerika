@@ -45,10 +45,10 @@ class MatrizRiesgoIncidentesTest(unittest.TestCase):
 
     def test_analisis_anual_segmenta_la_misma_causa_por_mes(self):
         incidentes = pd.DataFrame([
-            {"numero": "INC1", "creado": "2026-01-05", "causa_raiz_auto": "Base de datos"},
-            {"numero": "INC2", "creado": "2026-01-20", "causa_raiz_auto": "Base de datos"},
-            {"numero": "INC3", "creado": "2026-03-02", "causa_raiz_auto": "Base de datos"},
-            {"numero": "INC4", "creado": "2026-02-01", "causa_raiz_auto": "Red"},
+            {"numero": "INC1", "creado": "2026-01-05", "tipificacion_auto": "Caída", "causa_raiz_auto": "Base de datos"},
+            {"numero": "INC2", "creado": "2026-01-20", "tipificacion_auto": "Caída", "causa_raiz_auto": "Base de datos"},
+            {"numero": "INC3", "creado": "2026-03-02", "tipificacion_auto": "Caída", "causa_raiz_auto": "Base de datos"},
+            {"numero": "INC4", "creado": "2026-02-01", "tipificacion_auto": "Caída", "causa_raiz_auto": "Red"},
         ])
 
         resumen, mensual = construir_analisis_anual_reincidencias_incidentes(incidentes)
@@ -73,9 +73,7 @@ class MatrizRiesgoIncidentesTest(unittest.TestCase):
 
         matriz = construir_matriz_riesgo_incidentes(incidentes)
 
-        self.assertEqual(1, len(matriz))
-        self.assertEqual("Canal de ventas", matriz.iloc[0]["criterio_similitud"])
-        self.assertIn("INC1", matriz.iloc[0]["evidencia_analizada"])
+        self.assertTrue(matriz.empty, "Un despliegue o ajuste sin evidencia de falla no debe materializar un riesgo.")
 
     def test_clasifica_componentes_comunes_y_problemas_de_firma(self):
         incidentes = pd.DataFrame([
@@ -93,6 +91,22 @@ class MatrizRiesgoIncidentesTest(unittest.TestCase):
         fila_token = matriz[matriz["componente_detectado"] == "Certitoken"].iloc[0]
         self.assertIn("INC1", fila_token["incidentes_asociados"])
         self.assertIn("Certitoken", fila_token["comentario_analisis"])
+
+    def test_excluye_instalacion_y_alerta_sin_afectacion(self):
+        incidentes = pd.DataFrame([
+            {"numero": "INC1", "descripcion": "Solicitud de instalación y configuración de middleware en nuevo PC"},
+            {"numero": "INC2", "descripcion": "Alerta NOC normalizada sin afectación del servicio"},
+        ])
+        self.assertTrue(construir_matriz_riesgo_incidentes(incidentes).empty)
+
+    def test_separa_rpost_como_proveedor_y_noc_como_alertamiento(self):
+        incidentes = pd.DataFrame([
+            {"numero": "INC1", "descripcion": "Portal RPOST caído y no responde"},
+            {"numero": "INC2", "descripcion": "Monitoreo NOC no generó alerta durante la caída"},
+        ])
+        matriz = construir_matriz_riesgo_incidentes(incidentes)
+        self.assertEqual({"R140", "R-MON"}, set(matriz["id_riesgo"]))
+        self.assertEqual("Proveedor externo", matriz[matriz["id_riesgo"] == "R140"].iloc[0]["dominio_evento"])
 
 
 if __name__ == "__main__":

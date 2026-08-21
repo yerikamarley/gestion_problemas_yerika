@@ -2895,12 +2895,64 @@ PROBLEMAS_SUGERIDOS_COLUMNS = [
 ]
 
 MATRIZ_RIESGO_INCIDENTES_COLUMNS = [
-    "id_matriz", "riesgo_materializado", "dueno_riesgo", "impacto_escala",
+    "id_matriz", "id_riesgo", "riesgo_materializado", "dominio_evento", "naturaleza_evento",
+    "causa_probable", "estado_causa", "criterio_inclusion", "dueno_riesgo", "impacto_escala",
     "cantidad_incidentes", "incidentes_asociados", "problemas_plan_trabajo",
     "componente_detectado", "criterio_similitud", "comentario_analisis", "evidencia_analizada",
     "asignacion_operativa", "estado_mejora", "causa_raiz", "mejoras",
     "justificacion_metodologica", "ejemplos_reales",
 ]
+
+MATRIX_FAILURE_TERMS = (
+    "caida", "caido", "indisponibilidad", "no responde", "degradacion", "lentitud",
+    "timeout", "error 500", "error 503", "error 504", "falla", "error al firmar",
+    "no permite firmar", "no puede firmar", "autenticacion", "acceso denegado",
+)
+MATRIX_INSTALLATION_TERMS = ("instalacion", "instalar", "activacion", "configuracion", "configurar", "driver", "middleware", "nuevo pc")
+MATRIX_ALERT_ONLY_TERMS = ("alerta", "alarma", "monitoreo", "noc", "zabbix", "grafana", "prometheus", "solarwinds")
+
+
+def clasificar_elegibilidad_matriz_incidente(row):
+    """Distingue incidentes materiales de solicitudes BAU y alertas sin afectación."""
+    texto = normalizar_texto(texto_analisis_reincidencia_incidente(row))
+    tiene_falla = any(termino in texto for termino in MATRIX_FAILURE_TERMS)
+    es_instalacion = any(termino in texto for termino in MATRIX_INSTALLATION_TERMS)
+    es_alerta = any(termino in texto for termino in MATRIX_ALERT_ONLY_TERMS)
+    if es_instalacion and not tiene_falla:
+        return "EXCLUIDO_BAU", "Instalación, activación o configuración sin evidencia de falla o afectación."
+    if es_alerta and not tiene_falla:
+        return "EXCLUIDO_ALERTA", "Alerta o consulta de monitoreo sin indisponibilidad o afectación confirmada."
+    if not tiene_falla:
+        return "PENDIENTE", "No existe evidencia suficiente para afirmar materialización de un riesgo."
+    return "MATERIAL", "Existe evidencia de falla, indisponibilidad, degradación o error operativo."
+
+
+def mapear_riesgo_operativo_matriz(row):
+    """Mapea un patrón técnico a un riesgo sin confundir componente, síntoma y causa."""
+    componente = componente_reincidencia_incidente(row) or "Otro componente"
+    sintoma = sintoma_reincidencia_incidente(row) or "falla operativa"
+    texto = normalizar_texto(texto_analisis_reincidencia_incidente(row))
+    if componente == "Monitoreo / NOC":
+        return "R-MON", "Posibilidad de fallas en la detección, generación o atención oportuna de alertas tecnológicas.", "Monitoreo y alertamiento", sintoma
+    if sintoma == "caída o indisponibilidad":
+        dominio = "Proveedor externo" if componente in ("RPOST", "SSPS", "EPSS") else "Disponibilidad de servicios"
+        return "R140", "Posibilidad de interrupción del funcionamiento de la infraestructura tecnológica.", dominio, sintoma
+    if sintoma == "instalación o configuración":
+        return "R164", "Posibilidad de fallas en el despliegue, la configuración o la integración en entornos de nube, on-premise o híbridos.", "Cambios y configuración", sintoma
+    if componente == "Certitoken" and sintoma == "problema de firma":
+        return "R75", "Posibilidad de fallas o debilidades en los procesos de revisión, aprobación y emisión de certificados digitales.", "Firma digital", sintoma
+    if any(termino in texto for termino in ("otp", "biometr", "validacion de identidad")):
+        return "R76", "Posibilidad de inadecuación o debilidades en los procesos de validación de identidad.", "Validación de identidad", sintoma
+    return "R132", "Posibilidad de que no se gestionen o atiendan con soluciones de fondo los casos de soporte radicados.", "Operación y soporte", sintoma
+
+
+def causa_probable_grupo(grupo):
+    valores = []
+    for columna in ("causa",):
+        for valor in grupo.get(columna, pd.Series(dtype=str)).fillna("").astype(str):
+            if es_valor_informativo_analisis(valor) and valor not in valores:
+                valores.append(valor)
+    return " | ".join(valores[:3]) if valores else "En proceso de análisis"
 
 # El orden resuelve ambigüedades: una evidencia explícita de canal de ventas o
 # instalación tiene más peso que el servicio técnico registrado en el ticket.
@@ -2916,10 +2968,12 @@ INCIDENT_REINCIDENCE_THEMES = [
 ]
 
 INCIDENT_REINCIDENCE_COMPONENTS = [
+    ("Monitoreo / NOC", ("alerta", "alarma", "monitoreo", "noc", "zabbix", "grafana", "prometheus", "solarwinds")),
     ("Canal de ventas", ("canal de ventas", "nuevo canal", "bd de cuentas", "cuentas bancarias", "homologacion")),
     ("GAIA", ("gaia",)),
     ("CLR / PKI", ("actualizacion de clr", "actualizar clr", " clr ", "pki", "lista de revocacion", "certificados revocados")),
     ("RPOST", ("rpost",)),
+    ("EPSS", ("epss",)),
     ("OCSP", ("ocsp",)),
     ("Certitoken", ("certitoken", "certi token", "token virtual", "tokensafe", "token safe")),
     ("Portal", ("portal",)),
@@ -3497,7 +3551,8 @@ def texto_analisis_reincidencia_incidente(row):
     campos_prioritarios = (
         "observaciones_trabajo", "lista_notas_trabajo", "actualizaciones",
         "observaciones_adicionales", "descripcion", "breve_descripcion",
-        "impacto", "tipo_falla", "causa_raiz_original", "causa_raiz_auto",
+        "impacto", "tipo_falla", "tipificacion_original", "tipificacion_auto", "tipo_incidente_auto",
+        "causa_raiz_original", "causa_raiz_auto",
         "servicio_negocio",
     )
     return " ".join(safe_text(valor_fila(row, campo)) for campo in campos_prioritarios if safe_text(valor_fila(row, campo)))
@@ -3548,15 +3603,23 @@ def enriquecer_base_reincidencias(base, incidentes_df):
     analisis = {}
     for _, row in incidentes_df.iterrows():
         numero = safe_text(valor_fila(row, "numero"))
+        elegibilidad, criterio = clasificar_elegibilidad_matriz_incidente(row)
+        risk_id, risk_name, domain, nature = mapear_riesgo_operativo_matriz(row)
         analisis[numero] = (
-            tema_reincidencia_incidente(row),
-            evidencia_reincidencia_incidente(row),
+            tema_reincidencia_incidente(row), evidencia_reincidencia_incidente(row),
             componente_reincidencia_incidente(row) or "Otro componente",
+            elegibilidad, criterio, risk_id, risk_name, domain, nature,
         )
     trabajo = base.copy()
     trabajo["tema_reincidencia"] = trabajo["numero"].map(lambda numero: analisis.get(safe_text(numero), ("Sin tema concluyente", "", "Otro componente"))[0])
     trabajo["evidencia_reincidencia"] = trabajo["numero"].map(lambda numero: analisis.get(safe_text(numero), ("", "", "Otro componente"))[1])
     trabajo["componente_reincidencia"] = trabajo["numero"].map(lambda numero: analisis.get(safe_text(numero), ("", "", "Otro componente"))[2])
+    trabajo["elegibilidad_matriz"] = trabajo["numero"].map(lambda numero: analisis.get(safe_text(numero), ("", "", "", "PENDIENTE"))[3])
+    trabajo["criterio_inclusion"] = trabajo["numero"].map(lambda numero: analisis.get(safe_text(numero), ("", "", "", "", "Sin criterio"))[4])
+    trabajo["id_riesgo_matriz"] = trabajo["numero"].map(lambda numero: analisis.get(safe_text(numero), ("", "", "", "", "", ""))[5])
+    trabajo["riesgo_matriz"] = trabajo["numero"].map(lambda numero: analisis.get(safe_text(numero), ("", "", "", "", "", "", ""))[6])
+    trabajo["dominio_evento"] = trabajo["numero"].map(lambda numero: analisis.get(safe_text(numero), ("", "", "", "", "", "", "", ""))[7])
+    trabajo["naturaleza_evento"] = trabajo["numero"].map(lambda numero: analisis.get(safe_text(numero), ("", "", "", "", "", "", "", "", ""))[8])
     return trabajo
 
 
@@ -3586,14 +3649,19 @@ def construir_matriz_riesgo_incidentes(incidentes_df, problemas_df=None, edicion
     """Agrupa únicamente incidentes y enriquece con problemas en Plan de trabajo."""
     base = base_unificada_reincidencias(pd.DataFrame(), incidentes_df, incluir_sla=False)
     base = enriquecer_base_reincidencias(base, incidentes_df)
+    base = base[base["elegibilidad_matriz"] == "MATERIAL"].copy()
     if base.empty:
         return pd.DataFrame(columns=MATRIZ_RIESGO_INCIDENTES_COLUMNS)
     filas = []
-    for tema, grupo in base.groupby("tema_reincidencia", dropna=False):
+    group_columns = ["id_riesgo_matriz", "riesgo_matriz", "dominio_evento", "componente_reincidencia", "naturaleza_evento"]
+    for keys, grupo in base.groupby(group_columns, dropna=False):
+        id_riesgo, riesgo_materializado, dominio, componente_grupo, naturaleza = keys
+        tema = f"{componente_grupo} · {naturaleza}"
         servicio = valor_mas_frecuente_analisis(grupo["servicio_producto"], SIN_SERVICIO_PRODUCTO_ANALISIS)
         tipificacion = valor_mas_frecuente_analisis(grupo["tipificacion"], SIN_TIPIFICACION_ANALISIS)
-        causa = tema
-        id_matriz = normalizar_texto(tema)
+        causa = causa_probable_grupo(grupo)
+        estado_causa = "Causa probable" if causa != "En proceso de análisis" else "Pendiente de investigación"
+        id_matriz = normalizar_texto(f"{id_riesgo}|{componente_grupo}|{naturaleza}")
         numeros = [safe_text(x) for x in grupo["numero"].tolist() if safe_text(x)]
         componentes = [x for x in grupo["componente_reincidencia"].dropna().unique().tolist() if x != "Otro componente"]
         componente_texto = ", ".join(componentes) if componentes else "Otro componente"
@@ -3602,7 +3670,13 @@ def construir_matriz_riesgo_incidentes(incidentes_df, problemas_df=None, edicion
             ejemplos.append(f"{incidente['numero']}: {safe_text(incidente['evidencia_reincidencia'])}")
         filas.append({
             "id_matriz": id_matriz,
-            "riesgo_materializado": f"Falla materializada en {servicio}: {tipificacion}",
+            "id_riesgo": id_riesgo,
+            "riesgo_materializado": riesgo_materializado,
+            "dominio_evento": dominio,
+            "naturaleza_evento": naturaleza,
+            "causa_probable": causa,
+            "estado_causa": estado_causa,
+            "criterio_inclusion": valor_mas_frecuente_analisis(grupo["criterio_inclusion"], "Evidencia de materialización"),
             "dueno_riesgo": valor_mas_frecuente_analisis(grupo["cliente_analisis"], "Por definir"),
             "impacto_escala": nivel_reincidencia(len(grupo)) or "Aislado",
             "cantidad_incidentes": len(numeros),
@@ -3639,6 +3713,23 @@ def construir_matriz_riesgo_incidentes(incidentes_df, problemas_df=None, edicion
     return matriz[MATRIZ_RIESGO_INCIDENTES_COLUMNS].sort_values("cantidad_incidentes", ascending=False)
 
 
+def resumir_elegibilidad_matriz_incidentes(incidentes_df):
+    """Cuenta qué entra a la matriz y qué queda como BAU, alerta o pendiente."""
+    base = base_unificada_reincidencias(pd.DataFrame(), incidentes_df, incluir_sla=False)
+    base = enriquecer_base_reincidencias(base, incidentes_df)
+    if base.empty:
+        return {"MATERIAL": 0, "EXCLUIDO_BAU": 0, "EXCLUIDO_ALERTA": 0, "PENDIENTE": 0}
+    counts = base["elegibilidad_matriz"].value_counts().to_dict()
+    return {key: int(counts.get(key, 0)) for key in ("MATERIAL", "EXCLUIDO_BAU", "EXCLUIDO_ALERTA", "PENDIENTE")}
+
+
+def detalle_elegibilidad_matriz_incidentes(incidentes_df):
+    base = base_unificada_reincidencias(pd.DataFrame(), incidentes_df, incluir_sla=False)
+    base = enriquecer_base_reincidencias(base, incidentes_df)
+    columns = ["numero", "elegibilidad_matriz", "criterio_inclusion", "componente_reincidencia", "naturaleza_evento", "tema_reincidencia"]
+    return base[[column for column in columns if column in base]].copy()
+
+
 def cargar_ediciones_matriz_riesgo():
     exigir_contexto_lectura()
     try:
@@ -3665,9 +3756,10 @@ def guardar_ediciones_matriz_riesgo(df, actor_email=None):
 
 
 def construir_analisis_anual_reincidencias_incidentes(incidentes_df):
-    """Resume por causa raíz y mes los incidentes de un año ya filtrado."""
+    """Resume patrones operativos materiales por mes, no supuestas causas raíz."""
     base = base_unificada_reincidencias(pd.DataFrame(), incidentes_df, incluir_sla=False)
     base = enriquecer_base_reincidencias(base, incidentes_df)
+    base = base[base["elegibilidad_matriz"] == "MATERIAL"].copy()
     if base.empty:
         return pd.DataFrame(), pd.DataFrame()
     trabajo = base[base["tema_reincidencia"].apply(es_valor_informativo_analisis)].copy()

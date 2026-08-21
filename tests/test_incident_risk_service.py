@@ -32,6 +32,18 @@ class IncidentRiskServiceTest(unittest.TestCase):
         result = self.classify(descripcion="Olvido de contraseña")
         self.assertEqual(("EXCLUSION", "Requerimientos y Soporte Rutinario (BAU)"), (result["classification_type"], result["exclusion_category"]))
 
+    def test_installation_without_failure_is_bau(self):
+        result = self.classify(descripcion="Solicitud de instalación y activación de Certitoken en nuevo PC")
+        self.assertEqual(("EXCLUSION", "Requerimientos y Soporte Rutinario (BAU)"), (result["classification_type"], result["exclusion_category"]))
+
+    def test_rpost_and_certitoken_downtime_are_infrastructure(self):
+        self.assertEqual("R140", self.classify(servicio_negocio="RPOST", descripcion="Portal RPOST caído y no responde")["risk_id"])
+        self.assertEqual("R140", self.classify(servicio_negocio="Certitoken", descripcion="Certitoken caído e indisponible")["risk_id"])
+
+    def test_monitoring_failure_has_specific_risk(self):
+        result = self.classify(servicio_negocio="NOC", descripcion="El monitoreo no generó alerta durante la caída")
+        self.assertEqual("R-MON", result["risk_id"])
+
     def test_ambiguous_is_pending(self):
         self.assertEqual("PENDING", self.classify(descripcion="Se reporta una novedad")["classification_type"])
 

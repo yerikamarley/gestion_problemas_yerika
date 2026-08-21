@@ -66,6 +66,20 @@ def classify_incident(incident):
     number = normalize_incident_number(incident.get("numero", incident.get("incident_number", "")))
     fields = _field_texts(incident)
     all_text = " | ".join(fields.values())
+    material_terms = ("caida", "caido", "indisponibilidad", "no responde", "degradacion", "lentitud", "timeout", "error 500", "error 503", "error 504", "falla", "no genero alerta", "no detecto")
+    bau_terms = ("instalacion", "activacion", "configuracion de usuario", "nuevo pc", "guia de uso", "tramite", "orden")
+    alert_terms = ("alerta", "alarma", "monitoreo", "noc")
+    has_material_evidence = any(term in all_text for term in material_terms)
+    if any(term in all_text for term in bau_terms) and not has_material_evidence:
+        return {"incident_number": number, "classification_type": "EXCLUSION", "risk_id": "",
+                "exclusion_category": "Requerimientos y Soporte Rutinario (BAU)",
+                "classification_reason": "Actividad de instalación, activación, trámite o uso sin evidencia de falla.",
+                "confidence": 0.97, "classification_source": "AUTO", "candidate_risks": ""}
+    if any(term in all_text for term in alert_terms) and not has_material_evidence:
+        return {"incident_number": number, "classification_type": "EXCLUSION", "risk_id": "",
+                "exclusion_category": "Falsas Alarmas (Monitoreo NOC/SOC)",
+                "classification_reason": "Alerta o consulta de monitoreo sin afectación material confirmada.",
+                "confidence": 0.95, "classification_source": "AUTO", "candidate_risks": ""}
     # Exclusiones inequívocas se evalúan primero. BAU se evalúa después de los
     # riesgos específicos para que "consulta de listas" o soporte ERP no oculten R164/R132.
     for category, phrases in EXCLUSION_RULES[:-1]:
