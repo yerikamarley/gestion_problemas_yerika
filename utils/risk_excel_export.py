@@ -94,6 +94,23 @@ def _public_exclusions(exclusions):
     return result
 
 
+def _public_patterns(patterns):
+    columns = [
+        "id_riesgo", "riesgo_materializado", "criterio_similitud", "dominio_evento", "proveedor_evento",
+        "naturaleza_evento", "causa_probable", "estado_causa", "cantidad_incidentes",
+        "incidentes_asociados", "impacto_escala", "problemas_plan_trabajo",
+    ]
+    result = patterns.reindex(columns=columns).copy()
+    return result.rename(columns={
+        "id_riesgo": "ID riesgo", "riesgo_materializado": "Riesgo materializado",
+        "criterio_similitud": "Patrón operativo (componente · síntoma)", "dominio_evento": "Dominio",
+        "proveedor_evento": "Proveedor", "naturaleza_evento": "Naturaleza",
+        "causa_probable": "Causa probable", "estado_causa": "Estado de la causa",
+        "cantidad_incidentes": "Cantidad de INC", "incidentes_asociados": "INC asociados",
+        "impacto_escala": "Nivel de recurrencia", "problemas_plan_trabajo": "Problemas asociados",
+    })
+
+
 def _executive(wb, analysis, year, month_from, month_to):
     ws = wb.create_sheet("Informe Ejecutivo")
     ws.sheet_view.showGridLines = False
@@ -208,6 +225,7 @@ def build_risk_workbook(analysis, year, month_from, month_to):
 
     sheets = {
         "Resumen": summary,
+        "Patrones Operativos": _public_patterns(analysis.get("patterns", pd.DataFrame())),
         "Riesgos": _public_risks(analysis["risks"]),
         "Conciliación": analysis["reconciliation"],
         "Exclusiones": _public_exclusions(analysis["exclusions"]),

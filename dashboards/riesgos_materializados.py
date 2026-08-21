@@ -3,6 +3,7 @@
 import pandas as pd
 import streamlit as st
 
+from app_logic import construir_matriz_riesgo_incidentes
 from config.risk_catalog import EXCLUSION_CATEGORIES, RISK_CATALOG
 from repositories.incident_risk_repository import (
     available_incident_years, fetch_available_problems, fetch_classification_overrides,
@@ -55,6 +56,9 @@ def render_riesgos_materializados():
     if exclusion_filter != "Todos": filtered = filtered[filtered["exclusion_category"] == exclusion_filter]
     if search: filtered = filtered[filtered["numero"].str.contains(search, regex=False)]
     analysis = build_analysis(filtered, range(month_from, month_to + 1), problem_links)
+    source_filtered = source[source["numero"].astype(str).isin(filtered["numero"].astype(str))].copy()
+    patterns = construir_matriz_riesgo_incidentes(source_filtered)
+    analysis["patterns"] = patterns
     analysis["link_history"] = fetch_risk_problem_link_history()
     validation = analysis["validation"]
     cards = st.columns(5)
@@ -64,36 +68,26 @@ def render_riesgos_materializados():
     event_count = int(analysis["events"]["event_id"].nunique()) if not analysis["events"].empty else 0
     treated_risks = int(analysis["risks"]["Problemas asociados"].fillna("").ne("").sum()) if not analysis["risks"].empty else 0
     untreated_recurrent = int(((analysis["risks"]["Estado"] == "🔥 REINCIDENTE") & analysis["risks"]["Problemas asociados"].fillna("").eq("")).sum()) if not analysis["risks"].empty else 0
-    executive_cards = st.columns(3)
+    executive_cards = st.columns(4)
     executive_cards[0].metric("Eventos materiales estimados", event_count)
     executive_cards[1].metric("Riesgos con problema", treated_risks)
     executive_cards[2].metric("Reincidentes sin problema", untreated_recurrent)
+    executive_cards[3].metric("Patrones operativos", len(patterns))
     if validation["reconciled"]: st.success("100% conciliado")
     else:
         st.error("Error de conciliación de incidentes")
         if not validation["conflicts"].empty: st.dataframe(validation["conflicts"], hide_index=True)
-    st.markdown("#### Riesgos materializados")
-    if analysis["risks"].empty: st.info("No hay incidentes asociados a riesgos con los filtros actuales.")
+    st.markdown("#### Riesgos materializados por patrón operativo")
+    st.caption("Cada fila conserva la relación riesgo + componente + síntoma, siguiendo la misma estructura de la gráfica anual.")
+    if patterns.empty: st.info("No hay patrones con evidencia suficiente de materialización para los filtros actuales.")
     else:
-        main_cols = ["ID","Riesgo Materializado","Dueño del Riesgo","Impacto Escala","Cantidad tickets asociados","Tickets Asociados","Asignación Operativa RACI","Estado"] + [c for c in ("Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic") if c in analysis["risks"]]
-        st.dataframe(analysis["risks"][main_cols], use_container_width=True, hide_index=True)
-        with st.expander("Ver detalle completo de tickets por riesgo"):
-            for _, row in analysis["risks"].iterrows():
-                st.write(f"**{row['ID']} · {row['Estado']}** — {row['Tickets Asociados']}")
-    st.markdown("#### Naturaleza y causa raíz de los incidentes")
-    st.caption("Esta vista permite seleccionar un problema coherente con la naturaleza del evento. La causa confirmada prevalece sobre la causa automática; cuando no existe evidencia suficiente se indica que continúa en análisis.")
-    cause_columns = {
-        "risk_id": "Riesgo", "tickets": "INC asociados", "incident_nature": "Naturaleza de los INC",
-        "component": "Componente general", "root_cause": "Causa raíz", "root_cause_status": "Estado de la causa",
-        "event_status": "Nivel de recurrencia",
-    }
-    event_causes = analysis["events"][[column for column in cause_columns if column in analysis["events"]]].rename(columns=cause_columns)
-    if not event_causes.empty:
-        event_causes["Causa raíz"] = event_causes["Causa raíz"].replace("", "En proceso de análisis")
-    st.dataframe(event_causes, use_container_width=True, hide_index=True)
-    st.markdown("#### Tratamiento mediante problemas")
-    treatment_columns = ["ID", "Naturaleza consolidada de los INC", "Causa raíz consolidada", "Estado causa raíz", "Eventos reales", "Problemas asociados", "Estado del problema"]
-    treatment = analysis["risks"][treatment_columns].copy() if not analysis["risks"].empty else pd.DataFrame(columns=treatment_columns)
+        pattern_columns = ["id_riesgo", "riesgo_materializado", "criterio_similitud", "dominio_evento", "proveedor_evento", "naturaleza_evento", "causa_probable", "estado_causa", "cantidad_incidentes", "incidentes_asociados", "impacto_escala"]
+        st.dataframe(patterns[[column for column in pattern_columns if column in patterns]], use_container_width=True, hide_index=True)
+    st.markdown("#### Causa y tratamiento por patrón")
+    risk_treatment = analysis["risks"][["ID", "Problemas asociados", "Estado del problema"]].copy() if not analysis["risks"].empty else pd.DataFrame(columns=["ID", "Problemas asociados", "Estado del problema"])
+    treatment = patterns.merge(risk_treatment, left_on="id_riesgo", right_on="ID", how="left") if not patterns.empty else pd.DataFrame()
+    treatment_columns = ["id_riesgo", "criterio_similitud", "causa_probable", "estado_causa", "incidentes_asociados", "problemas_plan_trabajo", "Problemas asociados", "Estado del problema"]
+    treatment = treatment[[column for column in treatment_columns if column in treatment]] if not treatment.empty else treatment
     st.dataframe(treatment, use_container_width=True, hide_index=True)
     if untreated_recurrent:
         st.warning(f"Hay {untreated_recurrent} riesgos reincidentes sin problema asociado ni tratamiento trazable.")
@@ -101,14 +95,20 @@ def render_riesgos_materializados():
         st.caption("Agrupación automática inicial: mismo riesgo y componente dentro de una ventana de 6 horas. Debe revisarse cuando exista evidencia de eventos distintos.")
         st.dataframe(analysis["events"], use_container_width=True, hide_index=True)
     with st.expander("Vincular o retirar un problema (usuarios autorizados)"):
-        active_risks = sorted(filtered.loc[filtered["classification_type"] == "RISK", "risk_id"].dropna().unique())
+        pattern_options = patterns["id_matriz"].tolist() if not patterns.empty else []
+        pattern_labels = dict(zip(patterns["id_matriz"], patterns["criterio_similitud"])) if not patterns.empty else {}
+        pattern_risks = dict(zip(patterns["id_matriz"], patterns["id_riesgo"])) if not patterns.empty else {}
         problems = fetch_available_problems()
-        if not active_risks:
-            st.info("No hay riesgos materializados con los filtros actuales.")
+        if not pattern_options:
+            st.info("No hay patrones materiales con los filtros actuales.")
         elif problems.empty:
             st.info("No hay problemas registrados. Créalo primero desde el módulo Problemas.")
         else:
-            risk_choice = st.selectbox("Riesgo materializado", active_risks, key="link_risk")
+            pattern_choice = st.selectbox(
+                "Patrón operativo", pattern_options, key="link_pattern",
+                format_func=lambda key: f"{pattern_risks.get(key, '')} · {pattern_labels.get(key, key)}",
+            )
+            risk_choice = pattern_risks[pattern_choice]
             problem_options = problems["numero"].astype(str).tolist()
             labels = dict(zip(problems["numero"].astype(str), problems["declaracion_problema"].fillna("").astype(str)))
             problem_choice = st.selectbox("Problema existente", problem_options, key="link_problem",
@@ -117,7 +117,8 @@ def render_riesgos_materializados():
             col_link, col_unlink = st.columns(2)
             if col_link.button("Vincular problema", type="primary"):
                 try:
-                    save_risk_problem_link(risk_choice, problem_choice, link_note, st.session_state.get("user"))
+                    traceable_note = f"Patrón operativo: {pattern_labels.get(pattern_choice, pattern_choice)}. {link_note}".strip()
+                    save_risk_problem_link(risk_choice, problem_choice, traceable_note, st.session_state.get("user"))
                 except (PermissionError, ValueError) as error:
                     st.error(str(error))
                 else:

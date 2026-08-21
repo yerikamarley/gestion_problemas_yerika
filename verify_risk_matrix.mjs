@@ -6,7 +6,7 @@ const previewDir = "outputs/matriz_riesgos_ajustada/previews";
 const workbook = await SpreadsheetFile.importXlsx(await FileBlob.load(inputPath));
 await fs.mkdir(previewDir, { recursive: true });
 
-const sheets = ["Informe Ejecutivo", "Resumen", "Riesgos", "Conciliación", "Exclusiones", "Metodología"];
+const sheets = ["Informe Ejecutivo", "Resumen", "Patrones Operativos", "Riesgos", "Conciliación", "Exclusiones", "Metodología"];
 for (const sheetName of sheets) {
   const blob = await workbook.render({ sheetName, autoCrop: "all", scale: 1, format: "png" });
   const safeName = sheetName.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replaceAll(" ", "_");

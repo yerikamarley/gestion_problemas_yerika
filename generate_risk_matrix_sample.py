@@ -2,6 +2,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from app_logic import construir_matriz_riesgo_incidentes
 from services.incident_risk_service import build_analysis, classify_incidents
 from utils.risk_excel_export import build_risk_workbook
 
@@ -24,6 +25,7 @@ incidents = pd.DataFrame([
 ])
 
 analysis = build_analysis(classify_incidents(incidents), range(1, 13))
+analysis["patterns"] = construir_matriz_riesgo_incidentes(incidents)
 output = Path("outputs/matriz_riesgos_ajustada/Matriz_Riesgos_Materializados_2026.xlsx")
 output.parent.mkdir(parents=True, exist_ok=True)
 output.write_bytes(build_risk_workbook(analysis, 2026, 1, 12))

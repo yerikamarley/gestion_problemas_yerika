@@ -77,7 +77,7 @@ class IncidentRiskServiceTest(unittest.TestCase):
         analysis = build_analysis(classify_incidents(df), [1])
         from io import BytesIO
         wb = load_workbook(BytesIO(build_risk_workbook(analysis, 2026, 1, 1)))
-        required = {"Informe Ejecutivo", "Resumen", "Riesgos", "Conciliación", "Exclusiones", "Metodología"}
+        required = {"Informe Ejecutivo", "Resumen", "Patrones Operativos", "Riesgos", "Conciliación", "Exclusiones", "Metodología"}
         self.assertEqual(required, set(wb.sheetnames))
         self.assertEqual("Matriz ejecutiva de riesgos materializados", wb["Informe Ejecutivo"]["A1"].value)
         self.assertEqual("INC asociados", wb["Informe Ejecutivo"]["F8"].value)
