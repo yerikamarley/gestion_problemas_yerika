@@ -9168,7 +9168,7 @@ def dashboard_reincidencias_problemas():
         "La volumetría, los incidentes y los problemas asociados se recalculan desde la data y son de solo lectura."
     )
     columnas_deshabilitadas = [
-        "id_matriz", "id_riesgo", "riesgo_materializado", "dominio_evento", "naturaleza_evento",
+        "id_matriz", "id_riesgo", "riesgo_materializado", "dominio_evento", "proveedor_evento", "naturaleza_evento",
         "causa_probable", "estado_causa", "criterio_inclusion", "cantidad_incidentes",
         "incidentes_asociados", "componente_detectado", "criterio_similitud",
         "comentario_analisis", "evidencia_analizada",
@@ -9183,6 +9183,7 @@ def dashboard_reincidencias_problemas():
             "id_riesgo": st.column_config.TextColumn("ID riesgo"),
             "riesgo_materializado": st.column_config.TextColumn("Riesgo materializado", width="large"),
             "dominio_evento": st.column_config.TextColumn("Dominio / origen"),
+            "proveedor_evento": st.column_config.TextColumn("Proveedor normalizado"),
             "naturaleza_evento": st.column_config.TextColumn("Naturaleza del evento"),
             "causa_probable": st.column_config.TextColumn("Causa probable", width="large"),
             "estado_causa": st.column_config.TextColumn("Estado de la causa"),

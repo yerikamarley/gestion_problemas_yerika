@@ -66,10 +66,14 @@ def classify_incident(incident):
     number = normalize_incident_number(incident.get("numero", incident.get("incident_number", "")))
     fields = _field_texts(incident)
     all_text = " | ".join(fields.values())
-    material_terms = ("caida", "caido", "indisponibilidad", "no responde", "degradacion", "lentitud", "timeout", "error 500", "error 503", "error 504", "falla", "no genero alerta", "no detecto")
+    material_terms = ("caida", "caido", "indisponibilidad", "no responde", "down", "unreachable", "critical", "degradacion", "lentitud", "timeout", "error 500", "error 503", "error 504", "falla", "no genero alerta", "no detecto", "certificado vencido", "ssl vencido", "ssl expirado", "no seguro")
     bau_terms = ("instalacion", "activacion", "configuracion de usuario", "nuevo pc", "guia de uso", "tramite", "orden")
     alert_terms = ("alerta", "alarma", "monitoreo", "noc")
     has_material_evidence = any(term in all_text for term in material_terms)
+    if ("certificado ssl" in all_text or " ssl " in f" {all_text} ") and any(term in all_text for term in ("vencido", "expirado", "no seguro", "renovacion")):
+        return {"incident_number": number, "classification_type": "RISK", "risk_id": "R-CERT",
+                "exclusion_category": "", "classification_reason": "R-CERT – evidencia de certificado SSL vencido o renovación no oportuna.",
+                "confidence": 0.99, "classification_source": "AUTO", "candidate_risks": "R-CERT"}
     if any(term in all_text for term in bau_terms) and not has_material_evidence:
         return {"incident_number": number, "classification_type": "EXCLUSION", "risk_id": "",
                 "exclusion_category": "Requerimientos y Soporte Rutinario (BAU)",
@@ -198,6 +202,8 @@ def _event_record(risk_id, component, rows):
             if value and value.casefold() not in ("sin inferencia", "no determinado") and value not in nature_values:
                 nature_values.append(value)
     incident_nature = " | ".join(nature_values[:3]) if nature_values else component
+    if risk_id == "R-CERT":
+        incident_nature = "Certificado SSL vencido o renovación no oportuna"
     clients = frame.get("empresa", pd.Series(dtype=str)).fillna("").astype(str).str.strip()
     return {"event_id": "EVT-" + hashlib.sha1(seed.encode()).hexdigest()[:10].upper(), "risk_id": risk_id,
             "component": component, "incident_nature": incident_nature, "event_start": start, "event_end": end, "ticket_count": len(tickets),
@@ -247,7 +253,10 @@ def build_analysis(detail, months, problem_links=None):
         row["Estado del problema"] = ", ".join(sorted(risk_links["problem_status"].fillna("Sin estado").astype(str).unique())) if not risk_links.empty else "Sin problema asociado"
         row["Estado causa raíz"] = ", ".join(sorted(risk_events["root_cause_status"].unique())) if not risk_events.empty else "Pendiente de investigación"
         natures = [value for value in risk_events.get("incident_nature", pd.Series(dtype=str)).fillna("").astype(str).unique() if value]
-        causes = [value for value in risk_events.get("root_cause", pd.Series(dtype=str)).fillna("").astype(str).unique() if value]
+        cause_series = risk_events.get("root_cause", pd.Series(dtype=str)).fillna("").astype(str)
+        causes = [value for value in cause_series.unique() if value]
+        if not cause_series.empty and cause_series.eq("").any():
+            causes.append("En proceso de análisis para otros eventos")
         row["Naturaleza consolidada de los INC"] = " | ".join(natures) if natures else "En proceso de caracterización"
         row["Causa raíz consolidada"] = " | ".join(causes) if causes else "En proceso de análisis"
         for month in months:

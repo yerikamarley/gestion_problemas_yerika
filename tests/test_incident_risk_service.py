@@ -44,6 +44,13 @@ class IncidentRiskServiceTest(unittest.TestCase):
         result = self.classify(servicio_negocio="NOC", descripcion="El monitoreo no generó alerta durante la caída")
         self.assertEqual("R-MON", result["risk_id"])
 
+    def test_expired_ssl_has_certificate_lifecycle_risk(self):
+        result = self.classify(
+            servicio_negocio="Certificación Digital",
+            descripcion="La URL responde HTTP 200, pero el certificado SSL está vencido y el navegador muestra No seguro.",
+        )
+        self.assertEqual("R-CERT", result["risk_id"])
+
     def test_ambiguous_is_pending(self):
         self.assertEqual("PENDING", self.classify(descripcion="Se reporta una novedad")["classification_type"])
 

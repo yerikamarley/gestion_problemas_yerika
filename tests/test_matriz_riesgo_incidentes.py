@@ -123,7 +123,7 @@ class MatrizRiesgoIncidentesTest(unittest.TestCase):
 
     def test_reconoce_autentic_tokens_crl_y_canal_ventas(self):
         incidentes = pd.DataFrame([
-            {"numero": "INC1", "descripcion": "Autentic presenta falla de autenticación y acceso"},
+            {"numero": "INC1", "nombre_proveedor": "Autentic", "descripcion": "El servicio de autenticación presenta falla de acceso"},
             {"numero": "INC2", "descripcion": "Token físico no permite firmar"},
             {"numero": "INC3", "descripcion": "Token virtual no permite firmar"},
             {"numero": "INC4", "descripcion": "CRL presenta error de sincronización y falla"},
@@ -131,7 +131,47 @@ class MatrizRiesgoIncidentesTest(unittest.TestCase):
         ])
         matriz = construir_matriz_riesgo_incidentes(incidentes)
         componentes = set(matriz["componente_detectado"])
-        self.assertTrue({"Autentic", "Token físico", "Token virtual", "CLR / PKI", "Canal de ventas"}.issubset(componentes))
+        self.assertTrue({"Servicio de autenticación", "Token físico", "Token virtual", "CLR / PKI", "Canal de ventas"}.issubset(componentes))
+
+    def test_autenticacion_no_se_convierte_en_proveedor_autentic(self):
+        incidentes = pd.DataFrame([{
+            "numero": "INC1",
+            "descripcion": "Falla en puerto de autenticación por certificado dentro de infraestructura PKI",
+        }])
+        matriz = construir_matriz_riesgo_incidentes(incidentes)
+        self.assertEqual("Infraestructura PKI", matriz.iloc[0]["componente_detectado"])
+        self.assertEqual("No identificado / no aplica", matriz.iloc[0]["proveedor_evento"])
+
+    def test_inc_17551_es_infraestructura_pki_y_no_autentic(self):
+        incidentes = pd.DataFrame([{
+            "numero": "INC0017551",
+            "breve_descripcion": "Alarmas sobre infraestructura de PKI y acceso a plataforma de monitoreo OCSP - TSA",
+            "descripcion": "Down repositorio LDAP PKI. Down OCSP. Down SSPS. Down token virtual. Puerto de autenticación por certificado.",
+        }])
+        matriz = construir_matriz_riesgo_incidentes(incidentes)
+        self.assertEqual(1, len(matriz))
+        self.assertEqual("Infraestructura PKI", matriz.iloc[0]["componente_detectado"])
+        self.assertEqual("R140", matriz.iloc[0]["id_riesgo"])
+        self.assertNotEqual("Autentic", matriz.iloc[0]["proveedor_evento"])
+
+    def test_ssl_vencido_separa_pki_del_proveedor_autentic(self):
+        incidentes = pd.DataFrame([
+            {
+                "numero": "INC0017514", "nombre_proveedor": "AutenTIC",
+                "breve_descripcion": "Caída en monitoreo de certifirma.co",
+                "descripcion": "La URL responde HTTP 200. La alerta no seguro se debe a certificado SSL vencido. Renovación escalada al proveedor.",
+            },
+            {
+                "numero": "INC0017515", "nombre_proveedor": "AUTENTIC",
+                "descripcion": "Certificado SSL vencido; se recibe confirmación de Autentic sobre la renovación.",
+            },
+        ])
+        matriz = construir_matriz_riesgo_incidentes(incidentes)
+        self.assertEqual(1, len(matriz))
+        self.assertEqual("PKI / Certificado SSL", matriz.iloc[0]["componente_detectado"])
+        self.assertEqual("Autentic", matriz.iloc[0]["proveedor_evento"])
+        self.assertEqual("R-CERT", matriz.iloc[0]["id_riesgo"])
+        self.assertEqual("Causa confirmada", matriz.iloc[0]["estado_causa"])
 
 
 if __name__ == "__main__":

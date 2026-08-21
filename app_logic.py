@@ -2359,6 +2359,11 @@ def causa_raiz_incidente(row, tipificacion=None, es_alerta=None):
         row,
         INCIDENT_CAUSE_FIELDS + ["grupo_asignacion", "servicio_negocio", "impacto", "estado"],
     )
+    texto_normalizado = normalizar_texto(texto)
+    if ("certificado ssl" in texto_normalizado or "ssl" in texto_normalizado) and any(
+        termino in texto_normalizado for termino in ("vencido", "expirado", "renovacion", "actualizacion del certificado")
+    ):
+        return "Certificado SSL vencido o renovación no oportuna"
 
     componente = inferir_componente_incidente(texto, tipificacion, es_alerta)
     sintoma = inferir_sintoma_incidente(texto)
@@ -2895,7 +2900,7 @@ PROBLEMAS_SUGERIDOS_COLUMNS = [
 ]
 
 MATRIZ_RIESGO_INCIDENTES_COLUMNS = [
-    "id_matriz", "id_riesgo", "riesgo_materializado", "dominio_evento", "naturaleza_evento",
+    "id_matriz", "id_riesgo", "riesgo_materializado", "dominio_evento", "proveedor_evento", "naturaleza_evento",
     "causa_probable", "estado_causa", "criterio_inclusion", "dueno_riesgo", "impacto_escala",
     "cantidad_incidentes", "incidentes_asociados", "problemas_plan_trabajo",
     "componente_detectado", "criterio_similitud", "comentario_analisis", "evidencia_analizada",
@@ -2906,7 +2911,8 @@ MATRIZ_RIESGO_INCIDENTES_COLUMNS = [
 MATRIX_FAILURE_TERMS = (
     "caida", "caido", "indisponibilidad", "no responde", "degradacion", "lentitud",
     "timeout", "error 500", "error 503", "error 504", "falla", "error al firmar",
-    "no permite firmar", "no puede firmar", "autenticacion", "acceso denegado",
+    "no permite firmar", "no puede firmar", "acceso denegado", "down", "unreachable", "critical", "unknown",
+    "certificado vencido", "ssl vencido", "ssl expirado", "no seguro",
 )
 MATRIX_INSTALLATION_TERMS = ("instalacion", "instalar", "activacion", "configuracion", "configurar", "driver", "middleware", "nuevo pc")
 MATRIX_ALERT_ONLY_TERMS = ("alerta", "alarma", "monitoreo", "noc", "zabbix", "grafana", "prometheus", "solarwinds")
@@ -2935,6 +2941,8 @@ def mapear_riesgo_operativo_matriz(row):
     componente = componente_reincidencia_incidente(row) or "Otro componente"
     sintoma = sintoma_reincidencia_incidente(row) or "falla operativa"
     texto = normalizar_texto(texto_analisis_reincidencia_incidente(row))
+    if sintoma == "certificado vencido o renovación no oportuna":
+        return "R-CERT", "Posibilidad de pérdida de confianza, alertas de seguridad o indisponibilidad por vencimiento o renovación no oportuna de certificados de infraestructura.", "PKI y ciclo de vida de certificados", sintoma
     if sintoma == "alertamiento" and componente != "Monitoreo / NOC":
         dominio = "Proveedor externo" if componente in ("RPOST", "Autentic", "SSPS", "EPSS") else "Servicio o producto"
         return "R-OBS", "Evento de alertamiento asociado a un servicio; materialización pendiente de confirmar.", dominio, sintoma
@@ -2957,12 +2965,37 @@ def mapear_riesgo_operativo_matriz(row):
 
 
 def causa_probable_grupo(grupo):
+    tecnicas = [valor for valor in grupo.get("causa_tecnica", pd.Series(dtype=str)).fillna("").astype(str).unique() if valor]
+    if tecnicas:
+        return " | ".join(tecnicas[:3])
     valores = []
     for columna in ("causa",):
         for valor in grupo.get(columna, pd.Series(dtype=str)).fillna("").astype(str):
             if es_valor_informativo_analisis(valor) and valor not in valores:
                 valores.append(valor)
     return " | ".join(valores[:3]) if valores else "En proceso de análisis"
+
+
+def proveedor_reincidencia_incidente(row):
+    informado = safe_text(valor_fila(row, "nombre_proveedor"))
+    escalado = safe_text(valor_fila(row, "escalado_proveedor"))
+    texto = normalizar_texto(texto_analisis_reincidencia_incidente(row))
+    proveedor_informado = normalizar_texto(informado)
+    escalamiento = normalizar_texto(escalado)
+    evidencia_explicita = any(frase in texto for frase in (
+        "escalado a autentic", "escalado con autentic", "por parte de autentic",
+        "confirmacion de autentic", "autentic realice", "ticket atic", "atic-",
+    ))
+    if re.fullmatch(r"autentic|authentic", proveedor_informado) or "autentic" in escalamiento or evidencia_explicita:
+        return "Autentic"
+    return informado
+
+
+def causa_tecnica_reincidencia_incidente(row):
+    texto = normalizar_texto(texto_analisis_reincidencia_incidente(row))
+    if ("certificado ssl" in texto or "ssl" in texto) and any(term in texto for term in ("vencido", "expirado", "renovacion", "actualizacion del certificado")):
+        return "Certificado SSL vencido o renovación no oportuna", "Causa confirmada"
+    return "", "Pendiente de investigación"
 
 # El orden resuelve ambigüedades: una evidencia explícita de canal de ventas o
 # instalación tiene más peso que el servicio técnico registrado en el ticket.
@@ -2978,9 +3011,10 @@ INCIDENT_REINCIDENCE_THEMES = [
 ]
 
 INCIDENT_REINCIDENCE_COMPONENTS = [
+    ("PKI / Certificado SSL", ("certificado ssl", "ssl vencido", "renovacion del certificado ssl", "actualizacion de certificado ssl")),
+    ("Infraestructura PKI", ("infraestructura de pki", "infraestructura pki", "alarmas sobre infraestructura de pki")),
     ("Canal de ventas", ("canal de ventas", "nuevo canal", "bd de cuentas", "cuentas bancarias", "homologacion")),
     ("RPOST", ("rpost",)),
-    ("Autentic", ("autentic", "authentic")),
     ("SSPS", ("ssps", "servicio ssp", "ssp")),
     ("EPSS", ("epss",)),
     ("OCSP", ("ocsp", "osps")),
@@ -2989,14 +3023,16 @@ INCIDENT_REINCIDENCE_COMPONENTS = [
     ("Token virtual", ("token virtual",)),
     ("CLR / PKI", ("actualizacion de clr", "actualizar clr", "crl", "clr", "pki", "lista de revocacion", "certificados revocados")),
     ("Firma digital", ("firma digital", "proceso de firma", "firmar", "firma")),
+    ("Servicio de autenticación", ("servicio de autenticacion", "autenticacion por certificado", "falla de autenticacion")),
     ("GAIA", ("gaia",)),
     ("Portal", ("portal",)),
     ("Monitoreo / NOC", ("alerta", "alarma", "monitoreo", "noc", "zabbix", "grafana", "prometheus", "solarwinds")),
 ]
 
 INCIDENT_REINCIDENCE_SYMPTOMS = [
+    ("certificado vencido o renovación no oportuna", ("ssl vencido", "certificado ssl se encuentra vencido", "certificado vencido", "renovacion del certificado ssl", "actualizacion de certificado ssl")),
     ("problema de firma", ("dificultad para firmar", "no puede firmar", "no permite firmar", "error al firmar", "proceso de firma", "firma digital", "firmar")),
-    ("caída o indisponibilidad", ("caida", "caido", "indisponibilidad", "no responde", "error 500", "error 503", "error 504")),
+    ("caída o indisponibilidad", ("caida", "caido", "indisponibilidad", "no responde", "down", "unreachable", "critical", "unknown", "error 500", "error 503", "error 504")),
     ("actualización o sincronización", ("actualizacion", "actualizar", "sincronizacion", "sincronizar")),
     ("instalación o configuración", ("instalacion", "instalar", "configuracion", "configurar", "driver", "middleware")),
     ("falla de autenticación o acceso", ("autenticacion", "login", "acceso", "credenciales", "no autentica")),
@@ -3621,10 +3657,12 @@ def enriquecer_base_reincidencias(base, incidentes_df):
         numero = safe_text(valor_fila(row, "numero"))
         elegibilidad, criterio = clasificar_elegibilidad_matriz_incidente(row)
         risk_id, risk_name, domain, nature = mapear_riesgo_operativo_matriz(row)
+        technical_cause, cause_status = causa_tecnica_reincidencia_incidente(row)
         analisis[numero] = (
             tema_reincidencia_incidente(row), evidencia_reincidencia_incidente(row),
             componente_reincidencia_incidente(row) or "Otro componente",
             elegibilidad, criterio, risk_id, risk_name, domain, nature,
+            proveedor_reincidencia_incidente(row), technical_cause, cause_status,
         )
     trabajo = base.copy()
     trabajo["tema_reincidencia"] = trabajo["numero"].map(lambda numero: analisis.get(safe_text(numero), ("Sin tema concluyente", "", "Otro componente"))[0])
@@ -3636,6 +3674,9 @@ def enriquecer_base_reincidencias(base, incidentes_df):
     trabajo["riesgo_matriz"] = trabajo["numero"].map(lambda numero: analisis.get(safe_text(numero), ("", "", "", "", "", "", ""))[6])
     trabajo["dominio_evento"] = trabajo["numero"].map(lambda numero: analisis.get(safe_text(numero), ("", "", "", "", "", "", "", ""))[7])
     trabajo["naturaleza_evento"] = trabajo["numero"].map(lambda numero: analisis.get(safe_text(numero), ("", "", "", "", "", "", "", "", ""))[8])
+    trabajo["proveedor_evento"] = trabajo["numero"].map(lambda numero: analisis.get(safe_text(numero), ("", "", "", "", "", "", "", "", "", ""))[9])
+    trabajo["causa_tecnica"] = trabajo["numero"].map(lambda numero: analisis.get(safe_text(numero), ("", "", "", "", "", "", "", "", "", "", ""))[10])
+    trabajo["estado_causa_tecnica"] = trabajo["numero"].map(lambda numero: analisis.get(safe_text(numero), ("", "", "", "", "", "", "", "", "", "", "", "Pendiente de investigación"))[11])
     return trabajo
 
 
@@ -3676,7 +3717,10 @@ def construir_matriz_riesgo_incidentes(incidentes_df, problemas_df=None, edicion
         servicio = valor_mas_frecuente_analisis(grupo["servicio_producto"], SIN_SERVICIO_PRODUCTO_ANALISIS)
         tipificacion = valor_mas_frecuente_analisis(grupo["tipificacion"], SIN_TIPIFICACION_ANALISIS)
         causa = causa_probable_grupo(grupo)
-        estado_causa = "Causa probable" if causa != "En proceso de análisis" else "Pendiente de investigación"
+        proveedores = [value for value in grupo["proveedor_evento"].dropna().astype(str).unique().tolist() if value]
+        proveedor = " | ".join(proveedores) if proveedores else "No identificado / no aplica"
+        estados_causa = [value for value in grupo["estado_causa_tecnica"].dropna().unique().tolist() if value]
+        estado_causa = "Causa confirmada" if "Causa confirmada" in estados_causa else ("Causa probable" if causa != "En proceso de análisis" else "Pendiente de investigación")
         id_matriz = normalizar_texto(f"{id_riesgo}|{componente_grupo}|{naturaleza}")
         numeros = [safe_text(x) for x in grupo["numero"].tolist() if safe_text(x)]
         componentes = [x for x in grupo["componente_reincidencia"].dropna().unique().tolist() if x != "Otro componente"]
@@ -3689,6 +3733,7 @@ def construir_matriz_riesgo_incidentes(incidentes_df, problemas_df=None, edicion
             "id_riesgo": id_riesgo,
             "riesgo_materializado": riesgo_materializado,
             "dominio_evento": dominio,
+            "proveedor_evento": proveedor,
             "naturaleza_evento": naturaleza,
             "causa_probable": causa,
             "estado_causa": estado_causa,
