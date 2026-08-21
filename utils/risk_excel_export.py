@@ -66,15 +66,14 @@ def _write_df(ws, df, header_fill=PURPLE):
 def _treatment(row):
     has_problem = bool(str(row.get("Problemas asociados") or "").strip())
     state = row.get("Estado del problema") or "Sin tratamiento formal asociado"
-    cause = row.get("Estado causa raíz") or "Causa en proceso de análisis"
-    if "pendiente" in str(cause).casefold() or "investig" in str(cause).casefold():
-        cause = "En proceso de análisis"
+    cause = row.get("Causa raíz consolidada") or "En proceso de análisis"
     action = "Seguimiento mediante un plan de tratamiento relacionado." if has_problem else "Evaluar la creación de un plan de tratamiento y acciones preventivas."
-    return f"Causa: {cause}\nEstado: {state}\nAcción: {action}"
+    cause_status = row.get("Estado causa raíz") or "Pendiente de investigación"
+    return f"Causa raíz: {cause}\nEstado de la causa: {cause_status}\nEstado del problema: {state}\nAcción: {action}"
 
 
 def _public_risks(risks):
-    columns = ["ID", "Riesgo Materializado", "Dueño del Riesgo", "Impacto Escala", "Cantidad tickets asociados", "Tickets Asociados", "Eventos reales", "Estado", "Asignación Operativa RACI"]
+    columns = ["ID", "Riesgo Materializado", "Naturaleza consolidada de los INC", "Causa raíz consolidada", "Estado causa raíz", "Dueño del Riesgo", "Impacto Escala", "Cantidad tickets asociados", "Tickets Asociados", "Eventos reales", "Estado", "Asignación Operativa RACI"]
     result = risks[[column for column in columns if column in risks]].copy()
     if "Estado" in result:
         result["Estado"] = result["Estado"].astype(str).str.replace("🔥 ", "", regex=False)
@@ -99,7 +98,7 @@ def _executive(wb, analysis, year, month_from, month_to):
     ws = wb.create_sheet("Informe Ejecutivo")
     ws.sheet_view.showGridLines = False
     period = f"Año {year}" if (month_from, month_to) == (1, 12) else f"{year} · {MONTHS[month_from]}-{MONTHS[month_to]}"
-    ws.merge_cells("A1:I1")
+    ws.merge_cells("A1:L1")
     ws["A1"] = "Matriz ejecutiva de riesgos materializados"
     ws["A1"].font = _font(bold=True)
     ws["A1"].fill = PatternFill("solid", fgColor=PURPLE)
@@ -107,26 +106,26 @@ def _executive(wb, analysis, year, month_from, month_to):
     ws.row_dimensions[1].height = 28
 
     validation = analysis["validation"]
-    ws.merge_cells("A2:I2")
+    ws.merge_cells("A2:L2")
     ws["A2"] = f"Periodo: {period} | {validation['total']} casos únicos analizados"
     ws["A2"].font = _font(italic=True)
     ws["A2"].fill = PatternFill("solid", fgColor=YELLOW)
     ws["A2"].alignment = Alignment(horizontal="center", vertical="center")
-    ws.merge_cells("A3:I3")
+    ws.merge_cells("A3:L3")
     ws["A3"] = "Trazabilidad controlada: se incluyen los números de INC asociados, sin notas, solicitudes, datos personales ni detalles técnicos."
     ws["A3"].font = _font(bold=True)
     ws["A3"].fill = PatternFill("solid", fgColor=ORANGE)
     ws["A3"].alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
 
-    ws.merge_cells("A5:I5")
+    ws.merge_cells("A5:L5")
     _section(ws["A5"], "Tabla 1. Matriz de riesgos materializados")
     risk_count = int(analysis["risks"]["ID"].nunique()) if not analysis["risks"].empty else 0
     ws["A6"] = f"Total de riesgos materializados en el periodo: {risk_count}"
     ws["A6"].font = _font(bold=True)
-    headers = ["ID", "Riesgo materializado", "Dueño del riesgo", "Impacto", "Volumetría consolidada", "INC asociados", "Nivel de recurrencia", "Asignación RACI", "Estado de causa y tratamiento"]
+    headers = ["ID", "Riesgo materializado", "Naturaleza de los INC", "Causa raíz consolidada", "Estado de la causa", "INC asociados", "Nivel de recurrencia", "Volumetría", "Impacto", "Problema y tratamiento", "Dueño del riesgo", "Asignación RACI"]
     for col, value in enumerate(headers, 1):
         ws.cell(8, col, value)
-    _header(ws, 8, 1, 9)
+    _header(ws, 8, 1, 12)
 
     row_no = 9
     month_cols = [MONTHS[month] for month in range(month_from, month_to + 1)]
@@ -135,12 +134,12 @@ def _executive(wb, analysis, year, month_from, month_to):
         volume.extend(f"{month}: {int(row.get(month, 0) or 0)}" for month in month_cols)
         volume.append(f"Eventos estimados: {int(row.get('Eventos reales', 0) or 0)}")
         recurrence = str(row["Estado"]).replace("🔥 ", "")
-        values = [row["ID"], row["Riesgo Materializado"], row["Dueño del Riesgo"], row["Impacto Escala"], "\n".join(volume), row["Tickets Asociados"], recurrence, row["Asignación Operativa RACI"], _treatment(row)]
+        values = [row["ID"], row["Riesgo Materializado"], row["Naturaleza consolidada de los INC"], row["Causa raíz consolidada"], row["Estado causa raíz"], row["Tickets Asociados"], recurrence, "\n".join(volume), row["Impacto Escala"], _treatment(row), row["Dueño del Riesgo"], row["Asignación Operativa RACI"]]
         for col, value in enumerate(values, 1):
             ws.cell(row_no, col, _safe(value))
         ws.row_dimensions[row_no].height = 240
         row_no += 1
-    _body(ws, 9, row_no - 1, 1, 9)
+    _body(ws, 9, row_no - 1, 1, 12)
     for current_row in range(9, row_no):
         if ws.cell(current_row, 7).value == "REINCIDENTE":
             ws.cell(current_row, 7).fill = PatternFill("solid", fgColor=ORANGE)
@@ -170,10 +169,10 @@ def _executive(wb, analysis, year, month_from, month_to):
         for cell in ws[row_no - 1][:3]:
             cell.fill = PatternFill("solid", fgColor=ORANGE)
 
-    for index, width in enumerate([12, 44, 28, 18, 27, 28, 20, 36, 46], 1):
+    for index, width in enumerate([12, 40, 30, 34, 22, 26, 20, 27, 18, 46, 26, 34], 1):
         ws.column_dimensions[get_column_letter(index)].width = width
     ws.freeze_panes = "A9"
-    ws.auto_filter.ref = f"A8:I{max(8, 8 + len(analysis['risks']))}"
+    ws.auto_filter.ref = f"A8:L{max(8, 8 + len(analysis['risks']))}"
     ws.page_setup.orientation = "landscape"
     ws.page_setup.fitToWidth = 1
     ws.sheet_properties.pageSetUpPr.fitToPage = True

@@ -80,8 +80,19 @@ def render_riesgos_materializados():
         with st.expander("Ver detalle completo de tickets por riesgo"):
             for _, row in analysis["risks"].iterrows():
                 st.write(f"**{row['ID']} · {row['Estado']}** — {row['Tickets Asociados']}")
+    st.markdown("#### Naturaleza y causa raíz de los incidentes")
+    st.caption("Esta vista permite seleccionar un problema coherente con la naturaleza del evento. La causa confirmada prevalece sobre la causa automática; cuando no existe evidencia suficiente se indica que continúa en análisis.")
+    cause_columns = {
+        "risk_id": "Riesgo", "tickets": "INC asociados", "incident_nature": "Naturaleza de los INC",
+        "component": "Componente general", "root_cause": "Causa raíz", "root_cause_status": "Estado de la causa",
+        "event_status": "Nivel de recurrencia",
+    }
+    event_causes = analysis["events"][[column for column in cause_columns if column in analysis["events"]]].rename(columns=cause_columns)
+    if not event_causes.empty:
+        event_causes["Causa raíz"] = event_causes["Causa raíz"].replace("", "En proceso de análisis")
+    st.dataframe(event_causes, use_container_width=True, hide_index=True)
     st.markdown("#### Tratamiento mediante problemas")
-    treatment_columns = ["ID", "Eventos reales", "Problemas asociados", "Estado del problema", "Estado causa raíz"]
+    treatment_columns = ["ID", "Naturaleza consolidada de los INC", "Causa raíz consolidada", "Estado causa raíz", "Eventos reales", "Problemas asociados", "Estado del problema"]
     treatment = analysis["risks"][treatment_columns].copy() if not analysis["risks"].empty else pd.DataFrame(columns=treatment_columns)
     st.dataframe(treatment, use_container_width=True, hide_index=True)
     if untreated_recurrent:

@@ -141,7 +141,7 @@ def classify_incidents(df, overrides=None):
 def group_materialized_events(detail, window_hours=6):
     """Agrupa tickets próximos del mismo riesgo/componente en un evento auditable."""
     risk_rows = detail[detail["classification_type"] == "RISK"].copy()
-    columns = ["event_id", "risk_id", "component", "event_start", "event_end", "ticket_count",
+    columns = ["event_id", "risk_id", "component", "incident_nature", "event_start", "event_end", "ticket_count",
                "tickets", "affected_clients", "event_status", "root_cause_status", "root_cause"]
     if risk_rows.empty:
         return pd.DataFrame(columns=columns)
@@ -177,9 +177,16 @@ def _event_record(risk_id, component, rows):
     inferred = inferred[~inferred.str.casefold().isin(("", "sin inferencia"))]
     root_cause = causes.iloc[0] if not causes.empty else (inferred.iloc[0] if not inferred.empty else "")
     status = "Causa confirmada" if not causes.empty else ("Causa probable" if root_cause else "Pendiente de investigación")
+    nature_values = []
+    for column in ("tipificacion_original", "tipificacion_auto", "tipo_incidente_auto"):
+        values = frame.get(column, pd.Series(dtype=str)).fillna("").astype(str).str.strip()
+        for value in values:
+            if value and value.casefold() not in ("sin inferencia", "no determinado") and value not in nature_values:
+                nature_values.append(value)
+    incident_nature = " | ".join(nature_values[:3]) if nature_values else component
     clients = frame.get("empresa", pd.Series(dtype=str)).fillna("").astype(str).str.strip()
     return {"event_id": "EVT-" + hashlib.sha1(seed.encode()).hexdigest()[:10].upper(), "risk_id": risk_id,
-            "component": component, "event_start": start, "event_end": end, "ticket_count": len(tickets),
+            "component": component, "incident_nature": incident_nature, "event_start": start, "event_end": end, "ticket_count": len(tickets),
             "tickets": ", ".join(tickets), "affected_clients": clients[clients.ne("")].nunique(),
             "event_status": "", "root_cause_status": status, "root_cause": root_cause}
 
@@ -225,13 +232,17 @@ def build_analysis(detail, months, problem_links=None):
         row["Problemas asociados"] = ", ".join(sorted(risk_links["problem_number"].astype(str).unique())) if not risk_links.empty else ""
         row["Estado del problema"] = ", ".join(sorted(risk_links["problem_status"].fillna("Sin estado").astype(str).unique())) if not risk_links.empty else "Sin problema asociado"
         row["Estado causa raíz"] = ", ".join(sorted(risk_events["root_cause_status"].unique())) if not risk_events.empty else "Pendiente de investigación"
+        natures = [value for value in risk_events.get("incident_nature", pd.Series(dtype=str)).fillna("").astype(str).unique() if value]
+        causes = [value for value in risk_events.get("root_cause", pd.Series(dtype=str)).fillna("").astype(str).unique() if value]
+        row["Naturaleza consolidada de los INC"] = " | ".join(natures) if natures else "En proceso de caracterización"
+        row["Causa raíz consolidada"] = " | ".join(causes) if causes else "En proceso de análisis"
         for month in months:
             row[month_labels[month]] = int(group.loc[group["mes_num"] == month, "numero"].nunique())
         risks.append(row)
     risk_columns = ["ID", "Riesgo Materializado", "Dueño del Riesgo", "Impacto Escala",
                     "Cantidad tickets asociados", "Tickets Asociados", "Asignación Operativa RACI", "Estado",
                     *[month_labels[m] for m in months], "Eventos reales", "Problemas asociados", "Estado del problema",
-                    "Estado causa raíz", "R", "A", "C", "I"]
+                    "Naturaleza consolidada de los INC", "Causa raíz consolidada", "Estado causa raíz", "R", "A", "C", "I"]
     risks_df = pd.DataFrame(risks, columns=risk_columns)
     if not risks_df.empty:
         risks_df = risks_df.sort_values("Cantidad tickets asociados", ascending=False)
