@@ -42,6 +42,8 @@ from services.casos_sla import (
     resumen_sla_casos,
     tabla_casos_plataforma,
 )
+from services.resumen_ejecutivo_casos import periodos_corte, construir_resumen_ejecutivo
+from components.resumen_ejecutivo_casos import lamina_resumen_casos
 from dashboards.riesgos_materializados import render_riesgos_materializados
 from app_logic import (
     AutorizacionError,
@@ -7817,10 +7819,60 @@ def dashboard_casos():
         render_seguimiento_casos(df)
 
 
+def render_resumen_ejecutivo_casos():
+    hoy = pd.Timestamp.now(tz=ZONA_PLATAFORMA).date()
+    corte = st.date_input(
+        "Fecha de corte", value=hoy, min_value=pd.Timestamp("2000-01-01").date(),
+        max_value=hoy, format="DD/MM/YYYY", key="corte_resumen_ejecutivo_casos",
+        help="Compara del día 1 al corte en ambos meses. Si el mes anterior es más corto, usa su último día.",
+    )
+    periodos = periodos_corte(corte)
+    with st.spinner("Calculando comparación de soporte..."):
+        bases = {nombre: cargar_casos_soporte_filtrados_cache(fecha_inicio=inicio, fecha_fin=fin)
+                 for nombre, (inicio, fin) in periodos.items()}
+        reporte = construir_resumen_ejecutivo(
+            bases["anterior"], bases["actual"], corte, inferir_causa_comun_caso,
+        )
+    with st.expander("Textos del reporte"):
+        foco = st.text_input(
+            "Foco", max_chars=140, key=f"foco_ejecutivo_{corte}",
+            help="Vacío: muestra la causa agrupada con más casos. El texto no modifica los datos.",
+        )
+        decision = st.text_area(
+            "Decisión requerida", max_chars=300, key=f"decision_ejecutiva_{corte}",
+            help="Redacta la acción acordada para este corte. Sin texto, aparece pendiente de definir.",
+        )
+    contenido = lamina_resumen_casos(reporte, foco, decision)
+    components.html(contenido, height=690, scrolling=True)
+    st.download_button(
+        "Descargar lámina HTML", contenido.encode("utf-8"),
+        file_name=f"resumen_soporte_{corte}.html", mime="text/html", key="descarga_lamina_ejecutiva",
+    )
+    with st.expander("Ver cifras y casos que sustentan el reporte"):
+        st.caption(
+            "Solo responsables del equipo de soporte, sin casos de otros equipos ni sin asignación. "
+            "Los períodos filtran la fecha de creación. Backlog: abiertos del período actual según la última carga, "
+            "no pendientes acumulados de meses anteriores. El SLA evalúa cierres con vencimiento válido. "
+            "Las causas usan las reglas existentes de agrupación; cada caso se cuenta una sola vez. "
+            "Las cifras dependen de los archivos cargados; no certifican que la exportación de cada mes esté completa."
+        )
+        resumen = pd.DataFrame([
+            {"Período": nombre, "Desde": periodos[nombre][0], "Hasta": periodos[nombre][1], **metricas}
+            for nombre, metricas in reporte["metricas"].items()
+        ])
+        st.dataframe(resumen, use_container_width=True, hide_index=True)
+        st.dataframe(reporte["causas"], use_container_width=True, hide_index=True)
+        for nombre in ("anterior", "actual"):
+            st.markdown(f"**Casos del período {nombre}**")
+            detalle = tabla_casos_plataforma(reporte["bases"][nombre], [COL_ESTADO_SLA, "causa_agrupada"])
+            render_descarga_dataframe(detalle, f"detalle_ejecutivo_{nombre}", f"soporte_{nombre}", str(corte))
+            dataframe_paginado(detalle, f"detalle_ejecutivo_{nombre}", reset_token=(str(corte), len(detalle)))
+
+
 def dashboard_kpi_casos_cliente_externo():
     vista = st.radio(
         "Vista",
-        ["KPI actual", "Por mes"],
+        ["Resumen ejecutivo", "KPI actual", "Por mes"],
         horizontal=True,
         key="kpi_casos_cliente_externo_vista",
     )
@@ -11374,6 +11426,9 @@ def vista_cargar_casos():
         "Los casos sin vencimiento quedan sin evaluación; para actualizar históricos, "
         "incluye esa columna en una nueva exportación."
     )
+    if vista == "Resumen ejecutivo":
+        render_resumen_ejecutivo_casos()
+        return
     reemplazar_meses = st.checkbox(
         "Reemplazar los meses incluidos en este archivo",
         value=True,
