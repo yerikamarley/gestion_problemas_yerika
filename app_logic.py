@@ -4,6 +4,7 @@ from datetime import timedelta
 from math import ceil
 
 import pandas as pd
+from services.casos_sla import guardar_fecha_plataforma
 
 from core.settings import (
     ADMIN_EMAIL,
@@ -93,7 +94,15 @@ CASE_ALIASES = {
     "creado": ["creado", "fecha creado", "creado el", "fecha de creacion", "fecha de creación"],
     "producto": ["producto"],
     "cerrado": ["cerrado", "fecha cerrado", "cerrado el", "fecha de cierre"],
-    "causa": ["causa"],
+    "causa": ["causa raiz", "causa raiz*", "causa"],
+    "sla_creado": ["sla creado"],
+    "fecha_vencimiento_sla": ["fecha de vencimiento del sla", "vencimiento sla", "fecha vencimiento sla"],
+    "notas_trabajo": ["notas del trabajo"],
+    "escalado_proveedor": ["escalado a proveedor"],
+    "nombre_proveedor": ["nombre del proveedor", "proveedor"],
+    "numero_caso_externo": ["numero de caso externo"],
+    "producto_adicional": ["producto.1"],
+    "caso_referencia": ["caso"],
     "notas_resolucion": ["notas de resolucion", "notas de resolución"],
     "observaciones_adicionales": ["observaciones adicionales"],
     "observaciones_trabajo": [
@@ -1199,6 +1208,7 @@ def load_casos_anios(years):
             "estado",
             "creado",
             "cerrado",
+            "fecha_vencimiento_sla",
             "tiempo_respuesta",
             "cuenta",
             "contacto",
@@ -1703,6 +1713,7 @@ def init_db():
             "duracion_horas": "REAL",
         },
     )
+    ensure_table_columns(conn, "cases", {columna: "TEXT" for columna in CASE_ALIASES})
     ensure_indexes(conn)
     db_execute(
         conn,
@@ -1809,7 +1820,10 @@ def textos_para_tipificacion_caso(row):
     codigo_resolucion = normalizar_texto(valor_fila(row, "codigo_resolucion"))
     notas_resolucion = normalizar_texto(valor_fila(row, "notas_resolucion"))
     observaciones_adicionales = normalizar_texto(valor_fila(row, "observaciones_adicionales"))
-    observaciones_trabajo = normalizar_texto(valor_fila(row, "observaciones_trabajo"))
+    observaciones_trabajo = " ".join([
+        normalizar_texto(valor_fila(row, "observaciones_trabajo")),
+        normalizar_texto(valor_fila(row, "notas_trabajo")),
+    ])
 
     texto_resolucion = " ".join(
         [
@@ -1897,6 +1911,14 @@ def tipificar_caso(row):
     return clasificacion or clasificacion_residual_caso(texto)
 
 def preparar_casos(df):
+    # «Caso» también es una referencia descriptiva; conservarla incluso en
+    # exportaciones antiguas donde servía de alias para el número.
+    referencia = next((col for col in df.columns if normalizar_clave(col) == "caso"), None)
+    if referencia is not None:
+        df = df.copy()
+        df["caso_referencia"] = df[referencia]
+        if not any(normalizar_clave(col) in {"numero", "numero de caso", "id caso"} for col in df.columns):
+            df["numero"] = df[referencia]
     df = renombrar_columnas(df, CASE_ALIASES)
     for columna in CASE_ALIASES:
         if columna not in df.columns:
@@ -1936,6 +1958,14 @@ CASE_DB_COLUMNS = [
     "observaciones_trabajo",
     "tipificacion",
     "tiempo_respuesta",
+    "sla_creado",
+    "fecha_vencimiento_sla",
+    "notas_trabajo",
+    "escalado_proveedor",
+    "nombre_proveedor",
+    "numero_caso_externo",
+    "producto_adicional",
+    "caso_referencia",
 ]
 
 
@@ -1969,8 +1999,8 @@ def _guardar_casos_preparados(
         emitir_progreso(progress_callback, 0.35, "Procesando casos: preparando filas...")
         for indice, (_, row) in enumerate(df.iterrows(), start=1):
             numero = safe_text(valor_fila(row, "numero"))
-            creado = normalizar_fecha(valor_fila(row, "creado"))
-            cerrado = normalizar_fecha(valor_fila(row, "cerrado"))
+            creado = guardar_fecha_plataforma(valor_fila(row, "creado"))
+            cerrado = guardar_fecha_plataforma(valor_fila(row, "cerrado"))
             filas_upsert.append(
                 (
                     numero,
@@ -1993,6 +2023,14 @@ def _guardar_casos_preparados(
                     safe_text(valor_fila(row, "observaciones_trabajo")),
                     tipificar_caso(row),
                     tiempo(creado, cerrado),
+                    safe_text(valor_fila(row, "sla_creado")),
+                    guardar_fecha_plataforma(valor_fila(row, "fecha_vencimiento_sla")),
+                    safe_text(valor_fila(row, "notas_trabajo")),
+                    safe_text(valor_fila(row, "escalado_proveedor")),
+                    safe_text(valor_fila(row, "nombre_proveedor")),
+                    safe_text(valor_fila(row, "numero_caso_externo")),
+                    safe_text(valor_fila(row, "producto_adicional")),
+                    safe_text(valor_fila(row, "caso_referencia")),
                 )
             )
             if indice % DB_BATCH_SIZE == 0 or indice == total_filas:

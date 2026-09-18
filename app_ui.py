@@ -34,6 +34,14 @@ from services.casos import (
     segmentar_casos_por_asignacion,
     top_categorias,
 )
+from services.casos_sla import (
+    COL_ESTADO_SLA,
+    ZONA_PLATAFORMA,
+    agregar_sla_casos,
+    fecha_plataforma,
+    resumen_sla_casos,
+    tabla_casos_plataforma,
+)
 from dashboards.riesgos_materializados import render_riesgos_materializados
 from app_logic import (
     AutorizacionError,
@@ -264,7 +272,6 @@ PRODUCT_PIE_COLORS = [
 CACHE_TTL_SEGUNDOS = 300
 DATAFRAME_DISPLAY_LIMIT = 1000
 DATAFRAME_PAGE_SIZE = 50
-SLA_CASOS_HORAS = 36
 LOGGER = logging.getLogger(__name__)
 
 
@@ -685,6 +692,9 @@ INCIDENT_FIELDS_SEGUIMIENTO_RPOST = [
 ]
 
 CASE_FIELDS_BUSQUEDA_GLOBAL = [
+    "notas_trabajo",
+    "nombre_proveedor",
+    "numero_caso_externo",
     TEXT_NUMERO,
     TEXT_CUENTA,
     "contacto",
@@ -2513,21 +2523,23 @@ def render_seguimiento_operativo_incidentes(df):
                 st.dataframe(visible, use_container_width=True, hide_index=True)
 
 
-def preparar_seguimiento_casos(df, horas_proximas=12):
+def preparar_seguimiento_casos(df, horas_proximas=12, ahora=None):
     trabajo = df.copy()
     if trabajo.empty:
         return trabajo
 
-    ahora = pd.Timestamp.now()
+    instante = fecha_plataforma(ahora) if ahora is not None else pd.Timestamp.now(tz=ZONA_PLATAFORMA)
+    ahora = instante.tz_localize(None)
     trabajo[TEXT_CERRADO_2] = mascara_cerrados(trabajo)
     trabajo[TEXT_ABIERTO] = ~trabajo[TEXT_CERRADO_2]
     trabajo[TEXT_CREADO_DT_2] = pd.to_datetime(trabajo[TEXT_CREADO].apply(normalizar_fecha), errors=TEXT_COERCE)
     trabajo[TEXT_HORAS_ABIERTO] = trabajo[TEXT_CREADO_DT_2].apply(lambda fecha: horas_habiles_entre(fecha, ahora))
-    trabajo[TEXT_HORAS_PARA_VENCER] = (SLA_CASOS_HORAS - trabajo[TEXT_HORAS_ABIERTO]).round(2)
-    trabajo[TEXT_VENCIDO] = trabajo[TEXT_ABIERTO] & trabajo[TEXT_CREADO_DT_2].notna() & (trabajo[TEXT_HORAS_PARA_VENCER] < 0)
+    trabajo = agregar_sla_casos(trabajo, instante)
+    trabajo[TEXT_HORAS_PARA_VENCER] = trabajo["horas_para_vencer"]
+    trabajo[TEXT_VENCIDO] = trabajo[COL_ESTADO_SLA].eq("Vencido")
     trabajo[TEXT_PROXIMO_VENCER] = (
         trabajo[TEXT_ABIERTO]
-        & trabajo[TEXT_CREADO_DT_2].notna()
+        & trabajo[COL_ESTADO_SLA].eq("Dentro del plazo")
         & trabajo[TEXT_HORAS_PARA_VENCER].between(0, horas_proximas, inclusive="both")
     )
     return trabajo
@@ -2576,7 +2588,7 @@ def render_seguimiento_casos(df):
     st.divider()
     st.subheader("Control de vencimiento")
     st.caption(
-        f"Calculado solo sobre casos abiertos con el mismo criterio de horas habiles del SLA de {SLA_CASOS_HORAS} horas. "
+        "Vencimiento oficial de la plataforma. El tiempo restante se muestra en horas calendario. "
         "El SLA superior resume casos cerrados; esta tabla muestra pendientes abiertos."
     )
     render_tarjetas(
@@ -2584,6 +2596,7 @@ def render_seguimiento_casos(df):
             (TEXT_ABIERTOS, len(abiertos)),
             (TEXT_VENCIDOS, len(vencidos)),
             ("Proximos 12h", len(proximos)),
+            ("Sin evaluación SLA", int((~abiertos[COL_ESTADO_SLA].isin(["Vencido", "Dentro del plazo"])).sum())),
         ]
     )
 
@@ -2597,12 +2610,14 @@ def render_seguimiento_casos(df):
         TEXT_CREADO,
         TEXT_HORAS_ABIERTO,
         TEXT_HORAS_PARA_VENCER,
+        TEXT_FECHA_VENCIMIENTO_SLA,
+        COL_ESTADO_SLA,
         TEXT_TIPIFICACION_2,
         TEXT_DESCRIPCION_2,
     ]
     etiquetas = {
         TEXT_HORAS_ABIERTO: "horas_habiles_abierto",
-        TEXT_HORAS_PARA_VENCER: "horas_habiles_para_vencer",
+        TEXT_HORAS_PARA_VENCER: "horas_calendario_para_vencer",
     }
 
     tab_vencidos, tab_proximos = st.tabs([TEXT_VENCIDOS, "Proximos 12h"])
@@ -2772,12 +2787,7 @@ def metricas_casos_cliente(casos_cliente):
         return 0, None, 0
 
     casos_cerrados = casos_cliente[mascara_cerrados(casos_cliente)]
-    tiempos_casos = casos_cerrados[TEXT_TIEMPO_RESPUESTA_H].dropna()
-    sla_casos = (
-        porcentaje(len(tiempos_casos[tiempos_casos < SLA_CASOS_HORAS]), len(tiempos_casos))
-        if len(tiempos_casos)
-        else None
-    )
+    sla_casos = resumen_sla_casos(casos_cliente)["porcentaje"]
     casos_sin_causa = len(
         casos_cliente[
             casos_cliente[TEXT_CAUSA].replace("", pd.NA).fillna(SIN_DATO).str.lower().isin(["sin dato"])
@@ -2885,7 +2895,7 @@ def tabla_atenciones_abiertas_clientes(casos, incidentes):
             abiertos_casos[TEXT_PRIORIDAD_2] = abiertos_casos[TEXT_PRIORIDAD]
             abiertos_casos[TEXT_RESPONSABLE] = abiertos_casos[TEXT_ASIGNADO]
             abiertos_casos[TEXT_CREADO_2] = abiertos_casos[TEXT_CREADO]
-            abiertos_casos[COL_VENCIMIENTO_SLA] = ""
+            abiertos_casos[COL_VENCIMIENTO_SLA] = abiertos_casos.get(TEXT_FECHA_VENCIMIENTO_SLA, "")
             abiertos_casos[TEXT_CLASIFICACION] = abiertos_casos[TEXT_TIPIFICACION_2]
             abiertos_casos[TEXT_RESUMEN] = abiertos_casos[TEXT_DESCRIPCION_2]
             tablas.append(
@@ -2993,6 +3003,7 @@ def texto_caso_para_causa_comun(row):
 
 def texto_caso_para_tipologia_soporte(row):
     campos = [
+        "notas_trabajo",
         TEXT_DESCRIPCION_2,
         TEXT_CAUSA,
         TEXT_CODIGO_RESOLUCION,
@@ -3167,24 +3178,23 @@ def preparar_kpi_casos_cliente_externo(df):
     trabajo[TEXT_ABIERTO] = ~trabajo[TEXT_CERRADO_2]
     trabajo["_tiempo_cerrado_h"] = pd.to_numeric(trabajo.get(TEXT_TIEMPO_RESPUESTA), errors=TEXT_COERCE)
     trabajo[TEXT_CREADO_DT_2] = pd.to_datetime(trabajo[TEXT_CREADO].apply(normalizar_fecha), errors=TEXT_COERCE)
-    ahora = pd.Timestamp.now()
+    ahora = pd.Timestamp.now(tz=ZONA_PLATAFORMA).tz_localize(None)
     trabajo[TEXT_HORAS_ABIERTO] = trabajo[TEXT_CREADO_DT_2].apply(lambda fecha: horas_habiles_entre(fecha, ahora))
     trabajo["_tiempo_eval_sla_h"] = trabajo["_tiempo_cerrado_h"].where(
         trabajo[TEXT_CERRADO_2],
         trabajo[TEXT_HORAS_ABIERTO],
     )
-    trabajo["Cumple SLA <=36h"] = trabajo["_tiempo_eval_sla_h"].apply(
-        lambda valor: "Si" if pd.notna(valor) and valor <= SLA_CASOS_HORAS else "No"
-    )
+    trabajo = agregar_sla_casos(trabajo)
 
     total = len(trabajo)
     cerrados = int(trabajo[TEXT_CERRADO_2].sum())
     abiertos = total - cerrados
     tiempos_validos = pd.to_numeric(trabajo["_tiempo_eval_sla_h"], errors=TEXT_COERCE).dropna()
     promedio = round(tiempos_validos.mean(), 2) if not tiempos_validos.empty else 0
-    cumple_sla = int((trabajo["_tiempo_eval_sla_h"] <= SLA_CASOS_HORAS).fillna(False).sum())
-    no_cumple_sla = total - cumple_sla
-    cumplimiento_sla = porcentaje(cumple_sla, total)
+    sla = resumen_sla_casos(trabajo)
+    cumple_sla = sla["cumple"]
+    no_cumple_sla = sla["no_cumple"]
+    cumplimiento_sla = sla["porcentaje"]
 
     metricas = {
         "total": total,
@@ -3194,6 +3204,8 @@ def preparar_kpi_casos_cliente_externo(df):
         "cumplimiento_sla": cumplimiento_sla,
         "cumple_sla": cumple_sla,
         "no_cumple_sla": no_cumple_sla,
+        "evaluados_sla": sla["evaluados"],
+        "sin_evaluacion_sla": cerrados - sla["evaluados"],
         COL_PRINCIPAL_TIPIFICACION: valor_mas_frecuente(trabajo["_tipificacion_kpi"]),
         COL_PRINCIPAL_SOPORTE: valor_mas_frecuente(trabajo[TEXT_TIPOLOGIA_SOPORTE]),
         COL_PRINCIPAL_CAUSA_COMUN: valor_mas_frecuente(trabajo[TEXT_CAUSA_COMUN]),
@@ -5178,11 +5190,12 @@ def render_slide_kpi_casos_cliente_externo(base, metricas, mes_dashboard):
         ("Total casos", metricas["total"]),
         ("Cerrados", metricas["cerrados"]),
         ("Abiertos", metricas["abiertos"]),
-        (f"Cumplimiento ANS <={SLA_CASOS_HORAS} h", f"{metricas['cumplimiento_sla']}%"),
+        ("SLA según vencimiento", formato_porcentaje_presentacion(metricas["cumplimiento_sla"])),
     ]
     caption = (
         f"Tiempo promedio: {metricas['promedio']} h | "
-        f"Cumplen ANS: {metricas['cumple_sla']} | No cumplen: {metricas['no_cumple_sla']}"
+        f"Cumplen ANS: {metricas['cumple_sla']} | No cumplen: {metricas['no_cumple_sla']} | "
+        f"Cerrados sin evaluación SLA: {metricas['sin_evaluacion_sla']}"
     )
     lineas = lineas_lectura_kpi_casos(metricas, base)
     izquierda = slide_product_distribution_html(base, mes_dashboard or TEXT_TODOS)
@@ -5218,12 +5231,13 @@ def render_kpi_casos_cliente_externo(df, mes_dashboard=None):
             ("Total casos", metricas["total"]),
             ("Cerrados", metricas["cerrados"]),
             ("Abiertos", metricas["abiertos"]),
-            (f"Cumplimiento ANS <={SLA_CASOS_HORAS} h", f"{metricas['cumplimiento_sla']}%"),
+            ("SLA según vencimiento", formato_porcentaje_presentacion(metricas["cumplimiento_sla"])),
         ]
     )
     st.caption(
         f"Tiempo promedio: {metricas['promedio']} h | "
-        f"Cumplen ANS: {metricas['cumple_sla']} | No cumplen: {metricas['no_cumple_sla']}"
+        f"Cumplen ANS: {metricas['cumple_sla']} | No cumplen: {metricas['no_cumple_sla']} | "
+        f"Cerrados sin evaluación SLA: {metricas['sin_evaluacion_sla']}"
     )
 
     st.divider()
@@ -5265,7 +5279,8 @@ def render_kpi_casos_cliente_externo(df, mes_dashboard=None):
                 TEXT_PRODUCTO,
                 TEXT_TIEMPO_RESPUESTA,
                 "_tiempo_eval_sla_h",
-                "Cumple SLA <=36h",
+                COL_ESTADO_SLA,
+                TEXT_FECHA_VENCIMIENTO_SLA,
                 TEXT_CANAL,
                 TEXT_ASIGNADO,
                 TEXT_CREADO,
@@ -5273,7 +5288,7 @@ def render_kpi_casos_cliente_externo(df, mes_dashboard=None):
             ]
             visible = base[[col for col in columnas if col in base.columns]].rename(
                 columns={
-                    "_tiempo_eval_sla_h": "Tiempo evaluado SLA h",
+                    "_tiempo_eval_sla_h": "Tiempo transcurrido hábil h",
                     TEXT_PRODUCTO: "Servicio",
                 }
             )
@@ -5297,7 +5312,7 @@ def fila_kpi_casos_rango(df, etiqueta, fecha_inicio, fecha_fin):
             TEXT_TOTAL: 0,
             TEXT_CERRADOS: 0,
             TEXT_ABIERTOS: 0,
-            "SLA %": 0,
+            "SLA %": None,
             "Cumple SLA": 0,
             "No cumple SLA": 0,
             COL_PROM_HORAS: 0,
@@ -5402,7 +5417,7 @@ def tabla_variacion_kpi_casos(tabla):
                 "Metrica": metrica,
                 "Base": base.get(metrica, 0),
                 "Comparado": comparado.get(metrica, 0),
-                "Diferencia": round(float(comparado.get(metrica, 0)) - float(base.get(metrica, 0)), 2),
+                "Diferencia": diferencia_metrica(comparado.get(metrica), base.get(metrica)),
                 "Variacion %": variacion_porcentual(comparado.get(metrica, 0), base.get(metrica, 0)),
             }
         )
@@ -5419,9 +5434,9 @@ def render_tarjetas_kpi_casos_comparativo(tabla, etiqueta_base, etiqueta_compara
             (f"Casos {etiqueta_base}", total_base),
             (f"Casos {etiqueta_comparado}", total_comparado),
             ("Diferencia casos", f"{int(total_comparado - total_base):+d}"),
-            (f"SLA {etiqueta_base}", f"{sla_base}%"),
-            (f"SLA {etiqueta_comparado}", f"{sla_comparado}%"),
-            ("Diferencia SLA p.p.", f"{round(float(sla_comparado) - float(sla_base), 2):+g}"),
+            (f"SLA {etiqueta_base}", formato_porcentaje_presentacion(sla_base)),
+            (f"SLA {etiqueta_comparado}", formato_porcentaje_presentacion(sla_comparado)),
+            ("Diferencia SLA p.p.", diferencia_metrica(sla_comparado, sla_base) if pd.notna(sla_comparado) and pd.notna(sla_base) else "Sin dato"),
         ]
     )
 
@@ -7751,12 +7766,13 @@ def dashboard_casos():
             (TEXT_CERRADOS, metricas["cerrados"]),
             (TEXT_ABIERTOS, metricas["abiertos"]),
             ("Promedio (h)", metricas["promedio"]),
-            (f"ANS <={SLA_CASOS_HORAS}h (%)", f"{metricas['cumplimiento_sla']}%"),
+            ("SLA según vencimiento", formato_porcentaje_presentacion(metricas["cumplimiento_sla"])),
         ]
     )
     st.caption(
         f"{TEXT_PERIODO}{periodo_label} | Base: equipo de soporte y casos sin asignación | "
-        f"Cumplen: {metricas['cumple_sla']}{TEXT_NO_CUMPLEN}{metricas['no_cumple_sla']}"
+        f"Cumplen: {metricas['cumple_sla']}{TEXT_NO_CUMPLEN}{metricas['no_cumple_sla']} | "
+        f"Cerrados sin evaluación SLA: {metricas['sin_evaluacion_sla']}"
     )
 
     st.divider()
@@ -7871,9 +7887,7 @@ def preparar_casos_kpi_comparativo_ligero(casos):
         trabajo.get(TEXT_TIEMPO_RESPUESTA, pd.Series(dtype=TEXT_FLOAT)),
         errors=TEXT_COERCE,
     )
-    trabajo["Cumple SLA <=36h"] = trabajo["_tiempo_eval_sla_h"].apply(
-        lambda valor: "Si" if pd.notna(valor) and valor <= SLA_CASOS_HORAS else "No"
-    )
+    trabajo = agregar_sla_casos(trabajo)
     return trabajo
 
 
@@ -7930,7 +7944,7 @@ def metricas_casos_comparativo(base, anio):
             TEXT_TOTAL: 0,
             TEXT_CERRADOS: 0,
             TEXT_ABIERTOS: 0,
-            "SLA %": 0,
+            "SLA %": None,
             "Cumple SLA": 0,
             "No cumple SLA": 0,
             COL_PROM_HORAS: 0,
@@ -7941,15 +7955,16 @@ def metricas_casos_comparativo(base, anio):
         cerrados_sla.get("_tiempo_eval_sla_h", pd.Series(dtype=TEXT_FLOAT)),
         errors=TEXT_COERCE,
     ).dropna()
-    cumple = int((tiempos <= SLA_CASOS_HORAS).sum())
-    no_cumple = len(tiempos) - cumple
+    sla = resumen_sla_casos(cerrados_sla)
+    cumple = sla["cumple"]
+    no_cumple = sla["no_cumple"]
     return {
         "Registro": TEXT_CASOS,
         "Anio": anio,
         TEXT_TOTAL: len(datos),
         TEXT_CERRADOS: cerrados,
         TEXT_ABIERTOS: len(datos) - cerrados,
-        "SLA %": porcentaje(cumple, len(tiempos)),
+        "SLA %": sla["porcentaje"],
         "Cumple SLA": cumple,
         "No cumple SLA": no_cumple,
         COL_PROM_HORAS: round(tiempos.mean(), 2) if not tiempos.empty else 0,
@@ -8011,7 +8026,7 @@ def metricas_casos_comparativo_rango(base, etiqueta, fecha_inicio, fecha_fin):
             TEXT_TOTAL: 0,
             TEXT_CERRADOS: 0,
             TEXT_ABIERTOS: 0,
-            "SLA %": 0,
+            "SLA %": None,
             "Cumple SLA": 0,
             "No cumple SLA": 0,
             COL_PROM_HORAS: 0,
@@ -8023,15 +8038,16 @@ def metricas_casos_comparativo_rango(base, etiqueta, fecha_inicio, fecha_fin):
         cerrados_sla.get("_tiempo_eval_sla_h", pd.Series(dtype=TEXT_FLOAT)),
         errors=TEXT_COERCE,
     ).dropna()
-    cumple = int((tiempos <= SLA_CASOS_HORAS).sum())
-    no_cumple = len(tiempos) - cumple
+    sla = resumen_sla_casos(cerrados_sla)
+    cumple = sla["cumple"]
+    no_cumple = sla["no_cumple"]
     return {
         "Registro": TEXT_CASOS,
         "Periodo": etiqueta,
         TEXT_TOTAL: len(datos),
         TEXT_CERRADOS: cerrados,
         TEXT_ABIERTOS: len(datos) - cerrados,
-        "SLA %": porcentaje(cumple, len(tiempos)),
+        "SLA %": sla["porcentaje"],
         "Cumple SLA": cumple,
         "No cumple SLA": no_cumple,
         COL_PROM_HORAS: round(tiempos.mean(), 2) if not tiempos.empty else 0,
@@ -8085,8 +8101,14 @@ def tabla_metricas_kpi_comparativo_rangos(base_casos, base_incidentes, rangos):
     return pd.DataFrame(filas)
 
 
+def diferencia_metrica(actual, base):
+    if pd.isna(actual) or pd.isna(base):
+        return None
+    return round(float(actual) - float(base), 2)
+
+
 def variacion_porcentual(actual, base):
-    if not base:
+    if pd.isna(actual) or pd.isna(base) or not base:
         return None
     return round(((actual - base) / base) * 100, 2)
 
@@ -8119,7 +8141,7 @@ def tabla_comparativo_anios(metricas, anio_base, anio_comparado):
                 "Variacion total %": variacion_porcentual(actual[TEXT_TOTAL], base[TEXT_TOTAL]),
                 f"SLA {anio_base} %": base["SLA %"],
                 f"SLA {anio_comparado} %": actual["SLA %"],
-                "Diferencia SLA p.p.": round(actual["SLA %"] - base["SLA %"], 2),
+                "Diferencia SLA p.p.": diferencia_metrica(actual["SLA %"], base["SLA %"]),
                 f"Abiertos {anio_base}": int(base[TEXT_ABIERTOS]),
                 f"Abiertos {anio_comparado}": int(actual[TEXT_ABIERTOS]),
                 "Lectura": texto_variacion(actual[TEXT_TOTAL], base[TEXT_TOTAL]),
@@ -8146,7 +8168,7 @@ def tabla_comparativo_rangos(metricas, periodo_base, periodo_comparado):
                 "Variacion total %": variacion_porcentual(actual[TEXT_TOTAL], base[TEXT_TOTAL]),
                 "SLA base %": base["SLA %"],
                 "SLA comparado %": actual["SLA %"],
-                "Diferencia SLA p.p.": round(actual["SLA %"] - base["SLA %"], 2),
+                "Diferencia SLA p.p.": diferencia_metrica(actual["SLA %"], base["SLA %"]),
                 "Abiertos base": int(base[TEXT_ABIERTOS]),
                 "Abiertos comparado": int(actual[TEXT_ABIERTOS]),
                 "Lectura": texto_variacion(actual[TEXT_TOTAL], base[TEXT_TOTAL]),
@@ -8545,7 +8567,7 @@ def tarjetas_sla_anual_html(metricas, anios):
             tarjetas.append(
                 '<div class="kpi-card">'
                 f'<div class="kpi-title">SLA {html.escape(registro)} {anio}</div>'
-                f'<div class="kpi-value">{sla}%</div>'
+                f'<div class="kpi-value">{formato_porcentaje_presentacion(sla)}</div>'
                 "</div>"
             )
     return '<div class="kpi-grid">' + "".join(tarjetas) + "</div>"
@@ -10167,16 +10189,7 @@ def render_detalle_seguimiento_autentic(df, tipo):
 def resumen_anual_seguimiento_autentic(casos, incidentes, anio, meses_observados):
     """Construye el balance anual sin mezclarlo con los filtros del detalle mensual."""
     clientes = clientes_seguimiento_rpost(casos, incidentes)
-    casos_cerrados = casos[mascara_cerrados(casos)] if not casos.empty else pd.DataFrame()
-    tiempos_casos = pd.to_numeric(
-        casos_cerrados.get(TEXT_TIEMPO_RESPUESTA, pd.Series(dtype=TEXT_FLOAT)),
-        errors=TEXT_COERCE,
-    ).dropna()
-    sla_casos = (
-        porcentaje(len(tiempos_casos[tiempos_casos < SLA_CASOS_HORAS]), len(tiempos_casos))
-        if len(tiempos_casos)
-        else None
-    )
+    sla_casos = resumen_sla_casos(casos)["porcentaje"]
     return {
         "casos": len(casos),
         "sla_casos": sla_casos,
@@ -10220,7 +10233,7 @@ def render_balance_anual_seguimiento_autentic(meses_disponibles):
     )
     render_tarjetas([
         ("Casos del año", resumen["casos"]),
-        (f"Cumplimiento ANS <{SLA_CASOS_HORAS}h", sla_casos_texto),
+        ("SLA según vencimiento", sla_casos_texto),
         ("Clientes con casos", casos[TEXT_CLIENTE].nunique() if not casos.empty else 0),
     ])
 
@@ -10403,11 +10416,7 @@ def aplicar_filtros_clientes_clave(casos, incidentes, clientes_seleccionados, me
 
 
 def calcular_sla_casos_clientes(casos):
-    casos_cerrados = casos[mascara_cerrados(casos)] if not casos.empty else pd.DataFrame()
-    tiempos_casos = casos_cerrados.get(TEXT_TIEMPO_RESPUESTA_H, pd.Series(dtype=TEXT_FLOAT)).dropna()
-    if not len(tiempos_casos):
-        return 0
-    return porcentaje(len(tiempos_casos[tiempos_casos < SLA_CASOS_HORAS]), len(tiempos_casos))
+    return resumen_sla_casos(casos)["porcentaje"]
 
 
 def preparar_casos_clientes_clave_comparativo(casos):
@@ -10417,9 +10426,7 @@ def preparar_casos_clientes_clave_comparativo(casos):
     trabajo[TEXT_CERRADO_2] = mascara_cerrados(trabajo)
     trabajo[TEXT_ABIERTO] = ~trabajo[TEXT_CERRADO_2]
     trabajo["_tiempo_eval_sla_h"] = pd.to_numeric(trabajo.get(TEXT_TIEMPO_RESPUESTA_H), errors=TEXT_COERCE)
-    trabajo["Cumple SLA"] = trabajo["_tiempo_eval_sla_h"].apply(
-        lambda valor: "Si" if pd.notna(valor) and valor < SLA_CASOS_HORAS else "No"
-    )
+    trabajo = agregar_sla_casos(trabajo)
     return trabajo
 
 
@@ -10443,9 +10450,9 @@ def resumen_casos_clientes_clave_periodo(casos, periodo):
         if datos.empty:
             continue
         cerrados = datos[datos[TEXT_CERRADO_2]].copy()
-        tiempos = pd.to_numeric(cerrados.get("_tiempo_eval_sla_h", pd.Series(dtype=TEXT_FLOAT)), errors=TEXT_COERCE).dropna()
-        cumple = int((tiempos < SLA_CASOS_HORAS).sum())
-        no_cumple = int(len(tiempos) - cumple)
+        sla = resumen_sla_casos(cerrados)
+        cumple = sla["cumple"]
+        no_cumple = sla["no_cumple"]
         filas.append(
             {
                 "Periodo": periodo,
@@ -10455,7 +10462,7 @@ def resumen_casos_clientes_clave_periodo(casos, periodo):
                 TEXT_ABIERTOS: int(len(datos) - len(cerrados)),
                 COL_CUMPLE_SLA: cumple,
                 COL_NO_CUMPLE_SLA: no_cumple,
-                "SLA %": formato_porcentaje_presentacion(porcentaje(cumple, len(tiempos)) if len(tiempos) else None),
+                "SLA %": formato_porcentaje_presentacion(sla["porcentaje"]),
             }
         )
     if not filas:
@@ -10668,7 +10675,7 @@ def render_kpis_clientes_clave(metricas, mes_dashboard):
             ("Clientes activos", metricas["clientes_activos"]),
             (TEXT_ATENCIONES, metricas[TEXT_TOTAL_CASOS] + metricas[TEXT_TOTAL_INCIDENTES]),
             (TEXT_ABIERTOS, metricas["abiertos"]),
-            (f"ANS casos <{SLA_CASOS_HORAS}h", f"{metricas['sla_casos']}%"),
+            ("SLA según vencimiento", formato_porcentaje_presentacion(metricas["sla_casos"])),
             ("ANS incidentes", f"{metricas['sla_incidentes']}%"),
         ]
     )
@@ -10954,7 +10961,7 @@ def render_tarjetas_kpi_clientes_clave(metricas):
             (TEXT_ATENCIONES, metricas[TEXT_TOTAL_CASOS] + metricas[TEXT_TOTAL_INCIDENTES]),
             (TEXT_ABIERTOS, metricas["abiertos"]),
             ("En seguimiento", metricas["clientes_seguimiento"]),
-            (f"SLA casos <{SLA_CASOS_HORAS}h", f"{metricas['sla_casos']}%"),
+            ("SLA según vencimiento", formato_porcentaje_presentacion(metricas["sla_casos"])),
             ("SLA incidentes", f"{metricas['sla_incidentes']}%"),
         ]
     )
@@ -11036,7 +11043,7 @@ def render_slide_kpi_clientes_clave(metricas, resumen_actividad, mes_dashboard, 
         (TEXT_ATENCIONES, metricas[TEXT_TOTAL_CASOS] + metricas[TEXT_TOTAL_INCIDENTES]),
         (TEXT_ABIERTOS, metricas["abiertos"]),
         ("En seguimiento", metricas["clientes_seguimiento"]),
-        (f"SLA casos <{SLA_CASOS_HORAS}h", f"{metricas['sla_casos']}%"),
+        ("SLA según vencimiento", formato_porcentaje_presentacion(metricas["sla_casos"])),
         ("SLA incidentes", f"{metricas['sla_incidentes']}%"),
     ]
     caption = (
@@ -11354,6 +11361,11 @@ def vista_cargar_casos():
     df = pd.read_excel(archivo)
     st.write(f"Filas detectadas: {len(df)}")
     st.dataframe(df.head(), use_container_width=True, hide_index=True)
+    st.caption(
+        "El SLA se evalúa con la fecha de vencimiento exportada por la plataforma. "
+        "Los casos sin vencimiento quedan sin evaluación; para actualizar históricos, "
+        "incluye esa columna en una nueva exportación."
+    )
     reemplazar_meses = st.checkbox(
         "Reemplazar los meses incluidos en este archivo",
         value=True,
@@ -11379,6 +11391,7 @@ def vista_casos():
     filtro_asignacion = TEXT_TODOS
     filtro_grupo_cliente = TEXT_TODOS
     filtro_texto = ""
+    filtro_sla = TEXT_TODOS
     if not df.empty:
         df = preparar_fechas_dashboard(df)
         df["mes"] = df[TEXT_CREADO_DT_DASHBOARD].dt.to_period("M").astype(str).replace("NaT", "Sin fecha")
@@ -11487,35 +11500,26 @@ def vista_casos():
         else:
             df = segmentos_asignacion["todos"]
         df = df.drop(columns=[TEXT_CREADO_DT_DASHBOARD], errors="ignore")
-        columnas = [
-            TEXT_NUMERO,
-            TEXT_ESTADO,
-            "mes",
-            "Grupo cliente clave",
-            "Cliente clave detectado",
-            "Fuente identificación VIP",
-            COL_SEGMENTO_ASIGNACION,
-            TEXT_TIPOLOGIA_SOPORTE,
-            TEXT_CUENTA,
-            "contacto",
-            TEXT_DESCRIPCION_2,
-            TEXT_PRIORIDAD,
-            TEXT_ASIGNADO,
-            TEXT_CREADO,
-            TEXT_CERRADO,
-            TEXT_PRODUCTO,
-            TEXT_CAUSA,
-            TEXT_TIPIFICACION_2,
-            TEXT_TIEMPO_RESPUESTA,
-            TEXT_CANAL,
-            "creado_por",
-            "actualizado",
-            TEXT_CODIGO_RESOLUCION,
-            "notas_resolucion",
-            TEXT_OBSERVACIONES_ADICIONALES,
-            TEXT_OBSERVACIONES_TRABAJO,
-        ]
-        df = df[[col for col in columnas if col in df.columns]]
+        df = agregar_sla_casos(df)
+        filtro_sla = st.selectbox(
+            "Estado SLA",
+            [TEXT_TODOS, "Dentro del plazo", "Vencido", "Cumple", "No cumple",
+             "Sin fecha de vencimiento", "Sin fecha de cierre", "Fechas inconsistentes"],
+            key="estado_sla_casos",
+        )
+        if filtro_sla != TEXT_TODOS:
+            df = df[df[COL_ESTADO_SLA] == filtro_sla]
+        st.caption(
+            "SLA según el vencimiento de origen, en hora de Colombia. "
+            "Horas positivas: tiempo restante o margen al cierre; negativas: atraso. "
+            "El porcentaje de cumplimiento considera solo casos cerrados con fechas evaluables."
+        )
+        df = tabla_casos_plataforma(df, adicionales=[
+            COL_ESTADO_SLA, "horas_para_vencer", "mes",
+            "Grupo cliente clave", "Cliente clave detectado", "Fuente identificación VIP",
+            COL_SEGMENTO_ASIGNACION, TEXT_TIPOLOGIA_SOPORTE,
+            TEXT_TIPIFICACION_2, TEXT_TIEMPO_RESPUESTA,
+        ])
         st.caption(f"Registros encontrados: {len(df)}")
         st.caption(f"{TEXT_PERIODO}{periodo_label}")
     render_descarga_dataframe(df, "descargar_casos_completos", "casos", periodo_label)
@@ -11531,6 +11535,7 @@ def vista_casos():
             filtro_grupo_cliente,
             filtro_asignacion,
             filtro_texto,
+            filtro_sla,
             len(df),
         ),
     )
