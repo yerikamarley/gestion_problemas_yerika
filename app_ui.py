@@ -421,7 +421,8 @@ def cargar_meses_disponibles_multi_cache(tablas):
 
 
 @st.cache_data(ttl=CACHE_TTL_SEGUNDOS, show_spinner=False)
-def cargar_casos_filtrados_cache(anio=None, mes=None, cliente="", estado="", servicio="", tipificacion=""):
+def cargar_casos_filtrados_cache(anio=None, mes=None, cliente="", estado="", servicio="", tipificacion="",
+                               fecha_inicio=None, fecha_fin=None):
     return load_casos_filtrados(
         anio=anio,
         mes=mes,
@@ -429,6 +430,8 @@ def cargar_casos_filtrados_cache(anio=None, mes=None, cliente="", estado="", ser
         estado=estado,
         servicio=servicio,
         tipificacion=tipificacion,
+        fecha_inicio=fecha_inicio,
+        fecha_fin=fecha_fin,
     )
 
 
@@ -3062,10 +3065,15 @@ def cargar_casos_soporte_filtrados_cache(
     servicio="",
     tipificacion="",
     _version=CASE_TYPOLOGY_CACHE_VERSION,
+    fecha_inicio=None,
+    fecha_fin=None,
 ):
     return agregar_tipologia_soporte_casos(
         normalizar_tipificaciones_casos_df(
-            cargar_casos_filtrados_cache(anio, mes, cliente, estado, servicio, tipificacion)
+            cargar_casos_filtrados_cache(
+                anio, mes, cliente, estado, servicio, tipificacion,
+                fecha_inicio=fecha_inicio, fecha_fin=fecha_fin,
+            )
         )
     )
 
@@ -11377,13 +11385,52 @@ def vista_cargar_casos():
     if st.button("Procesar casos"):
         procesar_archivo_casos(df, reemplazar_meses)
 
+def selector_fechas_casos():
+    hoy = pd.Timestamp.now(tz=ZONA_PLATAFORMA).date()
+    modo = st.radio(
+        "Fecha de creación de los casos",
+        ["Hoy", "Ayer y hoy", "Mes completo", "Rango de fechas"],
+        horizontal=True,
+        key="periodo_consulta_casos",
+    )
+    inicio = fin = hoy
+    if modo == "Ayer y hoy":
+        inicio = (pd.Timestamp(hoy) - pd.Timedelta(days=1)).date()
+    elif modo == "Mes completo":
+        col_anio, col_mes = st.columns(2)
+        with col_anio:
+            anio = int(st.number_input("Año", min_value=1900, max_value=2100, value=hoy.year, step=1, key="anio_consulta_casos"))
+        with col_mes:
+            mes = st.selectbox("Mes", list(range(1, 13)), index=hoy.month - 1,
+                               format_func=lambda valor: MONTH_NAMES_ES[valor], key="mes_consulta_casos")
+        inicio = pd.Timestamp(year=anio, month=mes, day=1).date()
+        fin = (pd.Timestamp(inicio) + pd.offsets.MonthEnd(0)).date()
+    elif modo == "Rango de fechas":
+        rango = st.date_input(
+            "Desde / hasta", value=(hoy, hoy), format="DD/MM/YYYY",
+            min_value=pd.Timestamp("1900-01-01").date(),
+            key="rango_consulta_casos",
+            help="Incluye ambos días completos. Puedes elegir un solo día o un rango entre meses.",
+        )
+        if len(rango) != 2:
+            st.info("Selecciona la fecha final para consultar el rango.")
+            return None
+        inicio, fin = rango
+        if fin < inicio:
+            st.info("La fecha final debe ser igual o posterior a la inicial.")
+            return None
+    etiqueta = inicio.strftime("%d/%m/%Y") if inicio == fin else f"{inicio:%d/%m/%Y} al {fin:%d/%m/%Y}"
+    return inicio, fin, etiqueta
+
+
 def vista_casos():
     st.subheader("Casos")
     st.caption("Consulta y control de casos por estado, tipología, servicio y segmento de asignación.")
-    anio, mes, periodo_label = selector_periodo_sql("cases", "vista_casos_periodo")
-    if not periodo_sql_valido(anio, "casos"):
+    periodo = selector_fechas_casos()
+    if periodo is None:
         return
-    df = cargar_casos_soporte_filtrados_cache(anio, mes)
+    fecha_inicio, fecha_fin, periodo_label = periodo
+    df = cargar_casos_soporte_filtrados_cache(fecha_inicio=fecha_inicio, fecha_fin=fecha_fin)
     filtro_estado = TEXT_TODOS
     filtro_soporte = TEXT_TODOS
     filtro_servicio = TEXT_TODOS
@@ -11435,23 +11482,6 @@ def vista_casos():
                 "tipificación, resolución, notas y observaciones. No distingue mayúsculas ni tildes."
             ),
         )
-
-        filtro_estado_sql = filtro_estado if filtro_estado != TEXT_TODOS else ""
-        filtro_servicio_sql = (
-            filtro_servicio
-            if filtro_servicio not in (TEXT_TODOS, SIN_SERVICIO)
-            else ""
-        )
-        if filtro_estado_sql or filtro_servicio_sql:
-            df = cargar_casos_soporte_filtrados_cache(
-                anio,
-                mes,
-                "",
-                filtro_estado_sql,
-                filtro_servicio_sql,
-            )
-            df = preparar_fechas_dashboard(df)
-            df["mes"] = df[TEXT_CREADO_DT_DASHBOARD].dt.to_period("M").astype(str).replace("NaT", "Sin fecha")
 
         if filtro_estado != TEXT_TODOS:
             df = df[df[TEXT_ESTADO] == filtro_estado]
@@ -11522,6 +11552,9 @@ def vista_casos():
         ])
         st.caption(f"Registros encontrados: {len(df)}")
         st.caption(f"{TEXT_PERIODO}{periodo_label}")
+    else:
+        st.info(f"No hay casos creados en el período {periodo_label}.")
+        df = tabla_casos_plataforma(df)
     render_descarga_dataframe(df, "descargar_casos_completos", "casos", periodo_label)
     dataframe_paginado(
         df,
@@ -11536,6 +11569,8 @@ def vista_casos():
             filtro_asignacion,
             filtro_texto,
             filtro_sla,
+            fecha_inicio,
+            fecha_fin,
             len(df),
         ),
     )

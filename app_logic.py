@@ -2098,13 +2098,16 @@ def load_casos():
     return aplicar_tipificaciones_casos(read_table("cases"))
 
 
-def load_casos_filtrados(anio=None, mes=None, cliente=None, estado=None, servicio=None, tipificacion=None, limit=None):
+def load_casos_filtrados(anio=None, mes=None, cliente=None, estado=None, servicio=None, tipificacion=None, limit=None,
+                        fecha_inicio=None, fecha_fin=None):
     exigir_contexto_lectura()
     df = read_table_filtered(
         "cases",
         columns=CASE_DB_COLUMNS,
         anio=anio,
         mes=mes,
+        fecha_inicio=fecha_inicio,
+        fecha_fin=fecha_fin,
         equals={
             "estado": estado,
             "producto": servicio,

@@ -170,11 +170,12 @@ class IntegracionSlaCasosTest(unittest.TestCase):
     def test_vista_renderiza_orden_exportacion_y_filtra_sla(self):
         from streamlit.testing.v1 import AppTest
         app = AppTest.from_string('''
+from datetime import date
 from unittest.mock import patch
 import app_ui as ui
 from tests.test_casos_sla import IntegracionSlaCasosTest
 df = ui.agregar_tipologia_soporte_casos(IntegracionSlaCasosTest().base())
-with patch.object(ui, "selector_periodo_sql", return_value=(2026, 8, "Agosto 2026")), \\
+with patch.object(ui, "selector_fechas_casos", return_value=(date(2026, 8, 1), date(2026, 8, 31), "Agosto 2026")), \\
      patch.object(ui, "cargar_casos_soporte_filtrados_cache", return_value=df):
     ui.vista_casos()
 ''').run()

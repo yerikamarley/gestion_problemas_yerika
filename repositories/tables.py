@@ -1,6 +1,7 @@
 """Consultas genéricas y seguras sobre tablas de la aplicación."""
 
 import re
+from datetime import date, timedelta
 
 import pandas as pd
 
@@ -84,9 +85,27 @@ def valor_filtro_activo(valor):
     return valor not in (None, "", "Todos")
 
 
-def read_table_filtered(table_name, columns=None, anio=None, mes=None, equals=None, likes=None, limit=None):
+def agregar_condicion_fechas(where, params, fecha_inicio=None, fecha_fin=None):
+    if fecha_inicio is None and fecha_fin is None:
+        return
+    if fecha_inicio is None or fecha_fin is None:
+        raise ValueError("Se requieren fecha inicial y final")
+    inicio = date.fromisoformat(str(fecha_inicio))
+    fin = date.fromisoformat(str(fecha_fin))
+    if fin < inicio:
+        raise ValueError("La fecha final debe ser igual o posterior a la inicial")
+    where.append("(creado >= ? AND creado < ?)")
+    params.extend([inicio.isoformat(), (fin + timedelta(days=1)).isoformat()])
+
+
+def read_table_filtered(table_name, columns=None, anio=None, mes=None, equals=None, likes=None, limit=None,
+                        fecha_inicio=None, fecha_fin=None):
     exigir_contexto_consulta()
     table_name = validar_identificador_sql(table_name)
+    where = []
+    params = []
+    agregar_condicion_periodo(where, params, anio, mes)
+    agregar_condicion_fechas(where, params, fecha_inicio, fecha_fin)
     conn = get_conn()
     column_sql, requested_columns, missing_columns = columnas_select_seguras(conn, table_name, columns)
     if not column_sql:
@@ -94,10 +113,6 @@ def read_table_filtered(table_name, columns=None, anio=None, mes=None, equals=No
         df = pd.DataFrame(columns=columns or [])
         df.attrs["missing_columns"] = missing_columns
         return df
-
-    where = []
-    params = []
-    agregar_condicion_periodo(where, params, anio, mes)
 
     existentes = columnas_existentes(conn, table_name)
     for columna, valor in (equals or {}).items():
