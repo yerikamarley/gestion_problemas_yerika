@@ -50,6 +50,14 @@ class MigracionPkiTest(unittest.TestCase):
         casos = pd.DataFrame([{"numero": "1", "cuenta": "", "contacto": "", "creado_por": ""}])
         self.assertEqual("", agregar_grupo_migracion(casos, lista).iloc[0]["grupo_migracion_pki"])
 
+    def test_no_asocia_por_dos_palabras_compartidas(self):
+        lista = leer_lista_migracion(io.BytesIO(excel_bytes(
+            pd.DataFrame({"CORREO": ["otro@empresa.com"], "razon social": ["Otra Empresa"], "fecha vencimiento": ["2026-09-01"]}),
+            pd.DataFrame({"empresa": ["Julio Cesar Tangarife Garcia"], "cliente": ["Persona"], "correo": ["persona@empresa.com"], "fecha de vencimiento": ["2026-09-01"]}),
+        )))
+        caso = pd.DataFrame([{"cuenta": "Khalid Group S.A.S.", "contacto": "Julio Cesar Quiñones Tamayo", "creado_por": ""}])
+        self.assertEqual("", agregar_grupo_migracion(caso, lista).iloc[0]["grupo_migracion_pki"])
+
     def test_filtra_todos_los_clientes_migrados_sin_incluir_no_relacionados(self):
         lista = self.lista()
         casos = pd.DataFrame([

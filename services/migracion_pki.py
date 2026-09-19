@@ -81,18 +81,16 @@ def leer_lista_migracion(archivo):
     return lista
 
 
-def _tokens(valor):
-    return {token for token in normalizar(valor).split() if len(token) >= 4}
+def _clave_coincidencia(valor):
+    """Clave completa, insensible a mayúsculas, tildes y puntuación."""
+    return re.sub(r"[^a-z0-9]+", "", normalizar(valor))
 
 
 def _coincide(valor, exactos):
-    texto = normalizar(valor)
-    if not texto:
+    clave = _clave_coincidencia(valor)
+    if not clave:
         return False
-    if texto in exactos:
-        return True
-    tokens = _tokens(texto)
-    return any(len(tokens & _tokens(candidato)) >= 2 for candidato in exactos if "@" not in candidato)
+    return any(clave == _clave_coincidencia(candidato) for candidato in exactos)
 
 
 def clasificar_fila_migracion(row, lista=None, campos=("cuenta", "contacto", "creado_por", "empresa")):
