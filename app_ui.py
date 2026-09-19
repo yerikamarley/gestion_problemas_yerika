@@ -11424,6 +11424,35 @@ def procesar_archivo_casos(df, reemplazar_meses):
 
 
 def vista_cargar_casos():
+    st.markdown("#### Lista temporal de migración PKI")
+    st.caption(
+        "Asocia aquí el Excel de migración una sola vez. La lista se usará para clasificar los casos diarios "
+        "en Con componentes y Sin componentes desde el filtro de Casos."
+    )
+    archivo_migracion = st.file_uploader(
+        "Asociar lista de migración PKI", type=["xlsx"],
+        key="lista_migracion_pki_asociar",
+        help="Debe contener las hojas mesa de ayuda bdf y ClientesconComponentes.",
+    )
+    if archivo_migracion is not None:
+        try:
+            st.session_state["lista_migracion_pki"] = leer_lista_migracion(archivo_migracion)
+            st.success("Lista de migración PKI asociada correctamente.")
+        except ValueError as error:
+            st.error(str(error))
+    lista_migracion = st.session_state.get("lista_migracion_pki")
+    if lista_migracion:
+        st.info(
+            f"Lista asociada: {lista_migracion['filas_base']:,} clientes base y "
+            f"{lista_migracion['filas_componentes']:,} con componentes. "
+            "Los grupos ya están disponibles en Casos."
+        )
+        if st.button("Quitar asociación temporal PKI", key="quitar_asociacion_migracion_pki"):
+            st.session_state.pop("lista_migracion_pki", None)
+            st.rerun()
+
+    st.divider()
+    st.markdown("#### Carga diaria de casos")
     archivo = st.file_uploader("Sube Excel de casos", type=["xlsx"], key="casos_upload")
     if not archivo:
         return
@@ -11488,31 +11517,34 @@ def selector_fechas_casos():
 def vista_casos():
     st.subheader("Casos")
     st.caption("Consulta y control de casos por estado, tipología, servicio y segmento de asignación.")
+    with st.expander("Asociar lista temporal de migración PKI (opcional)", expanded=False):
+        st.caption(
+            "Los casos siguen saliendo de la carga diaria. Esta lista solo permite clasificarlos "
+            "en Con componentes y Sin componentes."
+        )
+        archivo_migracion_casos = st.file_uploader(
+            "Selecciona el Excel de migración PKI",
+            type=["xlsx"],
+            key="lista_migracion_pki_casos",
+            help="Debe contener las hojas mesa de ayuda bdf y ClientesconComponentes.",
+        )
+        if archivo_migracion_casos is not None:
+            try:
+                st.session_state["lista_migracion_pki"] = leer_lista_migracion(archivo_migracion_casos)
+                st.success("Lista de migración PKI asociada correctamente.")
+            except ValueError as error:
+                st.error(str(error))
     periodo = selector_fechas_casos()
     if periodo is None:
         return
     fecha_inicio, fecha_fin, periodo_label = periodo
-    archivo_migracion = st.file_uploader(
-        "Lista temporal de migración PKI (opcional)", type=["xlsx"],
-        key="lista_migracion_pki_casos",
-        help="Carga el Excel de migración para habilitar los grupos Con componentes y Sin componentes.",
-    )
-    if archivo_migracion is not None:
-        try:
-            st.session_state["lista_migracion_pki"] = leer_lista_migracion(archivo_migracion)
-            lista_migracion = st.session_state["lista_migracion_pki"]
-            st.caption(
-                f"Lista PKI cargada: {lista_migracion['filas_base']:,} clientes base y "
-                f"{lista_migracion['filas_componentes']:,} clientes con componentes."
-            )
-        except ValueError as error:
-            st.error(str(error))
-            lista_migracion = None
-    else:
-        lista_migracion = st.session_state.get("lista_migracion_pki")
-    if lista_migracion and st.button("Quitar lista temporal PKI", key="quitar_lista_migracion_pki"):
-        st.session_state.pop("lista_migracion_pki", None)
-        st.rerun()
+    lista_migracion = st.session_state.get("lista_migracion_pki")
+    if lista_migracion:
+        st.caption(
+            f"Lista PKI asociada: {lista_migracion['filas_base']:,} clientes base / "
+            f"{lista_migracion['filas_componentes']:,} con componentes. "
+            "Los grupos aparecen en Grupo cliente clave."
+        )
     df = cargar_casos_soporte_filtrados_cache(fecha_inicio=fecha_inicio, fecha_fin=fecha_fin)
     filtro_estado = TEXT_TODOS
     filtro_soporte = TEXT_TODOS
