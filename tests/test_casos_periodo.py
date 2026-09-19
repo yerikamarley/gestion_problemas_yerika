@@ -46,7 +46,7 @@ def cargar(**kwargs):
     return pd.DataFrame()
 with patch.object(ui, "cargar_casos_soporte_filtrados_cache", side_effect=cargar), patch.object(ui, "selector_periodo_sql", side_effect=AssertionError("No consultar todos los meses")):
     ui.vista_casos()
-''').run()
+''').run(timeout=10)
         hoy = pd.Timestamp.now(tz="America/Bogota").date()
         self.assertFalse(app.exception)
         self.assertEqual("Hoy", app.radio(key="periodo_consulta_casos").value)

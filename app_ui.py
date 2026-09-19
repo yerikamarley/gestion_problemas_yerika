@@ -44,6 +44,12 @@ from services.casos_sla import (
 )
 from services.resumen_ejecutivo_casos import periodos_corte, construir_resumen_ejecutivo
 from components.resumen_ejecutivo_casos import lamina_resumen_casos
+from services.migracion_pki import (
+    GRUPOS_MIGRACION_PKI,
+    agregar_grupo_migracion,
+    filtrar_grupo_migracion,
+    leer_lista_migracion,
+)
 from dashboards.riesgos_materializados import render_riesgos_materializados
 from app_logic import (
     AutorizacionError,
@@ -7880,6 +7886,10 @@ def dashboard_kpi_casos_cliente_externo():
         render_kpi_casos_cliente_externo_comparativo()
         return
 
+    if vista == "Resumen ejecutivo":
+        render_resumen_ejecutivo_casos()
+        return
+
     if vista == "KPI actual":
         anio, mes, periodo_label = selector_periodo_sql("cases", "kpi_casos_cliente_externo_periodo")
         if periodo_sql_valido(anio, "casos"):
@@ -11426,9 +11436,6 @@ def vista_cargar_casos():
         "Los casos sin vencimiento quedan sin evaluación; para actualizar históricos, "
         "incluye esa columna en una nueva exportación."
     )
-    if vista == "Resumen ejecutivo":
-        render_resumen_ejecutivo_casos()
-        return
     reemplazar_meses = st.checkbox(
         "Reemplazar los meses incluidos en este archivo",
         value=True,
@@ -11485,6 +11492,27 @@ def vista_casos():
     if periodo is None:
         return
     fecha_inicio, fecha_fin, periodo_label = periodo
+    archivo_migracion = st.file_uploader(
+        "Lista temporal de migración PKI (opcional)", type=["xlsx"],
+        key="lista_migracion_pki_casos",
+        help="Carga el Excel de migración para habilitar los grupos Con componentes y Sin componentes.",
+    )
+    if archivo_migracion is not None:
+        try:
+            st.session_state["lista_migracion_pki"] = leer_lista_migracion(archivo_migracion)
+            lista_migracion = st.session_state["lista_migracion_pki"]
+            st.caption(
+                f"Lista PKI cargada: {lista_migracion['filas_base']:,} clientes base y "
+                f"{lista_migracion['filas_componentes']:,} clientes con componentes."
+            )
+        except ValueError as error:
+            st.error(str(error))
+            lista_migracion = None
+    else:
+        lista_migracion = st.session_state.get("lista_migracion_pki")
+    if lista_migracion and st.button("Quitar lista temporal PKI", key="quitar_lista_migracion_pki"):
+        st.session_state.pop("lista_migracion_pki", None)
+        st.rerun()
     df = cargar_casos_soporte_filtrados_cache(fecha_inicio=fecha_inicio, fecha_fin=fecha_fin)
     filtro_estado = TEXT_TODOS
     filtro_soporte = TEXT_TODOS
@@ -11494,6 +11522,7 @@ def vista_casos():
     filtro_grupo_cliente = TEXT_TODOS
     filtro_texto = ""
     filtro_sla = TEXT_TODOS
+    filtro_migracion = TEXT_TODOS
     if not df.empty:
         df = preparar_fechas_dashboard(df)
         df["mes"] = df[TEXT_CREADO_DT_DASHBOARD].dt.to_period("M").astype(str).replace("NaT", "Sin fecha")
@@ -11514,9 +11543,12 @@ def vista_casos():
 
         filtro_col4, filtro_col5, filtro_col6 = st.columns([1.4, 1.6, 1.3])
         with filtro_col4:
+            grupos_disponibles = [TEXT_TODOS, *GRUPOS_CLIENTES_CLAVE.keys(), *(GRUPOS_MIGRACION_PKI if lista_migracion else [])]
+            if st.session_state.get("grupo_cliente_clave_casos", TEXT_TODOS) not in grupos_disponibles:
+                st.session_state["grupo_cliente_clave_casos"] = TEXT_TODOS
             filtro_grupo_cliente = st.selectbox(
                 "Grupo cliente clave",
-                [TEXT_TODOS, *GRUPOS_CLIENTES_CLAVE.keys()],
+                grupos_disponibles,
                 key="grupo_cliente_clave_casos",
             )
         with filtro_col5:
@@ -11551,17 +11583,20 @@ def vista_casos():
                 filtro_cuenta,
             )
         if filtro_grupo_cliente != TEXT_TODOS:
-            df = filtrar_por_grupo_cliente_clave(
-                df,
-                [TEXT_CUENTA, "creado_por"],
-                filtro_grupo_cliente,
-            )
+            if filtro_grupo_cliente in GRUPOS_MIGRACION_PKI:
+                filtro_migracion = filtro_grupo_cliente
+                df = filtrar_grupo_migracion(df, lista_migracion, filtro_migracion)
+            else:
+                df = filtrar_por_grupo_cliente_clave(df, [TEXT_CUENTA, "creado_por"], filtro_grupo_cliente)
         if filtro_texto:
             df = filtrar_por_cliente_o_texto(df, CASE_FIELDS_BUSQUEDA_GLOBAL, filtro_texto)
         df["Grupo cliente clave"] = serie_grupo_cliente_clave(
             df,
             [TEXT_CUENTA, "creado_por"],
         ).replace("", "No es cliente clave")
+        if lista_migracion:
+            df = agregar_grupo_migracion(df, lista_migracion)
+            df["Grupo migración PKI"] = df["grupo_migracion_pki"].replace("", "No identificado")
         if not df.empty:
             detecciones_cliente = df.apply(
                 lambda row: detectar_cliente_en_fila(row, [TEXT_CUENTA, "creado_por"]),
@@ -11604,6 +11639,7 @@ def vista_casos():
             "Grupo cliente clave", "Cliente clave detectado", "Fuente identificación VIP",
             COL_SEGMENTO_ASIGNACION, TEXT_TIPOLOGIA_SOPORTE,
             TEXT_TIPIFICACION_2, TEXT_TIEMPO_RESPUESTA,
+            "Grupo migración PKI",
         ])
         st.caption(f"Registros encontrados: {len(df)}")
         st.caption(f"{TEXT_PERIODO}{periodo_label}")
@@ -11624,6 +11660,7 @@ def vista_casos():
             filtro_asignacion,
             filtro_texto,
             filtro_sla,
+            filtro_migracion,
             fecha_inicio,
             fecha_fin,
             len(df),
