@@ -9,6 +9,8 @@ import pandas as pd
 
 GRUPO_PKI_CON_COMPONENTES = "Migración PKI – Con componentes"
 GRUPO_PKI_SIN_COMPONENTES = "Migración PKI – Sin componentes"
+GRUPO_PKI = "Migración PKI"
+GRUPO_PKI_TODOS = GRUPO_PKI
 GRUPOS_MIGRACION_PKI = (GRUPO_PKI_CON_COMPONENTES, GRUPO_PKI_SIN_COMPONENTES)
 
 
@@ -93,4 +95,9 @@ def agregar_grupo_migracion(df, lista):
 def filtrar_grupo_migracion(df, lista, grupo):
     if not lista or not grupo:
         return df.copy()
-    return agregar_grupo_migracion(df, lista).query("grupo_migracion_pki == @grupo").drop(columns=["grupo_migracion_pki"])
+    clasificados = agregar_grupo_migracion(df, lista)
+    if grupo == GRUPO_PKI_TODOS:
+        clasificados = clasificados[clasificados["grupo_migracion_pki"].isin(GRUPOS_MIGRACION_PKI)]
+    else:
+        clasificados = clasificados.query("grupo_migracion_pki == @grupo")
+    return clasificados.drop(columns=["grupo_migracion_pki"])

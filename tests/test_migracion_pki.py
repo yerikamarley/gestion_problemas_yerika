@@ -6,7 +6,9 @@ import pandas as pd
 from services.migracion_pki import (
     GRUPO_PKI_CON_COMPONENTES,
     GRUPO_PKI_SIN_COMPONENTES,
+    GRUPO_PKI_TODOS,
     agregar_grupo_migracion,
+    filtrar_grupo_migracion,
     leer_lista_migracion,
 )
 
@@ -43,6 +45,16 @@ class MigracionPkiTest(unittest.TestCase):
         lista = self.lista()
         casos = pd.DataFrame([{"numero": "1", "cuenta": "", "contacto": "", "creado_por": ""}])
         self.assertEqual("", agregar_grupo_migracion(casos, lista).iloc[0]["grupo_migracion_pki"])
+
+    def test_filtra_todos_los_clientes_migrados_sin_incluir_no_relacionados(self):
+        lista = self.lista()
+        casos = pd.DataFrame([
+            {"numero": "1", "cuenta": "Empresa Uno", "contacto": "", "creado_por": ""},
+            {"numero": "2", "cuenta": "Empresa Dos", "contacto": "", "creado_por": ""},
+            {"numero": "3", "cuenta": "Fuera", "contacto": "", "creado_por": ""},
+        ])
+        resultado = filtrar_grupo_migracion(casos, lista, GRUPO_PKI_TODOS)
+        self.assertEqual(["1", "2"], resultado["numero"].tolist())
 
     def test_rechaza_hojas_incorrectas(self):
         salida = io.BytesIO()
