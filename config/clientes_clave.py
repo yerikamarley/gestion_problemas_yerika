@@ -1,5 +1,14 @@
 """Catálogo y alias de los clientes incluidos en el seguimiento especial."""
 
+from config.clientes_migracion_pki import (
+    CLIENTES_MIGRACION_CON_COMPONENTES,
+    CLIENTES_MIGRACION_PKI,
+    CLIENTES_MIGRACION_SIN_COMPONENTES,
+    GRUPO_MIGRACION_CON_COMPONENTES,
+    GRUPO_MIGRACION_PKI,
+    GRUPO_MIGRACION_SIN_COMPONENTES,
+)
+
 ASOBANCARIA = [
     "Asobancaria", "Bancolombia", "Bancoomeva", "BBVA", "Banco de Bogotá",
     "Banco Caja Social", "Davivienda", "Banco Falabella", "Mibanco",
@@ -118,6 +127,14 @@ GRUPOS_CLIENTES_CLAVE = {
     "Confecámaras": CONFECAMARAS,
     "Coopcentral": COOPCENTRAL,
     "Otros clientes clave": OTROS_CLIENTES_CLAVE,
+}
+
+# Catálogo temporal de migración. Se mantiene separado de los grupos
+# permanentes para que Asobancaria, Confecámaras y los demás no cambien.
+GRUPOS_MIGRACION_PKI_CATALOGO = {
+    GRUPO_MIGRACION_PKI: CLIENTES_MIGRACION_PKI,
+    GRUPO_MIGRACION_CON_COMPONENTES: CLIENTES_MIGRACION_CON_COMPONENTES,
+    GRUPO_MIGRACION_SIN_COMPONENTES: CLIENTES_MIGRACION_SIN_COMPONENTES,
 }
 
 CLIENTES_CLAVE = [

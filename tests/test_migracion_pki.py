@@ -3,6 +3,10 @@ import unittest
 
 import pandas as pd
 
+from config.clientes_migracion_pki import (
+    CLIENTES_MIGRACION_CON_COMPONENTES,
+    CLIENTES_MIGRACION_SIN_COMPONENTES,
+)
 from services.migracion_pki import (
     GRUPO_PKI_CON_COMPONENTES,
     GRUPO_PKI_SIN_COMPONENTES,
@@ -55,6 +59,15 @@ class MigracionPkiTest(unittest.TestCase):
         ])
         resultado = filtrar_grupo_migracion(casos, lista, GRUPO_PKI_TODOS)
         self.assertEqual(["1", "2"], resultado["numero"].tolist())
+
+    def test_catalogo_interno_clasifica_sin_subir_excel(self):
+        casos = pd.DataFrame([
+            {"numero": "con", "cuenta": CLIENTES_MIGRACION_CON_COMPONENTES[0]},
+            {"numero": "sin", "cuenta": CLIENTES_MIGRACION_SIN_COMPONENTES[0]},
+        ])
+        resultado = agregar_grupo_migracion(casos)
+        self.assertEqual(GRUPO_PKI_CON_COMPONENTES, resultado.iloc[0]["grupo_migracion_pki"])
+        self.assertEqual(GRUPO_PKI_SIN_COMPONENTES, resultado.iloc[1]["grupo_migracion_pki"])
 
     def test_rechaza_hojas_incorrectas(self):
         salida = io.BytesIO()

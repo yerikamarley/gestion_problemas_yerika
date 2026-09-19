@@ -48,7 +48,6 @@ from services.migracion_pki import (
     GRUPO_PKI_TODOS,
     agregar_grupo_migracion,
     filtrar_grupo_migracion,
-    leer_lista_migracion,
 )
 from dashboards.riesgos_materializados import render_riesgos_materializados
 from app_logic import (
@@ -11424,34 +11423,6 @@ def procesar_archivo_casos(df, reemplazar_meses):
 
 
 def vista_cargar_casos():
-    st.markdown("#### Lista temporal de migración PKI")
-    st.caption(
-        "Asocia aquí el Excel de migración una sola vez. La lista se usará para clasificar los casos diarios "
-        "en Con componentes y Sin componentes desde el filtro de Casos."
-    )
-    archivo_migracion = st.file_uploader(
-        "Asociar lista de migración PKI", type=["xlsx"],
-        key="lista_migracion_pki_asociar",
-        help="Debe contener las hojas mesa de ayuda bdf y ClientesconComponentes.",
-    )
-    if archivo_migracion is not None:
-        try:
-            st.session_state["lista_migracion_pki"] = leer_lista_migracion(archivo_migracion)
-            st.success("Lista de migración PKI asociada correctamente.")
-        except ValueError as error:
-            st.error(str(error))
-    lista_migracion = st.session_state.get("lista_migracion_pki")
-    if lista_migracion:
-        st.info(
-            f"Lista asociada: {lista_migracion['filas_base']:,} clientes base y "
-            f"{lista_migracion['filas_componentes']:,} con componentes. "
-            "Los grupos ya están disponibles en Casos."
-        )
-        if st.button("Quitar asociación temporal PKI", key="quitar_asociacion_migracion_pki"):
-            st.session_state.pop("lista_migracion_pki", None)
-            st.rerun()
-
-    st.divider()
     st.markdown("#### Carga diaria de casos")
     archivo = st.file_uploader("Sube Excel de casos", type=["xlsx"], key="casos_upload")
     if not archivo:
@@ -11521,13 +11492,6 @@ def vista_casos():
     if periodo is None:
         return
     fecha_inicio, fecha_fin, periodo_label = periodo
-    lista_migracion = st.session_state.get("lista_migracion_pki")
-    if lista_migracion:
-        st.caption(
-            f"Lista PKI asociada: {lista_migracion['filas_base']:,} clientes base / "
-            f"{lista_migracion['filas_componentes']:,} con componentes. "
-            "La clasificación aparece en el filtro Migración PKI."
-        )
     df = cargar_casos_soporte_filtrados_cache(fecha_inicio=fecha_inicio, fecha_fin=fecha_fin)
     filtro_estado = TEXT_TODOS
     filtro_soporte = TEXT_TODOS
@@ -11558,8 +11522,7 @@ def vista_casos():
         filtro_col4, filtro_col5, filtro_col6 = st.columns([1.4, 1.6, 1.3])
         with filtro_col4:
             grupos_disponibles = [TEXT_TODOS, *GRUPOS_CLIENTES_CLAVE.keys()]
-            if lista_migracion:
-                grupos_disponibles.append(GRUPO_PKI_TODOS)
+            grupos_disponibles.append(GRUPO_PKI_TODOS)
             if st.session_state.get("grupo_cliente_clave_casos", TEXT_TODOS) not in grupos_disponibles:
                 st.session_state["grupo_cliente_clave_casos"] = TEXT_TODOS
             filtro_grupo_cliente = st.selectbox(
@@ -11600,7 +11563,7 @@ def vista_casos():
             )
         if filtro_grupo_cliente != TEXT_TODOS:
             if filtro_grupo_cliente == GRUPO_PKI_TODOS:
-                df = filtrar_grupo_migracion(df, lista_migracion, GRUPO_PKI_TODOS)
+                df = filtrar_grupo_migracion(df, grupo=GRUPO_PKI_TODOS)
             else:
                 df = filtrar_por_grupo_cliente_clave(df, [TEXT_CUENTA, "creado_por"], filtro_grupo_cliente)
         if filtro_texto:
@@ -11609,9 +11572,8 @@ def vista_casos():
             df,
             [TEXT_CUENTA, "creado_por"],
         ).replace("", "No es cliente clave")
-        if lista_migracion:
-            df = agregar_grupo_migracion(df, lista_migracion)
-            df["Grupo migración PKI"] = df["grupo_migracion_pki"].replace("", "No identificado")
+        df = agregar_grupo_migracion(df)
+        df["Grupo migración PKI"] = df["grupo_migracion_pki"].replace("", "No identificado")
         if not df.empty:
             detecciones_cliente = df.apply(
                 lambda row: detectar_cliente_en_fila(row, [TEXT_CUENTA, "creado_por"]),
@@ -11675,7 +11637,6 @@ def vista_casos():
             filtro_asignacion,
             filtro_texto,
             filtro_sla,
-            filtro_grupo_cliente,
             fecha_inicio,
             fecha_fin,
             len(df),

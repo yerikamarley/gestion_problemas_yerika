@@ -6,6 +6,12 @@ import unicodedata
 
 import pandas as pd
 
+from config.clientes_migracion_pki import (
+    CLIENTES_MIGRACION_CON_COMPONENTES,
+    CLIENTES_MIGRACION_PKI,
+    CLIENTES_MIGRACION_SIN_COMPONENTES,
+)
+
 
 GRUPO_PKI_CON_COMPONENTES = "Migración PKI – Con componentes"
 GRUPO_PKI_SIN_COMPONENTES = "Migración PKI – Sin componentes"
@@ -19,6 +25,22 @@ def normalizar(valor):
         return ""
     texto = unicodedata.normalize("NFKD", str(valor)).encode("ascii", "ignore").decode().casefold()
     return re.sub(r"\s+", " ", texto).strip()
+
+
+def _normalizar_catalogo(valores):
+    return {normalizar(valor) for valor in valores if normalizar(valor)}
+
+
+LISTA_MIGRACION_PKI_INTERNA = {
+    "correos": _normalizar_catalogo(valor for valor in CLIENTES_MIGRACION_PKI if "@" in valor),
+    "empresas": _normalizar_catalogo(valor for valor in CLIENTES_MIGRACION_PKI if "@" not in valor),
+    "nombres": set(),
+    "componentes_correos": _normalizar_catalogo(valor for valor in CLIENTES_MIGRACION_CON_COMPONENTES if "@" in valor),
+    "componentes_empresas": _normalizar_catalogo(valor for valor in CLIENTES_MIGRACION_CON_COMPONENTES if "@" not in valor),
+    "componentes_nombres": _normalizar_catalogo(CLIENTES_MIGRACION_CON_COMPONENTES),
+    "filas_base": len(CLIENTES_MIGRACION_SIN_COMPONENTES),
+    "filas_componentes": len(CLIENTES_MIGRACION_CON_COMPONENTES),
+}
 
 
 def _columna(df, opciones):
@@ -73,7 +95,8 @@ def _coincide(valor, exactos):
     return any(len(tokens & _tokens(candidato)) >= 2 for candidato in exactos if "@" not in candidato)
 
 
-def clasificar_fila_migracion(row, lista, campos=("cuenta", "contacto", "creado_por", "empresa")):
+def clasificar_fila_migracion(row, lista=None, campos=("cuenta", "contacto", "creado_por", "empresa")):
+    lista = lista or LISTA_MIGRACION_PKI_INTERNA
     valores = [row.get(campo, "") for campo in campos]
     componente = any(_coincide(valor, lista["componentes_correos"]) or
                      _coincide(valor, lista["componentes_empresas"]) or
@@ -86,14 +109,14 @@ def clasificar_fila_migracion(row, lista, campos=("cuenta", "contacto", "creado_
     return ""
 
 
-def agregar_grupo_migracion(df, lista):
+def agregar_grupo_migracion(df, lista=None):
     trabajo = df.copy()
     trabajo["grupo_migracion_pki"] = trabajo.apply(lambda row: clasificar_fila_migracion(row, lista), axis=1)
     return trabajo
 
 
-def filtrar_grupo_migracion(df, lista, grupo):
-    if not lista or not grupo:
+def filtrar_grupo_migracion(df, lista=None, grupo=GRUPO_PKI_TODOS):
+    if not grupo:
         return df.copy()
     clasificados = agregar_grupo_migracion(df, lista)
     if grupo == GRUPO_PKI_TODOS:
