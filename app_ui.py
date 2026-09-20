@@ -232,17 +232,17 @@ TEXT_TOTAL_INCIDENTES = 'total_incidentes'
 TEXT_VIEWER = 'viewer'
 
 UI_PALETTE = {
-    "bg": "#ffffff",
-    "bg_soft": "#ffffff",
-    "surface": "#ffffff",
-    "surface_alt": "#ffffff",
-    "border": "#e5e7eb",
+    "bg": "#fffafa",
+    "bg_soft": "#f5f2f8",
+    "surface": "#fffafa",
+    "surface_alt": "#f5f2f8",
+    "border": "#e5dfea",
 
     "text": "#141414",
     "muted": "#5a5151",
 
     TEXT_PRIMARY: TEXT_F35B04,
-    "primary_hover": TEXT_F18701,
+    "primary_hover": "#491184",
     TEXT_ORANGE: TEXT_F18701,
     TEXT_YELLOW: "#f7b801",
     "yellow_soft": "#ffe0a1",
@@ -1251,7 +1251,8 @@ def aplicar_tema_visual():
             --border: {UI_PALETTE["border"]};
             --text: {UI_PALETTE["text"]};
             --muted: {UI_PALETTE["muted"]};
-            --primary: {UI_PALETTE[TEXT_PRIMARY]};
+            --primary: {UI_PALETTE[TEXT_PURPLE]};
+            --brand: {UI_PALETTE[TEXT_PRIMARY]};
             --primary-hover: {UI_PALETTE["primary_hover"]};
             --orange: {UI_PALETTE[TEXT_ORANGE]};
             --yellow: {UI_PALETTE[TEXT_YELLOW]};
@@ -1323,34 +1324,73 @@ def aplicar_tema_visual():
         }}
 
         .stButton > button,
-        [data-testid="baseButton-secondary"] {{
-            background: var(--primary) !important;
-            color: white !important;
-            border: none !important;
-            border-radius: 8px !important;
-            font-weight: 700 !important;
-            box-shadow: 0 8px 18px rgba(243, 91, 4, 0.18);
+        .stDownloadButton > button,
+        .stFormSubmitButton > button {{
+            background: var(--surface) !important;
+            color: var(--text) !important;
+            border: 1px solid var(--border) !important;
+            border-radius: 10px !important;
+            font-weight: 600 !important;
+            box-shadow: none;
+            transition: background 150ms ease, border-color 150ms ease;
         }}
 
         .stButton > button *,
-        [data-testid="baseButton-secondary"] * {{
-            color: white !important;
+        .stDownloadButton > button *,
+        .stFormSubmitButton > button * {{
+            color: inherit !important;
         }}
 
-        .stButton > button:hover {{
+        .stButton > button:hover:not(:disabled),
+        .stDownloadButton > button:hover:not(:disabled),
+        .stFormSubmitButton > button:hover:not(:disabled) {{
+            background: var(--surface-alt) !important;
+            border-color: var(--lavender) !important;
+        }}
+
+        .stButton > button[kind="primary"],
+        .stFormSubmitButton > button[kind="primary"] {{
+            background: var(--primary) !important;
+            color: var(--bg) !important;
+            border-color: var(--primary) !important;
+        }}
+
+        .stButton > button[kind="primary"]:hover:not(:disabled),
+        .stFormSubmitButton > button[kind="primary"]:hover:not(:disabled) {{
             background: var(--primary-hover) !important;
-            color: white !important;
+            border-color: var(--primary-hover) !important;
+        }}
+
+        button:focus-visible {{
+            outline: 3px solid var(--lavender) !important;
+            outline-offset: 3px;
+        }}
+
+        button:disabled {{
+            opacity: 0.5;
+            cursor: not-allowed;
+        }}
+
+        [data-testid="stSidebar"] button[kind="primary"],
+        [data-testid="stSidebar"] button[kind="primary"] * {{
+            color: var(--primary) !important;
+            background: var(--surface-alt) !important;
+        }}
+
+        [data-testid="stSidebar"] button[kind="primary"] {{
+            border-color: var(--lavender) !important;
+            border-left: 3px solid var(--brand) !important;
         }}
 
         [data-testid="stTabs"] button[role="tab"] {{
-            border-radius: 8px;
+            border-radius: 12px;
             border: 1px solid var(--border);
             background: rgba(255, 250, 250, 0.9);
             color: var(--muted) !important;
         }}
 
         [data-testid="stTabs"] button[aria-selected="true"] {{
-            background: rgba(243, 91, 4, 0.10);
+            background: rgba(150, 131, 236, 0.12);
             border-color: var(--primary-hover);
             color: var(--primary) !important;
         }}
@@ -1368,18 +1408,18 @@ def aplicar_tema_visual():
         [role="radiogroup"] label {{
             background: rgba(255, 250, 250, 0.9);
             border: 1px solid var(--border);
-            border-radius: 8px;
+            border-radius: 12px;
             padding: 0.35rem 0.7rem;
         }}
 
         [role="radiogroup"] label:has(input:checked) {{
-            background: rgba(243, 91, 4, 0.10);
+            background: rgba(150, 131, 236, 0.12);
             border-color: var(--primary-hover);
         }}
 
         [data-baseweb="tag"] {{
-            background-color: rgba(243, 91, 4, 0.10) !important;
-            border: 1px solid rgba(243, 91, 4, 0.24) !important;
+            background-color: rgba(150, 131, 236, 0.12) !important;
+            border: 1px solid rgba(150, 131, 236, 0.32) !important;
             border-radius: 7px !important;
             color: var(--text) !important;
         }}
@@ -1409,7 +1449,7 @@ def aplicar_tema_visual():
         .kpi-card {{
             background: var(--surface);
             padding: 24px 20px;
-            border-radius: 8px;
+            border-radius: 12px;
             text-align: center;
             color: var(--text);
             min-height: 152px;
@@ -1429,16 +1469,16 @@ def aplicar_tema_visual():
             inset: 0 auto auto 0;
             width: 100%;
             height: 4px;
-            background: var(--primary);
+            background: var(--lavender);
         }}
 
         .kpi-title {{
             font-size: 17px;
-            font-weight: 900 !important;
+            font-weight: 700 !important;
             line-height: 1.25;
             margin-bottom: 12px;
             color: var(--text);
-            text-transform: uppercase;
+            text-transform: none;
             letter-spacing: 0;
             max-width: 100%;
             overflow-wrap: anywhere;
@@ -1446,7 +1486,7 @@ def aplicar_tema_visual():
 
         .kpi-value {{
             font-size: 46px;
-            font-weight: 900 !important;
+            font-weight: 700 !important;
             color: var(--primary);
             line-height: 1.05;
             font-variant-numeric: tabular-nums;
@@ -1455,7 +1495,7 @@ def aplicar_tema_visual():
         .executive-note {{
             background: rgba(255, 250, 250, 0.96);
             border: 1px solid var(--border);
-            border-radius: 8px;
+            border-radius: 12px;
             color: var(--text);
             padding: 18px 18px 16px;
             margin: 0.1rem 0 0.25rem;
@@ -1502,7 +1542,7 @@ def aplicar_tema_visual():
         .executive-table-card {{
             background: rgba(255, 250, 250, 0.96);
             border: 1px solid var(--border);
-            border-radius: 8px;
+            border-radius: 12px;
             box-shadow: 0 6px 16px rgba(20, 20, 20, 0.04);
             margin: 0.1rem 0 0.75rem;
             overflow: hidden;
@@ -1536,7 +1576,7 @@ def aplicar_tema_visual():
         }}
 
         .executive-table th {{
-            background: #fff7f2;
+            background: var(--surface-alt);
             color: var(--muted);
             font-size: 0.78rem;
             font-weight: 900;
@@ -1553,7 +1593,7 @@ def aplicar_tema_visual():
         .ans-panel {{
             background: var(--surface);
             border: 1px solid var(--border);
-            border-radius: 8px;
+            border-radius: 12px;
             padding: 22px;
             margin: 0.8rem 0 1rem;
             box-shadow: 0 10px 24px rgba(20, 20, 20, 0.05);
@@ -1613,7 +1653,7 @@ def aplicar_tema_visual():
             min-width: 76px;
             padding: 0.28rem 0.55rem;
             border-radius: 999px;
-            background: rgba(243, 91, 4, 0.10);
+            background: rgba(150, 131, 236, 0.12);
             color: var(--primary);
             font-weight: 900;
         }}
@@ -1627,7 +1667,7 @@ def aplicar_tema_visual():
 
         .ans-card {{
             border: 1px solid var(--border);
-            border-radius: 8px;
+            border-radius: 12px;
             padding: 16px 14px;
             background: rgba(255, 250, 250, 0.92);
         }}
@@ -1650,7 +1690,7 @@ def aplicar_tema_visual():
         .kpi-ranking {{
             background: var(--surface);
             border: 1px solid var(--border);
-            border-radius: 8px;
+            border-radius: 12px;
             padding: 18px 18px 16px;
             box-shadow: 0 8px 18px rgba(20, 20, 20, 0.04);
         }}
@@ -1719,7 +1759,7 @@ def aplicar_tema_visual():
             aspect-ratio: 16 / 9;
             background: #ffffff;
             border: 1px solid var(--border);
-            border-radius: 8px;
+            border-radius: 12px;
             box-shadow: 0 12px 28px rgba(20, 20, 20, 0.08);
             padding: 28px 32px;
             display: flex;
@@ -1752,7 +1792,7 @@ def aplicar_tema_visual():
             background: #ffffff;
             border: 1px solid var(--border);
             border-top: 4px solid var(--primary);
-            border-radius: 8px;
+            border-radius: 12px;
             min-height: 104px;
             padding: 16px 12px;
             display: flex;
@@ -1797,7 +1837,7 @@ def aplicar_tema_visual():
         .slide-panel {{
             background: #ffffff;
             border: 1px solid var(--border);
-            border-radius: 8px;
+            border-radius: 12px;
             padding: 16px 18px;
             min-height: 0;
             overflow: hidden;
@@ -2013,7 +2053,7 @@ def aplicar_estilo_figura(fig, titulo=None):
         paper_bgcolor="rgba(255,255,255,0)",
         plot_bgcolor="#ffffff",
         font={"color": UI_PALETTE["text"], "size": 17, "family": "Arial, sans-serif"},
-        title_font={"color": UI_PALETTE[TEXT_PRIMARY], "size": 23},
+        title_font={"color": UI_PALETTE["text"], "size": 23},
         margin={"l": 12, "r": 12, "t": 52, "b": 12},
         legend={"bgcolor": "#ffffff", "font": {"size": 16, "color": UI_PALETTE["text"]}},
     )
@@ -2103,7 +2143,7 @@ def estilos_login():
 
         input:focus {
             border: 1px solid var(--primary) !important;
-            box-shadow: 0 0 0 3px rgba(243, 91, 4, 0.14);
+            box-shadow: 0 0 0 3px rgba(150, 131, 236, 0.20);
             outline: none;
         }
 
@@ -2117,12 +2157,12 @@ def estilos_login():
             border: none;
             padding: 0.7rem 1rem;
             transition: all 0.25s ease;
-            box-shadow: 0 8px 18px rgba(243, 91, 4, 0.20);
+            box-shadow: 0 8px 18px rgba(93, 22, 166, 0.12);
         }
 
         div.stButton > button:hover {
             background: var(--primary-hover);
-            box-shadow: 0 12px 24px rgba(241, 135, 1, 0.24);
+            box-shadow: 0 12px 24px rgba(93, 22, 166, 0.16);
         }
 
         /* Placeholder */
@@ -2178,7 +2218,7 @@ def login():
         correo = st.text_input("Correo corporativo", key="correo_login")
         password = st.text_input("Contrasena", type=TEXT_PASSWORD, key="password_login")
 
-        if st.button("Ingresar", key="btn_login"):
+        if st.button("Ingresar", key="btn_login", type="primary"):
             with st.spinner("Validando acceso..."):
                 if not validar_email(correo):
                     st.error("Escribe un correo valido")
@@ -2216,7 +2256,7 @@ def configurar_primer_admin():
         password = st.text_input("Contrasena", type=TEXT_PASSWORD, key="setup_admin_password")
         confirmar = st.text_input("Confirmar contrasena", type=TEXT_PASSWORD, key="setup_admin_password_confirm")
 
-        if st.button("Crear administrador", key="btn_setup_admin"):
+        if st.button("Crear administrador", key="btn_setup_admin", type="primary"):
             if not validar_email(correo):
                 st.error("Escribe un correo valido.")
                 return
@@ -11444,7 +11484,7 @@ def vista_cargar_casos():
             "presentes en el Excel y luego se carga el archivo. Asi el mes queda igual al corte subido."
         ),
     )
-    if st.button("Procesar casos"):
+    if st.button("Procesar casos", type="primary"):
         procesar_archivo_casos(df, reemplazar_meses)
 
 def selector_fechas_casos():
@@ -11650,7 +11690,7 @@ def vista_cargar_incidentes():
         df = pd.read_excel(archivo)
         st.write(f"Filas detectadas: {len(df)}")
         st.dataframe(df.head(), use_container_width=True, hide_index=True)
-        if st.button("Procesar incidentes"):
+        if st.button("Procesar incidentes", type="primary"):
             actualizar_progreso = crear_barra_progreso_carga("Procesando incidentes...")
             try:
                 cargados, reemplazados = guardar_incidentes(
@@ -11861,7 +11901,7 @@ def vista_cargar_problemas():
     df = pd.read_excel(archivo)
     st.write(f"Filas detectadas: {len(df)}")
     st.dataframe(df.head(), use_container_width=True, hide_index=True)
-    if st.button("Procesar problemas", key="procesar_problemas"):
+    if st.button("Procesar problemas", key="procesar_problemas", type="primary"):
         actualizar = crear_barra_progreso_carga("Procesando problemas...")
         try:
             cargados, actualizados = guardar_problemas(
