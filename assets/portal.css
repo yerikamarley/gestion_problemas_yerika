@@ -1,0 +1,41 @@
+﻿/* Streamlit 1.39+: native widgets, no generated Emotion class selectors. */
+:root { --primary: #f35b04; --primary-hover: #da5000; --surface-alt: #f5f3f6; }
+[data-testid="stAppViewContainer"] { background: #f6f5f7 !important; }
+[data-testid="stMainBlockContainer"], .main .block-container { padding-top: 2rem; }
+h1, h2, h3 { letter-spacing: -.025em; }
+[data-testid="stCaptionContainer"] p { color: #6c6570; font-size: .95rem !important; }
+[data-testid="stSidebar"] { background: #fffafa !important; }
+[data-testid="stSidebar"] [data-testid="stVerticalBlock"] { gap: .65rem; }
+[data-testid="stSidebar"] .stButton > button { justify-content: flex-start; text-align: left; border-color: transparent !important; background: transparent !important; padding: .6rem .85rem; }
+[data-testid="stSidebar"] .stButton > button:hover:not(:disabled) { background: #f1edf8 !important; }
+[data-testid="stSidebar"] .stButton > button[kind="primary"] { background: #fff0e5 !important; border: 1px solid #f5cbb0 !important; border-left: 4px solid #f35b04 !important; color: #141414 !important; }
+[data-testid="stSidebar"] .stButton > button[kind="primary"] * { background: transparent !important; color: inherit !important; }
+[data-testid="stSidebar"] [data-testid="stCaptionContainer"] p { font-size: .8rem !important; overflow-wrap: anywhere; }
+.sidebar-brand { padding: 0 0 1rem; border-bottom: 1px solid #e8e3e9; margin-bottom: .4rem; }
+.sidebar-brand strong { font-size: 1.55rem; letter-spacing: -.05em; }
+.brand-dot { display: inline-block; width: 11px; height: 11px; background: #f35b04; border-radius: 50%; margin-right: 8px; }
+.sidebar-brand small { display: block; color: #6c6570; font-size: .8rem; margin-top: .25rem; }
+.workspace-banner { background: #fffafa; border: 1px solid #e8e3e9; border-radius: 16px; padding: 1.1rem 1.4rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1.5rem; border-left: 5px solid #9683ec; }
+.workspace-banner small { color: #6c6570; display: block; font-size: .75rem; margin-bottom: .25rem; }
+.workspace-banner strong { font-size: 1.05rem; }
+.workspace-badge { background: #fff2ca; padding: .4rem .75rem; border-radius: 20px; font-size: .78rem; color: #604500; }
+.kpi-card { text-align: left; align-items: flex-start; padding: 22px 24px; min-height: 140px; border-radius: 16px; box-shadow: 0 3px 12px #14141405; background: #fffafa; }
+.kpi-card::before { height: 4px; background: #9683ec; }
+.kpi-card:nth-child(3n+1) { background: linear-gradient(120deg, #fffafa 55%, #fff0e5); }
+.kpi-card:nth-child(3n+1)::before { background: #f35b04; }
+.kpi-card:nth-child(3n+2) { background: linear-gradient(120deg, #fffafa 55%, #f0ecfc); }
+.kpi-card:nth-child(3n) { background: linear-gradient(120deg, #fffafa 55%, #fff5d5); }
+.kpi-card:nth-child(3n)::before { background: #f7b801; }
+.kpi-title { color: #625b67; font-size: .9rem; font-weight: 600 !important; text-transform: none; }
+.kpi-value { color: #141414; font-size: 2.5rem; font-weight: 750 !important; }
+[data-testid="stMetric"] { padding: 1rem 1.2rem; border-top: 3px solid #9683ec !important; }
+[data-baseweb="select"] > div, [data-baseweb="input"], [data-baseweb="textarea"] { background: #fffafa !important; box-shadow: none !important; }
+.stTextInput input { box-shadow: none !important; }
+[data-testid="stTabs"] button[aria-selected="true"] { background: #f0ecfc; border-color: #9683ec; color: #5d16a6 !important; }
+[role="radiogroup"] label:has(input:checked) { background: #fff0e5; border-color: #f35b04; }
+.stButton > button[kind="primary"], .stFormSubmitButton > button[kind="primary"] { color: #141414 !important; background: #f35b04 !important; border-color: #f35b04 !important; }
+.stButton > button[kind="primary"]:hover:not(:disabled), .stFormSubmitButton > button[kind="primary"]:hover:not(:disabled) { background: #f18701 !important; border-color: #f18701 !important; }
+.stButton > button *, .stFormSubmitButton > button * { color: inherit !important; background: transparent; }
+@media(max-width: 760px) { .workspace-banner { padding: 1rem; } .workspace-badge { display: none; } .kpi-card { min-height: 120px; } }
+@media(prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; } }
+.kpi-grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr)); }

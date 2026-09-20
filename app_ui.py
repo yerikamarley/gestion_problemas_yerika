@@ -3,6 +3,7 @@ import json
 import logging
 import re
 from io import BytesIO
+from pathlib import Path
 from textwrap import dedent
 
 import pandas as pd
@@ -1289,7 +1290,7 @@ def aplicar_tema_visual():
         }}
 
         h1, h2, h3, h4, h5, h6,
-        p, label, span, div,
+        p, label,
         [data-testid="stMarkdownContainer"],
         [data-testid="stCaptionContainer"] {{
             color: var(--text);
@@ -2046,6 +2047,9 @@ def aplicar_tema_visual():
         unsafe_allow_html=True,
     )
 
+    css = (Path(__file__).parent / "assets" / "portal.css").read_text(encoding="utf-8-sig")
+    st.markdown(f"<style>{css}</style>", unsafe_allow_html=True)
+
 
 def aplicar_estilo_figura(fig, titulo=None):
     fig.update_layout(
@@ -2083,113 +2087,8 @@ def limpiar_ejes_kpi(fig):
 
 
 def estilos_login():
-    st.markdown(
-        """
-        <style>
-        header {visibility: hidden;}
-        footer {visibility: hidden;}
-
-        /* Fondo general */
-        .stApp {
-            background: var(--bg) !important;
-        }
-
-        .block-container {
-            max-width: 1180px;
-            padding-top: 4rem;
-        }
-
-        .login-spacer {
-            height: 5vh;
-        }
-
-        /* Card principal */
-        .login-card {
-            background: rgba(255, 250, 250, 0.98);
-            padding: 36px 32px;
-            border-radius: 8px;
-            box-shadow: 0 18px 42px rgba(20, 20, 20, 0.12);
-            text-align: center;
-            max-width: 420px;
-            margin: auto;
-            width: 100%;
-            border: 1px solid var(--border);
-        }
-
-        /* Título */
-        .login-title {
-            font-size: 28px;
-            font-weight: 800;
-            color: var(--primary);
-            margin-bottom: 8px;
-            text-align: left;
-        }
-
-        /* Subtítulo */
-        .login-subtitle {
-            font-size: 14px;
-            color: var(--muted);
-            margin-bottom: 24px;
-            text-align: left;
-        }
-
-        /* Inputs */
-        input {
-            border-radius: 8px !important;
-            border: 1px solid var(--border) !important;
-            padding: 10px !important;
-            transition: all 0.2s ease;
-        }
-
-        input:focus {
-            border: 1px solid var(--primary) !important;
-            box-shadow: 0 0 0 3px rgba(150, 131, 236, 0.20);
-            outline: none;
-        }
-
-        /* Botón */
-        div.stButton > button {
-            width: 100%;
-            border-radius: 8px;
-            background: var(--primary);
-            color: white;
-            font-weight: 700;
-            border: none;
-            padding: 0.7rem 1rem;
-            transition: all 0.25s ease;
-            box-shadow: 0 8px 18px rgba(93, 22, 166, 0.12);
-        }
-
-        div.stButton > button:hover {
-            background: var(--primary-hover);
-            box-shadow: 0 12px 24px rgba(93, 22, 166, 0.16);
-        }
-
-        /* Placeholder */
-        ::placeholder {
-            color: var(--muted);
-            font-size: 13px;
-        }
-
-        /* Responsive */
-        @media (max-width: 768px) {
-            .login-card {
-                padding: 24px !important;
-                border-radius: 8px !important;
-            }
-
-            .login-title {
-                font-size: 22px !important;
-            }
-
-            .login-subtitle {
-                font-size: 13px !important;
-            }
-        }
-        </style>
-        """,
-        unsafe_allow_html=True
-    )
+    css = (Path(__file__).parent / "assets" / "login.css").read_text(encoding="utf-8-sig")
+    st.markdown(f"<style>{css}</style>", unsafe_allow_html=True)
 
 
 def validar_email(correo):
@@ -2209,19 +2108,30 @@ def login():
         st.warning("Tu sesión ya no es válida. Inicia sesión nuevamente.")
 
     estilos_login()
-    st.markdown('<div class="login-spacer"></div>', unsafe_allow_html=True)
-
-    _, col_login, _ = st.columns([1.15, 0.7, 1.15])
+    bienvenida, col_login = st.columns([1.2, 1], gap="large")
+    with bienvenida:
+        st.markdown("""
+        <section class="login-intro">
+          <div class="login-brand"><i class="brand-dot" aria-hidden="true"></i>Certicámara</div>
+          <div class="login-eyebrow">PORTAL DE GESTIÓN</div>
+          <h1>Cada caso cuenta.<br>Cada solución también.</h1>
+          <p>Un espacio para dar seguimiento, organizar la atención y tener claridad sobre lo que necesita tu equipo.</p>
+          <div class="login-pills"><span>Casos</span><span>Incidentes</span><span>Indicadores</span></div>
+          <div class="login-art" aria-hidden="true"></div>
+        </section>
+        """, unsafe_allow_html=True)
     with col_login:
-        st.markdown('<div class="login-title">Control de casos e incidentes</div>', unsafe_allow_html=True)
-        st.markdown('<div class="login-subtitle">Ingresa con tu correo y contrasena</div>', unsafe_allow_html=True)
-        correo = st.text_input("Correo corporativo", key="correo_login")
-        password = st.text_input("Contrasena", type=TEXT_PASSWORD, key="password_login")
+        with st.form("login_form"):
+            st.markdown('<div class="login-form-eyebrow">TU ESPACIO DE TRABAJO</div><div class="login-title">Bienvenido de nuevo</div><div class="login-subtitle">Ingresa con tu cuenta corporativa para continuar.</div>', unsafe_allow_html=True)
+            correo = st.text_input("Correo corporativo", key="correo_login", placeholder="nombre@certicamara.com")
+            password = st.text_input("Contraseña", type=TEXT_PASSWORD, key="password_login", placeholder="Escribe tu contraseña")
+            ingresar = st.form_submit_button("Ingresar al portal", type="primary", use_container_width=True)
+            st.caption("¿Necesitas acceso? Contacta al administrador de la plataforma.")
 
-        if st.button("Ingresar", key="btn_login", type="primary"):
+        if ingresar:
             with st.spinner("Validando acceso..."):
                 if not validar_email(correo):
-                    st.error("Escribe un correo valido")
+                    st.error("Escribe un correo válido")
                     return False
 
                 try:
@@ -2231,7 +2141,7 @@ def login():
                     st.error("No fue posible validar el acceso en este momento.")
                     return False
                 if not usuario:
-                    st.error("Correo o contrasena incorrectos, o usuario inactivo")
+                    st.error("Correo o contraseña incorrectos, o usuario inactivo")
                     return False
 
                 st.session_state.user = usuario["email"]
@@ -12313,6 +12223,7 @@ def render_menu_y_vista():
 
     rol = usuario["role"]
     catalogo = catalogo_permitido(rol)
+    st.sidebar.markdown('<div class="sidebar-brand"><strong><i class="brand-dot" aria-hidden="true"></i>Certicámara</strong><small>Portal de gestión &middot; Casos e incidentes</small></div>', unsafe_allow_html=True)
     st.sidebar.caption(f"Sesión: {usuario['email']}")
     st.sidebar.caption(f"Rol: {NOMBRES_ROLES.get(rol, rol)}")
     cerrar_sesion_boton(en_sidebar=True)
@@ -12341,11 +12252,16 @@ def render_menu_y_vista():
             ):
                 seleccion = view_id
                 st.session_state["selected_view_id"] = view_id
+                st.rerun()
 
     item = catalogo_por_id.get(seleccion)
     if not item or not puede_acceder(rol, seleccion):
         st.error("No tienes permisos para acceder a este módulo")
         return
+    st.markdown(
+        f'<div class="workspace-banner"><div><small>PORTAL DE GESTIÓN / {html.escape(item[2])}</small><strong>{html.escape(item[1])}</strong></div><span class="workspace-badge">Espacio de trabajo</span></div>',
+        unsafe_allow_html=True,
+    )
     tokens = establecer_contexto_autorizacion(usuario["email"], seleccion)
     try:
         ejecutar_con_carga(item[1], item[4])

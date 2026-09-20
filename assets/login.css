@@ -1,0 +1,30 @@
+﻿header, footer { visibility: hidden; }
+[data-testid="stAppViewContainer"] { background: #f6f5f7 !important; }
+.block-container { max-width: 1180px; padding-top: 7vh; padding-bottom: 3rem; }
+.login-intro { padding: 38px 42px; min-height: 490px; background: #21152f; border-radius: 24px; position: relative; overflow: hidden; }
+.login-intro .login-brand { color: #fffafa; font-size: 1.4rem; font-weight: 750; letter-spacing: -.03em; position: relative; z-index: 1; }
+.login-intro .login-eyebrow { color: #c0b3f5; font-size: .75rem; letter-spacing: .15em; margin: 54px 0 16px; font-weight: 650; }
+.login-intro h1 { color: #fffafa !important; font-size: clamp(2rem, 3.6vw, 3.1rem); line-height: 1.12; max-width: 430px; padding: 0; position: relative; z-index: 1; }
+.login-intro p { color: #e0d9e9; line-height: 1.7; font-size: 1rem; max-width: 370px; position: relative; z-index: 1; }
+.login-intro .login-pills { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 28px; position: relative; z-index: 1; }
+.login-intro .login-pills span { color: #fffafa; border: 1px solid #776785; padding: 7px 12px; border-radius: 24px; font-size: .78rem; }
+.login-art { position: absolute; width: 180px; height: 180px; right: -65px; bottom: -45px; border-radius: 50% 50% 0 50%; background: #f35b04; transform: rotate(-25deg); }
+.login-art::before { content: ''; position: absolute; width: 120px; height: 120px; right: 95px; top: 80px; border-radius: 50%; background: #9683ec; }
+[data-testid="stForm"] { background: #fffafa; padding: 32px !important; border: 1px solid #e6e0e9; border-radius: 24px; box-shadow: 0 16px 44px #21152f08; }
+.login-title { color: #141414; font-size: 1.8rem; font-weight: 750; letter-spacing: -.03em; margin-bottom: 8px; }
+.login-subtitle { color: #6c6570; font-size: .95rem; line-height: 1.6; margin-bottom: 18px; }
+.login-form-eyebrow { font-size: .7rem; font-weight: 700; letter-spacing: .12em; color: #5d16a6; margin: 0 0 12px; }
+[data-testid="stForm"] input { min-height: 46px; }
+[data-testid="stForm"] button[kind="primaryFormSubmit"] { background: #f35b04 !important; color: #141414 !important; border: 1px solid #f35b04 !important; min-height: 48px; }
+[data-testid="stForm"] button[kind="primaryFormSubmit"]:hover { background: #f18701 !important; }
+.login-footer { text-align: center; color: #6c6570; font-size: .8rem; padding-top: 28px; }
+@media(max-width: 760px) { .block-container { padding-top: 1.5rem; } .login-intro { min-height: 0; padding: 28px; } .login-intro .login-eyebrow { margin-top: 24px; } .login-intro h1 { font-size: 2rem; } .login-intro .login-pills { margin-top: 16px; } [data-testid="stForm"] { padding: 24px !important; } }
+@media(max-width: 760px) {
+  .login-intro { padding: 24px; }
+  .login-intro .login-eyebrow { margin: 18px 0 10px; }
+  .login-intro h1 { font-size: 1.7rem; }
+  .login-intro p { font-size: .9rem; line-height: 1.5; }
+  .login-intro .login-pills { display: none; }
+  .login-art { width: 75px; height: 75px; right: -42px; bottom: -35px; }
+  .login-art::before { width: 45px; height: 45px; right: 35px; top: 38px; }
+}
