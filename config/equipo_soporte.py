@@ -7,6 +7,7 @@ EQUIPO_SOPORTE_CASOS = (
     "Paula Paez",
     "Andres Rojas",
     "Orlando Mendez",
+    "Diego Ruiz",
 )
 
 SEGMENTO_EQUIPO_SOPORTE = "Equipo de soporte"
