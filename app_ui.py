@@ -5124,14 +5124,15 @@ def resumen_principales_causas_servicios_casos(base, top_n=5):
     return causas, servicios
 
 
-def render_principales_causas_servicios_casos(base):
+def render_principales_causas_servicios_casos(base, mostrar_tabla=True):
     causas, servicios = resumen_principales_causas_servicios_casos(base)
     st.markdown("#### Principales causas y servicios afectados")
     st.caption("Dos causas principales y un acumulado del resto. Todas las cifras indican cantidad de casos. Servicios: top 5.")
     col_causas, col_servicios = st.columns(2)
     with col_causas:
         render_ranking_kpi(causas, "Causa raíz", TEXT_CANTIDAD, "Causas raíz", top_n=3, conservar_orden=True)
-        st.table(causas[["Causa raíz", TEXT_CANTIDAD]])
+        if mostrar_tabla:
+            st.table(causas[["Causa raíz", TEXT_CANTIDAD]])
     with col_servicios:
         render_ranking_kpi(servicios, "Servicio afectado", TEXT_CANTIDAD, "Servicios afectados", top_n=5)
 
@@ -7659,23 +7660,49 @@ def render_causas_incidentes(df, titulo, porcentaje_columna):
     st.dataframe(relevantes, use_container_width=True, hide_index=True)
 
 
-def render_evolucion_diaria_casos(df):
-    casos_dia = (
-        df.groupby(df[TEXT_CREADO_DT_DASHBOARD].dt.date)
-        .size()
-        .reset_index(name=TEXT_CASOS_2)
-    )
-    casos_dia.columns = [TEXT_FECHA, TEXT_CASOS_2]
-    fig = px.bar(
-        casos_dia,
-        x=TEXT_FECHA,
-        y=TEXT_CASOS_2,
-        text=TEXT_CASOS_2,
-        color_discrete_sequence=[UI_PALETTE[TEXT_YELLOW]],
-    )
-    fig.update_traces(marker_color=UI_PALETTE[TEXT_YELLOW], textposition=TEXT_OUTSIDE)
-    fig = aplicar_estilo_figura(fig, "Evolución diaria de casos")
-    fig.update_layout(height=360, bargap=0.28)
+def resumen_entradas_diarias_casos(df, solo_token=False, inicio=None, fin=None):
+    fechas = pd.to_datetime(df[TEXT_CREADO_DT_DASHBOARD], errors=TEXT_COERCE).dt.normalize()
+    validas = fechas.dropna()
+    if inicio is None:
+        inicio = validas.min() if not validas.empty else None
+    if fin is None:
+        fin = validas.max() if not validas.empty else None
+    if inicio is None or fin is None:
+        return pd.DataFrame(columns=[TEXT_FECHA, TEXT_CASOS_2])
+    if solo_token:
+        causas = pd.Series([inferir_causa_comun_caso(row) for _, row in df.iterrows()], index=df.index)
+        fechas = fechas[causas.eq("Token fisico / ePass")]
+    dias = pd.date_range(inicio, fin, freq="D")
+    conteo = fechas.value_counts().reindex(dias, fill_value=0).sort_index()
+    return conteo.rename_axis(TEXT_FECHA).reset_index(name=TEXT_CASOS_2)
+
+
+def render_evolucion_diaria_casos(df, solo_token=False, inicio=None, fin=None):
+    casos_dia = resumen_entradas_diarias_casos(df, solo_token, inicio, fin)
+    titulo = "Token físico / ePass por día" if solo_token else "Casos recibidos por día"
+    color = UI_PALETTE[TEXT_PURPLE] if solo_token else UI_PALETTE[TEXT_PRIMARY]
+    st.markdown(f"**{titulo}**")
+    total = int(casos_dia[TEXT_CASOS_2].sum())
+    st.caption(f"{total:,} casos recibidos en el período")
+    if casos_dia.empty:
+        st.info("No hay fechas de creación disponibles.")
+        return
+    if solo_token and total == 0:
+        st.caption("No se recibieron casos de Token físico / ePass en este período.")
+    fig = px.bar(casos_dia, x=TEXT_FECHA, y=TEXT_CASOS_2,
+                 color_discrete_sequence=[color])
+    fig = aplicar_estilo_figura(fig)
+    fig.update_traces(hovertemplate="%{x|%d/%m/%Y}<br>%{y} casos<extra></extra>")
+    if len(casos_dia) <= 31:
+        fig.update_traces(text=[str(valor) if valor else "" for valor in casos_dia[TEXT_CASOS_2]],
+                          textposition=TEXT_OUTSIDE, textfont=dict(size=10), cliponaxis=False)
+    fig.update_layout(height=280, bargap=0.25, showlegend=False,
+                      margin=dict(l=8, r=8, t=12, b=8), font=dict(size=12))
+    fig.update_xaxes(title_text="", tickformat="%d %b", nticks=8,
+                     tickfont=dict(size=11), showgrid=False)
+    fig.update_yaxes(title_text="Casos", rangemode="tozero", tickformat=",d",
+                     tickfont=dict(size=11), title_font=dict(size=12), showgrid=True,
+                     gridcolor="rgba(20,20,20,0.08)")
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
 
@@ -7732,29 +7759,39 @@ def dashboard_casos():
     )
 
     with tab_resumen:
-        render_principales_causas_servicios_casos(df)
-        st.markdown("#### Tendencia del periodo")
-        render_evolucion_diaria_casos(df)
+        inicio = pd.Timestamp(year=int(anio), month=int(mes) if mes else 1, day=1)
+        fin = (inicio + (pd.offsets.MonthEnd(0) if mes else pd.offsets.YearEnd(0))).normalize()
+        fin = min(fin, pd.Timestamp.now(tz=ZONA_PLATAFORMA).tz_localize(None).normalize())
+        col_total, col_token = st.columns(2)
+        with col_total:
+            with st.container(border=True):
+                render_evolucion_diaria_casos(df, inicio=inicio, fin=fin)
+        with col_token:
+            with st.container(border=True):
+                render_evolucion_diaria_casos(df, solo_token=True, inicio=inicio, fin=fin)
+        render_principales_causas_servicios_casos(df, mostrar_tabla=False)
 
     with tab_tipologias:
-        st.markdown("#### Tipologías de casos")
-        st.caption("Agrupación ejecutiva; la tipificación original se mantiene como referencia.")
+        st.caption("Cantidad de casos por tipología del período seleccionado.")
         tip = resumen_tipologias_soporte_casos(df)
-        grafico_porcentaje_tipologias_soporte(tip)
-        st.dataframe(tip, use_container_width=True, hide_index=True)
+        col_grafico, col_detalle = st.columns([1, 1])
+        with col_grafico:
+            render_ranking_kpi(tip, TEXT_TIPOLOGIA_SOPORTE, TEXT_CANTIDAD, "Tipologías de casos")
+        with col_detalle:
+            st.dataframe(tip, use_container_width=True, hide_index=True)
         with st.expander("Ver tipificaciones originales"):
             st.dataframe(tabla_resumen_tipificaciones_casos(df), use_container_width=True, hide_index=True)
 
     with tab_operacion:
-        st.markdown("#### Distribución operativa")
-        render_distribucion_productos_soporte(df, periodo_label)
-        render_carga_agentes(df, TEXT_ASIGNADO, "Carga por agente - casos", TEXT_CASOS)
+        with st.expander("Distribución por producto y cliente"):
+            render_distribucion_productos_soporte(df, periodo_label)
+        with st.expander("Carga por agente"):
+            render_carga_agentes(df, TEXT_ASIGNADO, "Carga por agente - casos", TEXT_CASOS)
         with st.expander("Análisis de agendamiento con histórico"):
             st.caption("Este bloque consulta más datos y se carga solo cuando lo solicitas.")
             if st.button("Calcular análisis de agendamiento", key="calcular_agendamiento_dashboard_casos"):
                 historico = casos_para_metricas_soporte(
-                    preparar_fechas_dashboard(cargar_casos_soporte_cache()),
-                    TEXT_ASIGNADO,
+                    preparar_fechas_dashboard(cargar_casos_soporte_cache()), TEXT_ASIGNADO,
                 )
                 render_analisis_agendamiento_mesa(df, historico, periodo_key_sql(anio, mes))
         render_seguimiento_casos(df)
