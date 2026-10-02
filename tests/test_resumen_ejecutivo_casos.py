@@ -76,16 +76,13 @@ class ResumenEjecutivoTest(unittest.TestCase):
         self.assertEqual(6, reporte["causas_lamina"]["Casos"].sum())
         self.assertAlmostEqual(100, reporte["causas_lamina"]["Porcentaje"].sum())
         self.assertEqual(3, len(reporte["causas_lamina"]))
-        self.assertIn("Sin causa comun", reporte["causas"]["Causa"].tolist())
-        pd.testing.assert_frame_equal(reporte["causas"].head(2), reporte["causas_lamina"].head(2))
+        self.assertIn("Solicitud operativa", reporte["causas"]["Causa"].tolist())
+        self.assertTrue(reporte["causas_lamina"]["Porcentaje"].is_monotonic_decreasing)
 
     def test_causa_raiz_prevalece_sobre_producto_en_descripcion(self):
         from app_ui import inferir_causa_comun_caso
         for raiz, categoria in [
-            ("Caso duplicado", "Casos duplicados"),
-            ("Enviada a otros canales", "Enviado a otros canales"),
-            ("Falla tecnica", "Falla técnica"),
-            ("Solicitud basica de soporte", "Solicitud básica de soporte"),
+            ("Caso duplicado", "Duplicado"),
             ("Captores", "Captores"),
             ("Token fisico", "Token fisico / ePass"),
             ("Firma digital", "Firma digital"),
@@ -114,23 +111,44 @@ class ResumenEjecutivoTest(unittest.TestCase):
 
     def test_tabla_kpi_dos_principales_y_acumulado_maximo_cuatro_nombres(self):
         from app_ui import preparar_kpi_casos_cliente_externo, resumen_principales_causas_servicios_casos
-        raices = ["duplicado", "otros canales", "captores", "soporte basico", "token", "firma", "falla tecnica"]
+        raices = ["duplicado", "captores", "solicitud operativa", "token", "firma", "activacion"]
         base, _ = preparar_kpi_casos_cliente_externo(pd.DataFrame([
             caso(str(i), causa=raiz) for i, raiz in enumerate(raices)
         ]))
         tabla, _ = resumen_principales_causas_servicios_casos(base)
         self.assertEqual(3, len(tabla))
-        self.assertEqual(7, tabla["Cantidad"].sum())
+        self.assertEqual(6, tabla["Cantidad"].sum())
         self.assertAlmostEqual(100, tabla["% casos"].sum())
-        etiqueta = tabla.iloc[2]["Causa raíz"]
-        self.assertEqual(4, etiqueta.count("(14.29%)"))
-        self.assertIn("+1 más", etiqueta)
+        etiqueta = tabla.iloc[0]["Causa raíz"]
+        self.assertEqual(4, etiqueta.count("(16.67%)"))
+        self.assertNotIn("+", etiqueta)
         self.assertNotIn("\n", etiqueta)
-        self.assertEqual(5, tabla.iloc[2]["Cantidad"])
+        self.assertEqual(4, tabla.iloc[0]["Cantidad"])
+        self.assertTrue(tabla["% casos"].is_monotonic_decreasing)
+
+    def test_porcentaje_descendente_incluye_acumulado(self):
+        for cantidades, esperado in [([40, 30, 20, 10], [40, 30, 30]),
+                                     ([30, 25, 24, 21], [45, 30, 25]),
+                                     ([20, 50, 30], [50, 30, 20]),
+                                     ([25, 75], [75, 25])]:
+            causas = pd.DataFrame({"Causa": list("ABCD")[:len(cantidades)],
+                                   "Casos": cantidades, "Porcentaje": cantidades})
+            self.assertEqual(esperado, causas_para_lamina(causas)["Porcentaje"].tolist())
 
     def test_no_usa_etiqueta_sin_causa_identificada(self):
         from app_ui import inferir_causa_comun_caso
-        self.assertEqual("Pendiente de revisión", inferir_causa_comun_caso(pd.Series(dtype=object)))
+        self.assertEqual("Solicitud operativa", inferir_causa_comun_caso(pd.Series(dtype=object)))
+
+    def test_catalogo_limitado_a_captura_mas_duplicado_y_captores(self):
+        from app_ui import CASE_COMMON_CAUSE_RULES, inferir_causa_comun_caso
+        permitidas = {"Firma digital", "Token fisico / ePass",
+                      "Activacion o descarga de certificado", "Solicitud operativa",
+                      "Duplicado", "Captores"}
+        self.assertEqual(permitidas, {nombre for nombre, _ in CASE_COMMON_CAUSE_RULES})
+        for anterior in ["Sin causa comun", "Sin causa identificada", "Pendiente de revisión",
+                         "Falla técnica", "Instalacion o configuracion", "Plataforma externa",
+                         "Enviado a otros canales", "Solicitud básica de soporte"]:
+            self.assertIn(inferir_causa_comun_caso(pd.Series({"causa": anterior})), permitidas)
 
     def test_sin_datos_y_sin_soporte_no_inventan_sla(self):
         for df in [pd.DataFrame(), pd.DataFrame([caso(asignado="Otro")])]:

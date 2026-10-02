@@ -48,7 +48,7 @@ def preparar_base_ejecutiva(df, inicio, fin, clasificar_causa):
             _texto(row["estado"]).casefold())), axis=1,
     ) if not trabajo.empty else pd.Series(dtype=bool)
     causas = [_texto(clasificar_causa(row)) for _, row in trabajo.iterrows()]
-    trabajo["causa_agrupada"] = [causa or "Sin causa comun" for causa in causas]
+    trabajo["causa_agrupada"] = [causa or "Solicitud operativa" for causa in causas]
     return trabajo.drop(columns="_actualizado")
 
 
@@ -75,6 +75,7 @@ def agrupar_causas(base):
 
 def causas_para_lamina(causas):
     """Dos principales y un acumulado con hasta cuatro causas en su etiqueta."""
+    causas = causas.sort_values("Porcentaje", ascending=False, kind="stable").reset_index(drop=True)
     if len(causas) <= 2:
         return causas.copy()
     resto = causas.iloc[2:]
@@ -88,7 +89,7 @@ def causas_para_lamina(causas):
         "Causa": etiqueta,
         "Casos": int(resto["Casos"].sum()),
         "Porcentaje": float(resto["Porcentaje"].sum()),
-    }])], ignore_index=True)
+    }])], ignore_index=True).sort_values("Porcentaje", ascending=False, kind="stable").reset_index(drop=True)
 
 
 def construir_resumen_ejecutivo(anterior, actual, corte, clasificar_causa):

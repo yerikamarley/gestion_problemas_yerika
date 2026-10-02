@@ -1178,10 +1178,8 @@ AGENDA_REASON_RULES = [
 ]
 
 CASE_COMMON_CAUSE_RULES = [
-    ("Casos duplicados", ["duplicad", "caso repetido", "ticket repetido"]),
-    ("Enviado a otros canales", ["otro canal", "otros canales", "canal equivocado", "canal incorrecto", "redireccion", "remitido a", "remitida a", "direccionado a", "direccionada a"]),
+    ("Duplicado", ["duplicad", "caso repetido", "ticket repetido"]),
     ("Captores", ["captor", "captores"]),
-    ("Solicitud básica de soporte", ["solicitud basica", "soporte basico", "asesoria", "orientacion", "acompanamiento", "manual de uso", "como usar"]),
     (
         "Token fisico / ePass",
         ["token fisico", "token", "epass", "safenet", "usb", "dispositivo"],
@@ -1191,30 +1189,15 @@ CASE_COMMON_CAUSE_RULES = [
         ["firma", "firmar", "certifirma", "validar firma", "falla en la firma"],
     ),
     (
-        "Instalacion o configuracion",
-        ["instalacion", "reinstalacion", "instalar", "configuracion", "configurar", "parametrizacion"],
-    ),
-    (
         "Activacion o descarga de certificado",
         ["activacion", "activar", "descarga", "descargar", "certificado", ".cer"],
     ),
     (
-        "Falla técnica",
-        ["error", "falla", "no funciona", "novedad", "inconveniente", "problema", "persiste"],
-    ),
-    (
         "Solicitud operativa",
-        ["solicitud", "biometria", "pago", "pagar", "orden", "actualizacion", "cambio"],
-    ),
-    (
-        "Phishing o seguridad",
-        ["phishing", "correo sospechoso", "suplantacion", "fraude"],
-    ),
-    (
-        "Plataforma externa",
-        ["adobe", "acrobat", "autofirma", "docusign"],
+        ["solicitud operativa", "biometria", "pago", "pagar", "orden", "actualizacion", "cambio"],
     ),
 ]
+
 
 CASE_CAUSE_DETAIL_RULES = [
     ("Fallas al firmar", ["falla en la firma", "error al firmar", "no firma", "no puede firmar", "firmar"]),
@@ -3075,7 +3058,7 @@ def inferir_causa_comun_caso(row):
     for causa, palabras in CASE_COMMON_CAUSE_RULES:
         if any(palabra in texto for palabra in palabras):
             return causa
-    return "Pendiente de revisión"
+    return "Solicitud operativa"
 
 
 def inferir_detalle_causa_comun(row):
