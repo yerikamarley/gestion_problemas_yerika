@@ -75,9 +75,9 @@ class ResumenEjecutivoTest(unittest.TestCase):
         self.assertEqual(6, reporte["causas"]["Casos"].sum())
         self.assertEqual(6, reporte["causas_lamina"]["Casos"].sum())
         self.assertAlmostEqual(100, reporte["causas_lamina"]["Porcentaje"].sum())
-        self.assertEqual(len(reporte["causas"]), len(reporte["causas_lamina"]))
+        self.assertEqual(3, len(reporte["causas_lamina"]))
         self.assertIn("Sin causa comun", reporte["causas"]["Causa"].tolist())
-        pd.testing.assert_frame_equal(reporte["causas"], reporte["causas_lamina"])
+        pd.testing.assert_frame_equal(reporte["causas"].head(2), reporte["causas_lamina"].head(2))
 
     def test_causa_raiz_prevalece_sobre_producto_en_descripcion(self):
         from app_ui import inferir_causa_comun_caso
@@ -108,20 +108,29 @@ class ResumenEjecutivoTest(unittest.TestCase):
         self.assertEqual(base["causa_comun"].value_counts().to_dict(),
                          reporte["causas"].set_index("Causa")["Casos"].to_dict())
         tabla, _ = resumen_principales_causas_servicios_casos(base)
-        pd.testing.assert_frame_equal(reporte["causas"], tabla.rename(columns={
+        pd.testing.assert_frame_equal(reporte["causas_lamina"], tabla.rename(columns={
             "Causa raíz": "Causa", "Cantidad": "Casos", "% casos": "Porcentaje",
         }))
 
-    def test_tabla_kpi_muestra_todas_las_causas_y_total_porcentual(self):
+    def test_tabla_kpi_dos_principales_y_acumulado_maximo_cuatro_nombres(self):
         from app_ui import preparar_kpi_casos_cliente_externo, resumen_principales_causas_servicios_casos
         raices = ["duplicado", "otros canales", "captores", "soporte basico", "token", "firma", "falla tecnica"]
         base, _ = preparar_kpi_casos_cliente_externo(pd.DataFrame([
             caso(str(i), causa=raiz) for i, raiz in enumerate(raices)
         ]))
         tabla, _ = resumen_principales_causas_servicios_casos(base)
-        self.assertEqual(7, len(tabla))
+        self.assertEqual(3, len(tabla))
         self.assertEqual(7, tabla["Cantidad"].sum())
         self.assertAlmostEqual(100, tabla["% casos"].sum())
+        etiqueta = tabla.iloc[2]["Causa raíz"]
+        self.assertEqual(4, etiqueta.count("(14.29%)"))
+        self.assertIn("+1 más", etiqueta)
+        self.assertNotIn("\n", etiqueta)
+        self.assertEqual(5, tabla.iloc[2]["Cantidad"])
+
+    def test_no_usa_etiqueta_sin_causa_identificada(self):
+        from app_ui import inferir_causa_comun_caso
+        self.assertEqual("Pendiente de revisión", inferir_causa_comun_caso(pd.Series(dtype=object)))
 
     def test_sin_datos_y_sin_soporte_no_inventan_sla(self):
         for df in [pd.DataFrame(), pd.DataFrame([caso(asignado="Otro")])]:

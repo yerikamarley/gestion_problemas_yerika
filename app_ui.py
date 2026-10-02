@@ -43,7 +43,7 @@ from services.casos_sla import (
     resumen_sla_casos,
     tabla_casos_plataforma,
 )
-from services.resumen_ejecutivo_casos import periodos_corte, construir_resumen_ejecutivo, agrupar_causas
+from services.resumen_ejecutivo_casos import periodos_corte, construir_resumen_ejecutivo, agrupar_causas, causas_para_lamina
 from components.resumen_ejecutivo_casos import lamina_resumen_casos
 from services.migracion_pki import (
     GRUPO_PKI_TODOS,
@@ -3075,7 +3075,7 @@ def inferir_causa_comun_caso(row):
     for causa, palabras in CASE_COMMON_CAUSE_RULES:
         if any(palabra in texto for palabra in palabras):
             return causa
-    return "Sin causa identificada"
+    return "Pendiente de revisión"
 
 
 def inferir_detalle_causa_comun(row):
@@ -3198,14 +3198,17 @@ def numero_ranking_kpi(valor):
     return str(round(numero, 2))
 
 
-def render_ranking_kpi(df, etiqueta_columna, valor_columna, titulo, top_n=6):
+def render_ranking_kpi(df, etiqueta_columna, valor_columna, titulo, top_n=6, conservar_orden=False):
     if df.empty:
         st.info(f"No hay datos para {titulo.lower()}.")
         return
 
     ranking = df.copy()
     ranking[valor_columna] = pd.to_numeric(ranking[valor_columna], errors=TEXT_COERCE).fillna(0)
-    ranking = ranking[ranking[valor_columna] > 0].sort_values(by=valor_columna, ascending=False).head(top_n)
+    ranking = ranking[ranking[valor_columna] > 0]
+    if not conservar_orden:
+        ranking = ranking.sort_values(by=valor_columna, ascending=False)
+    ranking = ranking.head(top_n)
     if ranking.empty:
         st.info(f"No hay datos para {titulo.lower()}.")
         return
@@ -3216,10 +3219,11 @@ def render_ranking_kpi(df, etiqueta_columna, valor_columna, titulo, top_n=6):
         valor = row[valor_columna]
         porcentaje_barra = (valor / maximo) * 100 if maximo else 0
         etiqueta_completa = valor_limpio(row[etiqueta_columna]) or SIN_DATO
-        etiqueta = texto_ranking_kpi(etiqueta_completa)
+        etiqueta = etiqueta_completa if conservar_orden else texto_ranking_kpi(etiqueta_completa)
+        estilo = ' style="white-space:nowrap;overflow-x:auto;text-overflow:clip"' if conservar_orden else ''
         filas.append(
             '<div class="kpi-ranking-row">'
-            f'<div class="kpi-ranking-label" title="{html.escape(etiqueta_completa)}">{html.escape(etiqueta)}</div>'
+            f'<div class="kpi-ranking-label"{estilo} title="{html.escape(etiqueta_completa)}">{html.escape(etiqueta)}</div>'
             '<div class="kpi-ranking-track">'
             f'<div class="kpi-ranking-bar" style="width: max(8px, {porcentaje_barra:.2f}%);"></div>'
             "</div>"
@@ -5124,7 +5128,7 @@ def render_lectura_kpi(metricas, base):
 def resumen_principales_causas_servicios_casos(base, top_n=5):
     trabajo = base.copy()
     trabajo["causa_agrupada"] = [inferir_causa_comun_caso(row) for _, row in trabajo.iterrows()]
-    causas = agrupar_causas(trabajo).rename(columns={
+    causas = causas_para_lamina(agrupar_causas(trabajo)).rename(columns={
         "Causa": "Causa raíz", "Casos": TEXT_CANTIDAD, "Porcentaje": "% casos",
     })
     servicios = top_categorias(
@@ -5140,10 +5144,10 @@ def resumen_principales_causas_servicios_casos(base, top_n=5):
 def render_principales_causas_servicios_casos(base):
     causas, servicios = resumen_principales_causas_servicios_casos(base)
     st.markdown("#### Principales causas y servicios afectados")
-    st.caption("Todas las causas raíz del período; porcentaje sobre el total de casos. Servicios: top 5.")
+    st.caption("Dos causas principales y un acumulado del resto (hasta cuatro nombres). Porcentajes sobre el total de casos. Servicios: top 5.")
     col_causas, col_servicios = st.columns(2)
     with col_causas:
-        render_ranking_kpi(causas, "Causa raíz", TEXT_CANTIDAD, "Causas raíz", top_n=max(len(causas), 1))
+        render_ranking_kpi(causas, "Causa raíz", TEXT_CANTIDAD, "Causas raíz", top_n=3, conservar_orden=True)
         st.dataframe(causas, use_container_width=True, hide_index=True,
                      column_config={"% casos": st.column_config.NumberColumn("% casos", format="%.2f%%")})
     with col_servicios:
