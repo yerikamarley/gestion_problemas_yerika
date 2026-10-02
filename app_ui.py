@@ -43,7 +43,7 @@ from services.casos_sla import (
     resumen_sla_casos,
     tabla_casos_plataforma,
 )
-from services.resumen_ejecutivo_casos import periodos_corte, construir_resumen_ejecutivo
+from services.resumen_ejecutivo_casos import periodos_corte, construir_resumen_ejecutivo, agrupar_causas
 from components.resumen_ejecutivo_casos import lamina_resumen_casos
 from services.migracion_pki import (
     GRUPO_PKI_TODOS,
@@ -1178,6 +1178,10 @@ AGENDA_REASON_RULES = [
 ]
 
 CASE_COMMON_CAUSE_RULES = [
+    ("Casos duplicados", ["duplicad", "caso repetido", "ticket repetido"]),
+    ("Enviado a otros canales", ["otro canal", "otros canales", "canal equivocado", "canal incorrecto", "redireccion", "remitido a", "remitida a", "direccionado a", "direccionada a"]),
+    ("Captores", ["captor", "captores"]),
+    ("Solicitud básica de soporte", ["solicitud basica", "soporte basico", "asesoria", "orientacion", "acompanamiento", "manual de uso", "como usar"]),
     (
         "Token fisico / ePass",
         ["token fisico", "token", "epass", "safenet", "usb", "dispositivo"],
@@ -1195,7 +1199,7 @@ CASE_COMMON_CAUSE_RULES = [
         ["activacion", "activar", "descarga", "descargar", "certificado", ".cer"],
     ),
     (
-        "Error o falla tecnica",
+        "Falla técnica",
         ["error", "falla", "no funciona", "novedad", "inconveniente", "problema", "persiste"],
     ),
     (
@@ -3060,19 +3064,18 @@ def resumen_tipologias_soporte_casos(base):
 
 
 def inferir_causa_comun_caso(row):
-    causa_existente = valor_limpio(row.get(TEXT_CAUSA_COMUN))
-    if causa_existente:
-        return causa_existente
+    # La causa raíz registrada prevalece sobre menciones del producto en el relato.
+    for campo in (TEXT_CAUSA, TEXT_CAUSA_COMUN):
+        texto = normalizar_texto(row.get(campo))
+        for causa, palabras in CASE_COMMON_CAUSE_RULES:
+            if any(palabra in texto for palabra in palabras):
+                return causa
 
     texto = texto_caso_para_causa_comun(row)
     for causa, palabras in CASE_COMMON_CAUSE_RULES:
         if any(palabra in texto for palabra in palabras):
             return causa
-
-    causa_base = valor_limpio(row.get(TEXT_CAUSA))
-    if causa_base:
-        return causa_base
-    return "Sin causa comun"
+    return "Sin causa identificada"
 
 
 def inferir_detalle_causa_comun(row):
@@ -5120,15 +5123,10 @@ def render_lectura_kpi(metricas, base):
 
 def resumen_principales_causas_servicios_casos(base, top_n=5):
     trabajo = base.copy()
-    if TEXT_CAUSA_COMUN not in trabajo.columns:
-        trabajo[TEXT_CAUSA_COMUN] = trabajo.apply(inferir_causa_comun_caso, axis=1)
-    causas = top_categorias(
-        trabajo,
-        TEXT_CAUSA_COMUN,
-        "Causa raíz",
-        top_n=top_n,
-        valor_vacio="Sin causa identificada",
-    )
+    trabajo["causa_agrupada"] = [inferir_causa_comun_caso(row) for _, row in trabajo.iterrows()]
+    causas = agrupar_causas(trabajo).rename(columns={
+        "Causa": "Causa raíz", "Casos": TEXT_CANTIDAD, "Porcentaje": "% casos",
+    })
     servicios = top_categorias(
         trabajo,
         TEXT_PRODUCTO,
@@ -5142,10 +5140,12 @@ def resumen_principales_causas_servicios_casos(base, top_n=5):
 def render_principales_causas_servicios_casos(base):
     causas, servicios = resumen_principales_causas_servicios_casos(base)
     st.markdown("#### Principales causas y servicios afectados")
-    st.caption("Top 5 del periodo. Las cifras corresponden a cantidad de casos.")
+    st.caption("Todas las causas raíz del período; porcentaje sobre el total de casos. Servicios: top 5.")
     col_causas, col_servicios = st.columns(2)
     with col_causas:
-        render_ranking_kpi(causas, "Causa raíz", TEXT_CANTIDAD, "Causas raíz principales", top_n=5)
+        render_ranking_kpi(causas, "Causa raíz", TEXT_CANTIDAD, "Causas raíz", top_n=max(len(causas), 1))
+        st.dataframe(causas, use_container_width=True, hide_index=True,
+                     column_config={"% casos": st.column_config.NumberColumn("% casos", format="%.2f%%")})
     with col_servicios:
         render_ranking_kpi(servicios, "Servicio afectado", TEXT_CANTIDAD, "Servicios afectados", top_n=5)
 

@@ -74,17 +74,8 @@ def agrupar_causas(base):
 
 
 def causas_para_lamina(causas):
-    """Tres barras como en el estándar, sin omitir casos del denominador."""
-    if len(causas) <= 3:
-        return causas.copy()
-    resto = causas.iloc[2:]
-    return pd.concat([causas.head(2), pd.DataFrame([{
-        "Causa": "; ".join(
-            f"{row['Causa']} ({row['Porcentaje']:.2f}%)"
-            for _, row in resto.iterrows()
-        ),
-        "Casos": int(resto["Casos"].sum()), "Porcentaje": float(resto["Porcentaje"].sum()),
-    }])], ignore_index=True)
+    """Una barra por causa raíz, con las mismas cifras del dashboard."""
+    return causas.copy()
 
 
 def construir_resumen_ejecutivo(anterior, actual, corte, clasificar_causa):

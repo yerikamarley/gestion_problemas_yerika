@@ -75,15 +75,28 @@ class ResumenEjecutivoTest(unittest.TestCase):
         self.assertEqual(6, reporte["causas"]["Casos"].sum())
         self.assertEqual(6, reporte["causas_lamina"]["Casos"].sum())
         self.assertAlmostEqual(100, reporte["causas_lamina"]["Porcentaje"].sum())
-        self.assertEqual(3, len(reporte["causas_lamina"]))
+        self.assertEqual(len(reporte["causas"]), len(reporte["causas_lamina"]))
         self.assertIn("Sin causa comun", reporte["causas"]["Causa"].tolist())
-        acumulado = reporte["causas_lamina"].iloc[2]
-        for _, row in reporte["causas"].iloc[2:].iterrows():
-            self.assertIn(f"{row['Causa']} ({row['Porcentaje']:.2f}%)", acumulado["Causa"])
-        self.assertNotIn("Otras causas", acumulado["Causa"])
+        pd.testing.assert_frame_equal(reporte["causas"], reporte["causas_lamina"])
+
+    def test_causa_raiz_prevalece_sobre_producto_en_descripcion(self):
+        from app_ui import inferir_causa_comun_caso
+        for raiz, categoria in [
+            ("Caso duplicado", "Casos duplicados"),
+            ("Enviada a otros canales", "Enviado a otros canales"),
+            ("Falla tecnica", "Falla técnica"),
+            ("Solicitud basica de soporte", "Solicitud básica de soporte"),
+            ("Captores", "Captores"),
+            ("Token fisico", "Token fisico / ePass"),
+            ("Firma digital", "Firma digital"),
+        ]:
+            with self.subTest(raiz=raiz):
+                self.assertEqual(categoria, inferir_causa_comun_caso(pd.Series({
+                    "causa": raiz, "descripcion": "Solicitud de firma digital con token",
+                })))
 
     def test_causas_coinciden_con_dashboard_soporte(self):
-        from app_ui import preparar_kpi_casos_cliente_externo, inferir_causa_comun_caso
+        from app_ui import preparar_kpi_casos_cliente_externo, inferir_causa_comun_caso, resumen_principales_causas_servicios_casos
         df = pd.DataFrame([
             caso("A", causa="Firma"), caso("B", causa="Token", asignado=""),
             caso("C", causa="", asignado="Yader Neira"),
@@ -94,6 +107,21 @@ class ResumenEjecutivoTest(unittest.TestCase):
         self.assertEqual(metricas["total"], reporte["metricas"]["actual"]["total"])
         self.assertEqual(base["causa_comun"].value_counts().to_dict(),
                          reporte["causas"].set_index("Causa")["Casos"].to_dict())
+        tabla, _ = resumen_principales_causas_servicios_casos(base)
+        pd.testing.assert_frame_equal(reporte["causas"], tabla.rename(columns={
+            "Causa raíz": "Causa", "Cantidad": "Casos", "% casos": "Porcentaje",
+        }))
+
+    def test_tabla_kpi_muestra_todas_las_causas_y_total_porcentual(self):
+        from app_ui import preparar_kpi_casos_cliente_externo, resumen_principales_causas_servicios_casos
+        raices = ["duplicado", "otros canales", "captores", "soporte basico", "token", "firma", "falla tecnica"]
+        base, _ = preparar_kpi_casos_cliente_externo(pd.DataFrame([
+            caso(str(i), causa=raiz) for i, raiz in enumerate(raices)
+        ]))
+        tabla, _ = resumen_principales_causas_servicios_casos(base)
+        self.assertEqual(7, len(tabla))
+        self.assertEqual(7, tabla["Cantidad"].sum())
+        self.assertAlmostEqual(100, tabla["% casos"].sum())
 
     def test_sin_datos_y_sin_soporte_no_inventan_sla(self):
         for df in [pd.DataFrame(), pd.DataFrame([caso(asignado="Otro")])]:
