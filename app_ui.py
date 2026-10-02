@@ -7683,10 +7683,12 @@ def render_evolucion_diaria_casos(df, solo_token=False, inicio=None, fin=None):
     color = UI_PALETTE[TEXT_PURPLE] if solo_token else UI_PALETTE[TEXT_PRIMARY]
     st.markdown(f"**{titulo}**")
     total = int(casos_dia[TEXT_CASOS_2].sum())
-    st.caption(f"{total:,} casos recibidos en el período")
     if casos_dia.empty:
         st.info("No hay fechas de creación disponibles.")
         return
+    primero = casos_dia[TEXT_FECHA].iloc[0]
+    ultimo = casos_dia[TEXT_FECHA].iloc[-1]
+    st.caption(f"Del {primero:%d/%m/%Y} al {ultimo:%d/%m/%Y} · {total:,} casos recibidos")
     if solo_token and total == 0:
         st.caption("No se recibieron casos de Token físico / ePass en este período.")
     fig = px.bar(casos_dia, x=TEXT_FECHA, y=TEXT_CASOS_2,
@@ -7698,8 +7700,19 @@ def render_evolucion_diaria_casos(df, solo_token=False, inicio=None, fin=None):
                           textposition=TEXT_OUTSIDE, textfont=dict(size=10), cliponaxis=False)
     fig.update_layout(height=280, bargap=0.25, showlegend=False,
                       margin=dict(l=8, r=8, t=12, b=8), font=dict(size=12))
-    fig.update_xaxes(title_text="", tickformat="%d %b", nticks=8,
-                     tickfont=dict(size=11), showgrid=False)
+    mismo_mes = primero.year == ultimo.year and primero.month == ultimo.month
+    fechas_eje = casos_dia[TEXT_FECHA].tolist()
+    if len(fechas_eje) > 31:
+        fechas_eje = fechas_eje[::max(1, (len(fechas_eje) + 7) // 8)]
+        if fechas_eje[-1] != ultimo:
+            fechas_eje.append(ultimo)
+    fig.update_xaxes(
+        title_text="Día del mes" if mismo_mes else "Fecha",
+        tickmode="array", tickvals=fechas_eje,
+        ticktext=[str(fecha.day) if mismo_mes else fecha.strftime("%d/%m") for fecha in fechas_eje],
+        tickangle=0, tickfont=dict(size=10), title_font=dict(size=12), showgrid=False,
+        range=[primero - pd.Timedelta(hours=12), ultimo + pd.Timedelta(hours=12)],
+    )
     fig.update_yaxes(title_text="Casos", rangemode="tozero", tickformat=",d",
                      tickfont=dict(size=11), title_font=dict(size=12), showgrid=True,
                      gridcolor="rgba(20,20,20,0.08)")
