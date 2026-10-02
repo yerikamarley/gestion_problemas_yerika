@@ -10,7 +10,7 @@ import re
 
 import pandas as pd
 
-from services.casos import segmentar_casos_por_asignacion
+from services.casos import casos_para_metricas_soporte
 from services.casos_sla import agregar_sla_casos, fecha_plataforma, COL_ESTADO_SLA
 
 
@@ -37,7 +37,7 @@ def preparar_base_ejecutiva(df, inicio, fin, clasificar_causa):
     # Si llega un duplicado, la asignación de la última actualización prevalece.
     trabajo["_actualizado"] = trabajo["actualizado"].map(fecha_plataforma)
     trabajo = trabajo.sort_values("_actualizado", kind="stable", na_position="first").drop_duplicates("numero", keep="last")
-    trabajo = segmentar_casos_por_asignacion(trabajo)["equipo"]
+    trabajo = casos_para_metricas_soporte(trabajo)
     fechas = trabajo["creado"].map(lambda valor: fecha_plataforma(valor))
     dias = fechas.map(lambda valor: valor.date() if pd.notna(valor) else None)
     trabajo = trabajo[dias.map(lambda dia: dia is not None and inicio <= dia <= fin).astype(bool)].copy()
@@ -48,10 +48,7 @@ def preparar_base_ejecutiva(df, inicio, fin, clasificar_causa):
             _texto(row["estado"]).casefold())), axis=1,
     ) if not trabajo.empty else pd.Series(dtype=bool)
     causas = [_texto(clasificar_causa(row)) for _, row in trabajo.iterrows()]
-    trabajo["causa_agrupada"] = [
-        "Sin clasificar" if causa.casefold() in ("", "sin causa comun", "sin causa común", "sin dato") else causa
-        for causa in causas
-    ]
+    trabajo["causa_agrupada"] = [causa or "Sin causa comun" for causa in causas]
     return trabajo.drop(columns="_actualizado")
 
 
@@ -82,7 +79,10 @@ def causas_para_lamina(causas):
         return causas.copy()
     resto = causas.iloc[2:]
     return pd.concat([causas.head(2), pd.DataFrame([{
-        "Causa": f"Otras causas ({len(resto)} grupos)",
+        "Causa": "; ".join(
+            f"{row['Causa']} ({row['Porcentaje']:.2f}%)"
+            for _, row in resto.iterrows()
+        ),
         "Casos": int(resto["Casos"].sum()), "Porcentaje": float(resto["Porcentaje"].sum()),
     }])], ignore_index=True)
 

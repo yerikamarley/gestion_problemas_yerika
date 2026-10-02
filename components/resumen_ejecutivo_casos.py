@@ -62,12 +62,12 @@ def lamina_resumen_casos(reporte, foco="", decision=""):
     .tarjeta .nota{{font-size:10px;line-height:1.45}}.tarjeta.naranja{{background:#ed6326;color:white;border-color:#ed6326}}
     .tarjeta.actual{{border-color:#f35c21}}.tarjeta.actual .cifra{{color:#d54c17}}.rojo{{color:#c52d19}}
     .graficas{{display:grid;grid-template-columns:1fr 1.05fr;gap:20px;margin-top:15px}}
-    .panel{{background:white;box-shadow:0 2px 4px #00000015;min-width:0;height:220px}}
+    .panel{{background:white;box-shadow:0 2px 4px #00000015;min-width:0;min-height:220px}}
     .panel h2{{font:700 15px Georgia,serif;margin:14px 0 0}}.volumen{{padding:0 8px}}
     .volumen svg{{width:100%;height:183px}}.valor{{font:bold 14px Arial;fill:#30313d}}.mes{{font:14px Arial;fill:#666}}
     .causas{{border:1px solid #e0dcd7;border-radius:6px;padding:0 13px 10px}}.causas h2{{margin-bottom:10px}}
     .causa{{margin-bottom:13px}}.causa-titulo{{display:flex;align-items:center;gap:9px;justify-content:space-between;font-size:10px;margin-bottom:5px;min-height:18px}}
-    .causa-titulo span{{font-weight:600;max-width:66%;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}}
+    .causa-titulo span{{font-weight:600;max-width:66%;line-height:1.5;overflow-wrap:anywhere}}
     .causa-titulo small{{font-size:9px;white-space:nowrap}}.causa-titulo b{{color:#ce4a16;font-weight:500}}
     .pista{{height:17px;background:#f0efeb;border-radius:3px;overflow:hidden}}.pista>div{{height:100%;border-radius:3px}}
     .decision{{margin:15px 20px 0 auto;width:76%;min-height:65px;background:#50318b;color:white;border-radius:6px;display:grid;grid-template-columns:180px 1fr;gap:12px;align-items:center;padding:14px 23px}}

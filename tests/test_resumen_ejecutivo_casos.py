@@ -45,11 +45,11 @@ class ResumenEjecutivoTest(unittest.TestCase):
             caso(""),
         ])
         reporte = construir_resumen_ejecutivo(pd.DataFrame(), df, date(2026, 9, 15), causa)
-        self.assertEqual({"SI1", "SI2"}, set(reporte["bases"]["actual"]["numero"]))
-        self.assertEqual(2, reporte["metricas"]["actual"]["total"])
-        self.assertEqual(2, reporte["metricas"]["actual"]["abiertos"])
-        self.assertEqual(2, reporte["causas"]["Casos"].sum())
-        self.assertEqual(2, reporte["diferencia"])
+        self.assertEqual({"SI1", "SI2", "NO1"}, set(reporte["bases"]["actual"]["numero"]))
+        self.assertEqual(3, reporte["metricas"]["actual"]["total"])
+        self.assertEqual(3, reporte["metricas"]["actual"]["abiertos"])
+        self.assertEqual(3, reporte["causas"]["Casos"].sum())
+        self.assertEqual(3, reporte["diferencia"])
         self.assertIsNone(reporte["diferencia_sla"])
 
     def test_sla_denominador_y_diferencias_verificables(self):
@@ -76,7 +76,24 @@ class ResumenEjecutivoTest(unittest.TestCase):
         self.assertEqual(6, reporte["causas_lamina"]["Casos"].sum())
         self.assertAlmostEqual(100, reporte["causas_lamina"]["Porcentaje"].sum())
         self.assertEqual(3, len(reporte["causas_lamina"]))
-        self.assertIn("Sin clasificar", reporte["causas"]["Causa"].tolist())
+        self.assertIn("Sin causa comun", reporte["causas"]["Causa"].tolist())
+        acumulado = reporte["causas_lamina"].iloc[2]
+        for _, row in reporte["causas"].iloc[2:].iterrows():
+            self.assertIn(f"{row['Causa']} ({row['Porcentaje']:.2f}%)", acumulado["Causa"])
+        self.assertNotIn("Otras causas", acumulado["Causa"])
+
+    def test_causas_coinciden_con_dashboard_soporte(self):
+        from app_ui import preparar_kpi_casos_cliente_externo, inferir_causa_comun_caso
+        df = pd.DataFrame([
+            caso("A", causa="Firma"), caso("B", causa="Token", asignado=""),
+            caso("C", causa="", asignado="Yader Neira"),
+            caso("D", causa="Pago", asignado="Otro equipo"),
+        ])
+        base, metricas = preparar_kpi_casos_cliente_externo(df)
+        reporte = construir_resumen_ejecutivo(pd.DataFrame(), df, date(2026, 9, 15), inferir_causa_comun_caso)
+        self.assertEqual(metricas["total"], reporte["metricas"]["actual"]["total"])
+        self.assertEqual(base["causa_comun"].value_counts().to_dict(),
+                         reporte["causas"].set_index("Causa")["Casos"].to_dict())
 
     def test_sin_datos_y_sin_soporte_no_inventan_sla(self):
         for df in [pd.DataFrame(), pd.DataFrame([caso(asignado="Otro")])]:
@@ -120,7 +137,7 @@ with patch.object(ui, "cargar_casos_soporte_filtrados_cache", side_effect=cargar
             {"fecha_inicio": date(2026, 8, 1), "fecha_fin": date(2026, 8, 15)},
             {"fecha_inicio": date(2026, 9, 1), "fecha_fin": date(2026, 9, 15)},
         ], app.session_state["consultas"][-2:])
-        self.assertEqual(1, app.dataframe[0].value.iloc[1]["total"])
+        self.assertEqual(2, app.dataframe[0].value.iloc[1]["total"])
 
 
 if __name__ == "__main__":
