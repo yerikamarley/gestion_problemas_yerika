@@ -80,7 +80,7 @@ def causas_para_lamina(causas):
         return causas.copy()
     resto = causas.iloc[2:]
     etiqueta = "; ".join(
-        f"{row['Causa']} ({row['Porcentaje']:.2f}%)"
+        f"{row['Causa']} ({int(row['Casos']):,} casos)"
         for _, row in resto.head(4).iterrows()
     )
     if len(resto) > 4:

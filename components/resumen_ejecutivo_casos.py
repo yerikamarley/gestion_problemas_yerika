@@ -41,7 +41,7 @@ def lamina_resumen_casos(reporte, foco="", decision=""):
     for i, row in reporte["causas_lamina"].iterrows():
         causa = escape(str(row["Causa"]))
         barras.append(f'''<div class="causa"><div class="causa-titulo"><span title="{causa}">{causa}</span>
-            <small><b>{int(row['Casos']):,} casos</b> · {row['Porcentaje']:.2f}%</small></div>
+            <small><b>{int(row['Casos']):,} casos</b></small></div>
             <div class="pista"><div style="width:{row['Porcentaje']:.6f}%;background:{'#ee6325' if i == 0 else '#c9c5bc'}"></div></div></div>''')
     causas_html = ''.join(barras) or '<p class="vacio">Sin casos para agrupar.</p>'
     grafico = grafico_volumen(a["total"], b["total"], mes_a, mes_b)
@@ -66,9 +66,9 @@ def lamina_resumen_casos(reporte, foco="", decision=""):
     .panel h2{{font:700 15px Georgia,serif;margin:14px 0 0}}.volumen{{padding:0 8px}}
     .volumen svg{{width:100%;height:183px}}.valor{{font:bold 14px Arial;fill:#30313d}}.mes{{font:14px Arial;fill:#666}}
     .causas{{border:1px solid #e0dcd7;border-radius:6px;padding:0 13px 10px}}.causas h2{{margin-bottom:10px}}
-    .causa{{margin-bottom:13px}}.causa-titulo{{display:flex;align-items:center;gap:9px;justify-content:space-between;font-size:10px;margin-bottom:5px;min-height:18px}}
-    .causa-titulo span{{font-weight:600;max-width:66%;line-height:1.5;white-space:nowrap;overflow-x:auto}}
-    .causa-titulo small{{font-size:9px;white-space:nowrap}}.causa-titulo b{{color:#ce4a16;font-weight:500}}
+    .causa{{margin-bottom:13px}}.causa-titulo{{display:flex;align-items:flex-start;gap:12px;justify-content:space-between;font-size:12px;margin-bottom:5px;min-height:18px}}
+    .causa-titulo span{{font-weight:600;flex:1;min-width:0;line-height:1.5;white-space:normal;overflow-wrap:break-word}}
+    .causa-titulo small{{font-size:11px;white-space:nowrap;flex-shrink:0;line-height:1.5}}.causa-titulo b{{color:#ce4a16;font-weight:600}}
     .pista{{height:17px;background:#f0efeb;border-radius:3px;overflow:hidden}}.pista>div{{height:100%;border-radius:3px}}
     .decision{{margin:15px 20px 0 auto;width:76%;min-height:65px;background:#50318b;color:white;border-radius:6px;display:grid;grid-template-columns:180px 1fr;gap:12px;align-items:center;padding:14px 23px}}
     .decision b{{font:700 11px Georgia,serif}}.decision p{{font-size:12px;font-weight:600;line-height:1.3;margin:0;overflow-wrap:anywhere}}

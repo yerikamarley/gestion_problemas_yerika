@@ -3203,7 +3203,7 @@ def render_ranking_kpi(df, etiqueta_columna, valor_columna, titulo, top_n=6, con
         porcentaje_barra = (valor / maximo) * 100 if maximo else 0
         etiqueta_completa = valor_limpio(row[etiqueta_columna]) or SIN_DATO
         etiqueta = etiqueta_completa if conservar_orden else texto_ranking_kpi(etiqueta_completa)
-        estilo = ' style="white-space:nowrap;overflow-x:auto;text-overflow:clip"' if conservar_orden else ''
+        estilo = ' style="white-space:normal;overflow:visible;overflow-wrap:break-word;-webkit-line-clamp:unset"' if conservar_orden else ''
         filas.append(
             '<div class="kpi-ranking-row">'
             f'<div class="kpi-ranking-label"{estilo} title="{html.escape(etiqueta_completa)}">{html.escape(etiqueta)}</div>'
@@ -5127,12 +5127,11 @@ def resumen_principales_causas_servicios_casos(base, top_n=5):
 def render_principales_causas_servicios_casos(base):
     causas, servicios = resumen_principales_causas_servicios_casos(base)
     st.markdown("#### Principales causas y servicios afectados")
-    st.caption("Dos causas principales y un acumulado del resto (hasta cuatro nombres). Porcentajes sobre el total de casos. Servicios: top 5.")
+    st.caption("Dos causas principales y un acumulado del resto. Todas las cifras indican cantidad de casos. Servicios: top 5.")
     col_causas, col_servicios = st.columns(2)
     with col_causas:
         render_ranking_kpi(causas, "Causa raíz", TEXT_CANTIDAD, "Causas raíz", top_n=3, conservar_orden=True)
-        st.dataframe(causas, use_container_width=True, hide_index=True,
-                     column_config={"% casos": st.column_config.NumberColumn("% casos", format="%.2f%%")})
+        st.table(causas[["Causa raíz", TEXT_CANTIDAD]])
     with col_servicios:
         render_ranking_kpi(servicios, "Servicio afectado", TEXT_CANTIDAD, "Servicios afectados", top_n=5)
 

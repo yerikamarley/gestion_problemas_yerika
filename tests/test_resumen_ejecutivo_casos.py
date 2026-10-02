@@ -120,7 +120,7 @@ class ResumenEjecutivoTest(unittest.TestCase):
         self.assertEqual(6, tabla["Cantidad"].sum())
         self.assertAlmostEqual(100, tabla["% casos"].sum())
         etiqueta = tabla.iloc[0]["Causa raíz"]
-        self.assertEqual(4, etiqueta.count("(16.67%)"))
+        self.assertEqual(4, etiqueta.count("(1 casos)"))
         self.assertNotIn("+", etiqueta)
         self.assertNotIn("\n", etiqueta)
         self.assertEqual(4, tabla.iloc[0]["Cantidad"])
