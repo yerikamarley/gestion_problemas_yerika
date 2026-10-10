@@ -37,12 +37,17 @@ def lamina_resumen_casos(reporte, foco="", decision=""):
     dif_sla = reporte["diferencia_sla"]
     delta_sla = "Sin comparación SLA" if dif_sla is None else f"{dif_sla:+.2f} p.p."
     color_sla = "#157044" if dif_sla is not None and dif_sla >= 0 else "#bd341a"
+    explicaciones = reporte.get("explicaciones")
+    razones = (explicaciones.set_index("Clasificación")["Explicación"].to_dict()
+               if explicaciones is not None and not explicaciones.empty else {})
     barras = []
     for i, row in reporte["causas_lamina"].iterrows():
         causa = escape(str(row["Causa"]))
+        razon = escape(razones.get(str(row["Causa"]), ""))
+        texto_razon = f'<p class="razon">{razon}</p>' if razon else ''
         barras.append(f'''<div class="causa"><div class="causa-titulo"><span title="{causa}">{causa}</span>
             <small><b>{int(row['Casos']):,} casos</b></small></div>
-            <div class="pista"><div style="width:{row['Porcentaje']:.6f}%;background:{'#ee6325' if i == 0 else '#c9c5bc'}"></div></div></div>''')
+            <div class="pista"><div style="width:{row['Porcentaje']:.6f}%;background:{'#ee6325' if i == 0 else '#c9c5bc'}"></div></div>{texto_razon}</div>''')
     causas_html = ''.join(barras) or '<p class="vacio">Sin casos para agrupar.</p>'
     grafico = grafico_volumen(a["total"], b["total"], mes_a, mes_b)
     return f'''<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
@@ -70,6 +75,7 @@ def lamina_resumen_casos(reporte, foco="", decision=""):
     .causa-titulo span{{font-weight:600;flex:1;min-width:0;line-height:1.5;white-space:normal;overflow-wrap:break-word}}
     .causa-titulo small{{font-size:11px;white-space:nowrap;flex-shrink:0;line-height:1.5}}.causa-titulo b{{color:#ce4a16;font-weight:600}}
     .pista{{height:9px;background:#f0efeb;border-radius:3px;overflow:hidden}}.pista>div{{height:100%;border-radius:3px}}
+    .razon{{margin:4px 0 9px;font-size:11px;line-height:1.4;color:#565d69;overflow-wrap:anywhere}}
     .decision{{margin:15px 20px 0 auto;width:76%;min-height:65px;background:#50318b;color:white;border-radius:6px;display:grid;grid-template-columns:180px 1fr;gap:12px;align-items:center;padding:14px 23px}}
     .decision b{{font:700 11px Georgia,serif}}.decision p{{font-size:12px;font-weight:600;line-height:1.3;margin:0;overflow-wrap:anywhere}}
     .pie{{font-size:9px;color:#676572;line-height:1.5;margin-top:11px}}.vacio{{color:#676572;font-size:12px}}

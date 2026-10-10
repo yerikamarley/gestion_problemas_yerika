@@ -7744,13 +7744,15 @@ def render_resumen_ejecutivo_casos():
         "Descargar lámina HTML", contenido.encode("utf-8"),
         file_name=f"resumen_soporte_{corte}.html", mime="text/html", key="descarga_lamina_ejecutiva",
     )
+    with st.expander("¿Qué explica los grupos del KPI?"):
+        st.caption("Los motivos describen la solicitud inicial. Las causas requieren una explicación registrada en el caso o en la atención. Los números entre paréntesis son casos de ese grupo.")
+        st.dataframe(reporte["explicaciones"].drop(columns="Explicación"), use_container_width=True, hide_index=True)
     with st.expander("Ver cifras y casos que sustentan el reporte"):
         st.caption(
-            "Solo responsables del equipo de soporte, sin casos de otros equipos ni sin asignación. "
+            "Equipo de soporte y casos sin asignación. "
             "Los períodos filtran la fecha de creación. Backlog: abiertos del período actual según la última carga, "
             "no pendientes acumulados de meses anteriores. El SLA evalúa cierres con vencimiento válido. "
-            "Las causas usan las reglas existentes de agrupación; cada caso se cuenta una sola vez. "
-            "Las cifras dependen de los archivos cargados; no certifican que la exportación de cada mes esté completa."
+            "Cada caso se cuenta una sola vez. Los motivos y causas se leen de la conversación y las notas cargadas."
         )
         resumen = pd.DataFrame([
             {"Período": nombre, "Desde": periodos[nombre][0], "Hasta": periodos[nombre][1], **metricas}
@@ -7760,7 +7762,8 @@ def render_resumen_ejecutivo_casos():
         st.dataframe(reporte["causas"], use_container_width=True, hide_index=True)
         for nombre in ("anterior", "actual"):
             st.markdown(f"**Casos del período {nombre}**")
-            detalle = tabla_casos_plataforma(reporte["bases"][nombre], [COL_ESTADO_SLA, "causa_agrupada"])
+            detalle = tabla_casos_plataforma(reporte["bases"][nombre], [COL_ESTADO_SLA, "causa_agrupada",
+                COL_MOTIVO_INICIAL, COL_CAUSA, COL_ESTADO_CAUSA, COL_DESTINO, COL_EVIDENCIA_MOTIVO, COL_EVIDENCIA_CAUSA])
             render_descarga_dataframe(detalle, f"detalle_ejecutivo_{nombre}", f"soporte_{nombre}", str(corte))
             dataframe_paginado(detalle, f"detalle_ejecutivo_{nombre}", reset_token=(str(corte), len(detalle)))
 

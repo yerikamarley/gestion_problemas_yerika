@@ -10,6 +10,16 @@ reactivación); Uso o funcionamiento del token; Fallas del servicio;
 Solicitudes y consultas; Enviado a otros canales. No se acumulan varios grupos
 en una sola etiqueta. Los detalles se conservan por caso.
 
+La lámina del KPI muestra debajo de cada grupo los dos motivos iniciales más
+frecuentes y la causa documentada más frecuente, con sus cantidades. Las
+familias técnicas agrupan explicaciones equivalentes; otras explicaciones
+conservan el texto registrado. Se indica cuántos casos del grupo tienen causa
+documentada y, si no hay diagnóstico, se señala sin inventarlo. En las
+derivaciones también se muestran los destinos. Una combinación ventas/comercial
+cuenta como una ruta de un caso. Estos detalles usan la misma cohorte y no se
+suman a los totales del KPI. El bloque «¿Qué explica los grupos del KPI?» permite
+revisar los conteos, y la descarga del detalle incluye la evidencia por caso.
+
 Cada número de caso cuenta una sola vez, conservando la última fila cargada.
 La **clasificación principal** describe el motivo del reporte, salvo las
 derivaciones sin atención técnica registrada, que se agrupan exclusivamente

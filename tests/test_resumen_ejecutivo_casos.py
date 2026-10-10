@@ -123,6 +123,52 @@ class ResumenEjecutivoTest(unittest.TestCase):
         self.assertTrue(tabla["Clasificación principal"].map(lambda s: ";" not in s and " casos)" not in s).all())
         self.assertTrue(tabla["% casos"].is_monotonic_decreasing)
 
+    def test_explicaciones_usan_solicitud_inicial_y_causa_documentada_de_la_misma_cohorte(self):
+        from app_ui import inferir_causa_comun_caso
+        from tests.test_limpieza_casos import DERIVACION_VENTAS
+        from tests.test_casos_historial import evento
+        filas = [
+            caso("A", descripcion="No puedo firmar documento", causa="Driver incompatible con el sistema operativo"),
+            caso("B", descripcion="No puedo firmar documento", causa="Controlador corrupto"),
+            caso("C", descripcion="No puedo firmar documento", causa="Firma digital"),
+            caso("VENTAS", descripcion="Necesito reactivar el servicio", causa="",
+                 historial_conversacion=[evento(DERIVACION_VENTAS, "Correo Saliente")]),
+            caso("OTRA_AREA", descripcion="No puedo firmar documento", causa="Certificado vencido", asignado="Otro equipo"),
+            caso("FUERA_CORTE", descripcion="No puedo firmar documento", causa="Certificado vencido", creado="2026-09-16"),
+        ]
+        reporte = construir_resumen_ejecutivo(pd.DataFrame(), pd.DataFrame(filas + [filas[0]]), date(2026, 9, 15), inferir_causa_comun_caso)
+        razones = reporte["explicaciones"].set_index("Clasificación")
+        firma = razones.loc["Firma digital"]
+        self.assertEqual(3, firma["Total"])
+        self.assertEqual(2, firma["Con causa documentada"])
+        self.assertEqual(1, firma["Sin causa documentada"])
+        self.assertEqual("Falla al firmar (3)", firma["Motivos iniciales"])
+        self.assertEqual("Controlador ausente, incompatible o corrupto (2)", firma["Causa documentada más frecuente"])
+        self.assertNotIn("Certificado vencido", firma["Explicación"])
+        ventas = razones.loc["Enviado a otros canales"]
+        self.assertEqual("Reactivación del servicio (1)", ventas["Motivos iniciales"])
+        self.assertEqual("Canal de ventas, Comercial (1)", ventas["Destinos"])
+        self.assertEqual(0, ventas["Con causa documentada"])
+        self.assertEqual(reporte["metricas"]["actual"]["total"], razones["Total"].sum())
+        html = lamina_resumen_casos(reporte)
+        self.assertIn("Falla al firmar (3)", html)
+        self.assertIn("Controlador ausente, incompatible o corrupto (2)", html)
+        self.assertIn("2/3 con causa documentada", html)
+        self.assertIn("Derivación: Canal de ventas, Comercial (1)", html)
+
+    def test_explicacion_no_inventa_causa_y_escapa_texto_del_historial(self):
+        from app_ui import inferir_causa_comun_caso
+        fila = caso(descripcion="Instalar token físico", causa="<script>detalle desconocido</script>")
+        reporte = construir_resumen_ejecutivo(pd.DataFrame(), pd.DataFrame([fila]), date(2026, 9, 15), inferir_causa_comun_caso)
+        self.assertEqual("Instalación o configuración (1)", reporte["explicaciones"].iloc[0]["Motivos iniciales"])
+        html = lamina_resumen_casos(reporte)
+        self.assertNotIn("<script>", html)
+        self.assertIn("&lt;script&gt;detalle desconocido&lt;/script&gt;", html)
+        fila["causa"] = "Token físico"
+        reporte = construir_resumen_ejecutivo(pd.DataFrame(), pd.DataFrame([fila]), date(2026, 9, 15), inferir_causa_comun_caso)
+        self.assertEqual(0, reporte["explicaciones"].iloc[0]["Con causa documentada"])
+        self.assertIn("Sin diagnóstico técnico registrado", lamina_resumen_casos(reporte))
+
     def test_porcentaje_descendente_conserva_cada_grupo(self):
         for cantidades, esperado in [([40, 30, 20, 10], [40, 30, 20, 10]),
                                      ([30, 25, 24, 21], [30, 25, 24, 21]),
@@ -190,7 +236,10 @@ with patch.object(ui, "cargar_casos_soporte_filtrados_cache", side_effect=cargar
             {"fecha_inicio": date(2026, 8, 1), "fecha_fin": date(2026, 8, 15)},
             {"fecha_inicio": date(2026, 9, 1), "fecha_fin": date(2026, 9, 15)},
         ], app.session_state["consultas"][-2:])
-        self.assertEqual(2, app.dataframe[0].value.iloc[1]["total"])
+        metricas = next(elemento.value for elemento in app.dataframe if "total" in elemento.value)
+        self.assertEqual(2, metricas.iloc[1]["total"])
+        explicaciones = next(elemento.value for elemento in app.dataframe if "Motivos iniciales" in elemento.value)
+        self.assertEqual(2, explicaciones["Total"].sum())
 
 
 if __name__ == "__main__":
