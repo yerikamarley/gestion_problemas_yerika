@@ -8,6 +8,7 @@ from time import monotonic, sleep
 import pandas as pd
 from services.casos_sla import guardar_fecha_plataforma
 from services.servicenow_diagnostico import diagnosticar_fallo, cerrar_control
+from services.casos_historial import texto_util_caso, limpiar_mensaje
 from services.servicenow import (
     ServiceNowClient, ServiceNowError, ServiceNowAuthenticationError,
     mapear_documento, validar_tipo, validar_numero, limites_mes_utc, limites_rango_utc, normalizar_instancia,
@@ -16,7 +17,7 @@ from repositories.servicenow import (
     ensure_servicenow_schema, guardar_documentos_pagina, leer_documento,
     leer_estado_sincronizacion, guardar_estado_sincronizacion,
     activar_sincronizacion_casos, leer_activacion_casos, leer_historial_conversacion,
-    leer_campos_casos,
+    leer_campos_casos, leer_evidencia_casos,
     guardar_estado_sincronizacion_manual,
 )
 from core.servicenow_config import guardar_conexion_servidor, conexion_configurada, sincronizacion_habilitada
@@ -1833,16 +1834,15 @@ def tiempo(creado, cerrado):
 
 
 def textos_para_tipificacion_caso(row):
-    descripcion = normalizar_texto(valor_fila(row, "descripcion"))
+    descripcion = normalizar_texto(limpiar_mensaje(valor_fila(row, "descripcion")))
     causa = normalizar_texto(valor_fila(row, "causa"))
     codigo_resolucion = normalizar_texto(valor_fila(row, "codigo_resolucion"))
     notas_resolucion = normalizar_texto(valor_fila(row, "notas_resolucion"))
     observaciones_adicionales = normalizar_texto(valor_fila(row, "observaciones_adicionales"))
-    observaciones_trabajo = " ".join([
-        normalizar_texto(valor_fila(row, "historial_conversacion")),
-        normalizar_texto(valor_fila(row, "observaciones_trabajo")),
-        normalizar_texto(valor_fila(row, "notas_trabajo")),
-    ])
+    observaciones_trabajo = texto_util_caso({
+        campo: valor_fila(row, campo) for campo in
+        ("historial_conversacion", "observaciones_trabajo", "notas_trabajo")
+    })
 
     texto_resolucion = " ".join(
         [
@@ -2533,6 +2533,17 @@ def load_campos_casos(numeros):
     conn = get_conn()
     try:
         return leer_campos_casos(conn, numeros)
+    finally:
+        conn.close()
+
+
+def load_evidencia_casos(numeros):
+    exigir_contexto_lectura()
+    if not numeros:
+        return []
+    conn = get_conn()
+    try:
+        return leer_evidencia_casos(conn, numeros)
     finally:
         conn.close()
 

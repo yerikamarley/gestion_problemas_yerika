@@ -111,7 +111,7 @@ class ResumenEjecutivoTest(unittest.TestCase):
 
     def test_tabla_kpi_dos_principales_y_acumulado_maximo_cuatro_nombres(self):
         from app_ui import preparar_kpi_casos_cliente_externo, resumen_principales_causas_servicios_casos
-        raices = ["duplicado", "captores", "solicitud operativa", "token", "firma", "activacion"]
+        raices = ["duplicado", "captores", "solicitud operativa", "token fisico", "firma", "activacion"]
         base, _ = preparar_kpi_casos_cliente_externo(pd.DataFrame([
             caso(str(i), causa=raiz) for i, raiz in enumerate(raices)
         ]))
@@ -143,7 +143,7 @@ class ResumenEjecutivoTest(unittest.TestCase):
         from app_ui import CASE_COMMON_CAUSE_RULES, inferir_causa_comun_caso
         permitidas = {"Firma digital", "Token fisico / ePass",
                       "Activacion o descarga de certificado", "Solicitud operativa",
-                      "Duplicado", "Captores"}
+                      "Duplicado", "Captores", "Token virtual / Certitoken", "Enviado a otros canales"}
         self.assertEqual(permitidas, {nombre for nombre, _ in CASE_COMMON_CAUSE_RULES})
         for anterior in ["Sin causa comun", "Sin causa identificada", "Pendiente de revisión",
                          "Falla técnica", "Instalacion o configuracion", "Plataforma externa",

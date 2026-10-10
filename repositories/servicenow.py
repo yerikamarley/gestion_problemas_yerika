@@ -124,6 +124,16 @@ def leer_campos_casos(conn, numeros):
         (list(dict.fromkeys(numeros)),)).fetchall()
 
 
+def leer_evidencia_casos(conn, numeros):
+    """Una lectura local por selección para conservar autor y dirección del correo."""
+    if not numeros:
+        return []
+    return db_execute(conn, """SELECT numero, documento->'campos_raw'->'description',
+        COALESCE(documento->'historial_conversacion', documento->'traza_unificada', '[]'::jsonb)
+        FROM servicenow_records WHERE tabla = 'sn_customerservice_case' AND numero = ANY(?::text[])""",
+        (list(dict.fromkeys(numeros)),)).fetchall()
+
+
 def activar_sincronizacion_casos(conn, actor_email):
     # La activación sobrevive al reinicio del servidor y no guarda credenciales.
     db_execute(conn, """INSERT INTO servicenow_sync_state (tipo, habilitada, actor_email)

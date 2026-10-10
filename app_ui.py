@@ -44,6 +44,13 @@ from services.casos_sla import (
     tabla_casos_plataforma,
 )
 from services.servicenow import ServiceNowError
+from services.casos_historial import (
+    analizar_caso, agregar_analisis_historial, analizar_evidencias_completas, texto_util_caso, resumen_causas_historial,
+    COL_TOKEN, COL_MOTIVO, COL_CAUSA, COL_ESTADO_CAUSA, COL_ATENCION, COL_DESTINO,
+    COL_EVIDENCIA_TOKEN, COL_EVIDENCIA_MOTIVO, COL_EVIDENCIA_CAUSA, COL_EVIDENCIA_ATENCION,
+    COL_FISICO, COL_VIRTUAL, REDIRIGIDO_SIN_ATENCION, SIN_ATENCION, VERSION_ANALISIS,
+    ENVIADO_OTROS_CANALES, enviado_a_otros_canales,
+)
 from services.casos_campos import ampliar_columnas_casos, tabla_casos_portal
 from services.servicenow_worker import CaseSyncWorker
 from services.resumen_ejecutivo_casos import periodos_corte, construir_resumen_ejecutivo, agrupar_causas, causas_para_lamina
@@ -90,6 +97,7 @@ from app_logic import (
     load_casos_anios,
     load_casos_filtrados,
     load_campos_casos,
+    load_evidencia_casos,
     load_incidentes,
     load_incidentes_anios,
     load_incidentes_filtrados,
@@ -424,6 +432,11 @@ def cargar_casos_campos_cache(numeros, actor_email, vista):
     return load_campos_casos(numeros)
 
 
+@st.cache_data(ttl=CACHE_TTL_SEGUNDOS, show_spinner=False, max_entries=8)
+def cargar_evidencia_casos_cache(numeros, actor_email, vista):
+    return load_evidencia_casos(numeros)
+
+
 @st.cache_data(ttl=CACHE_TTL_SEGUNDOS, show_spinner=False)
 def cargar_casos_cache():
     return load_casos()
@@ -601,7 +614,7 @@ SOPORTE_USO = "Soporte Uso"
 ENVIO_AGENDA_MANUAL_USO = "Envio agenda / manual de uso"
 SOLICITUDES_CASOS = "Solicitudes"
 INCIDENTES_CASOS = "Incidentes"
-CASE_TYPOLOGY_CACHE_VERSION = "casos-historial-conversacion-v3"
+CASE_TYPOLOGY_CACHE_VERSION = "casos-causas-atencion-v6"
 KEY_CLIENT_CASE_YEAR_BASE = 2025
 KEY_CLIENT_CASE_YEAR_FOCUS = 2026
 KEY_CLIENT_CASE_MONTHS_FOCUS = [3, 4, 6]
@@ -797,6 +810,12 @@ CASE_RPOST_RELATION_RULES = [
 ]
 
 CASE_SUPPORT_TYPOLOGY_GUIDE = [
+    {
+        TEXT_TIPOLOGIA_SOPORTE: ENVIADO_OTROS_CANALES,
+        TEXT_DESCRIPCION: (
+            "Casos enviados a agenda, PQRS, canal de ventas o comercial sin atención técnica registrada."
+        ),
+    },
     {
         TEXT_TIPOLOGIA_SOPORTE: ENVIO_AGENDA_MANUAL_USO,
         TEXT_DESCRIPCION: (
@@ -1219,12 +1238,14 @@ AGENDA_REASON_RULES = [
 ]
 
 CASE_COMMON_CAUSE_RULES = [
+    (ENVIADO_OTROS_CANALES, ["enviado a otros canales"]),
     ("Duplicado", ["duplicad", "caso repetido", "ticket repetido"]),
     ("Captores", ["captor", "captores"]),
     (
         "Token fisico / ePass",
-        ["token fisico", "token", "epass", "safenet", "usb", "dispositivo"],
+        ["token fisico", "epass", "safenet", "token usb", "usb token", "feitian"],
     ),
+    ("Token virtual / Certitoken", ["token virtual", "certitoken", "token movil", "app token"]),
     (
         "Firma digital",
         ["firma", "firmar", "certifirma", "validar firma", "falla en la firma"],
@@ -2977,35 +2998,11 @@ def tabla_resumen_tipificaciones_casos(df):
 
 
 def texto_caso_para_causa_comun(row):
-    campos = [
-        "historial_conversacion",
-        TEXT_DESCRIPCION_2,
-        TEXT_CAUSA,
-        TEXT_CODIGO_RESOLUCION,
-        "notas_resolucion",
-        TEXT_OBSERVACIONES_ADICIONALES,
-        TEXT_OBSERVACIONES_TRABAJO,
-        TEXT_PRODUCTO,
-    ]
-    return " ".join(normalizar_texto(row.get(campo)) for campo in campos).strip()
+    return texto_util_caso(row)
 
 
 def texto_caso_para_tipologia_soporte(row):
-    campos = [
-        "historial_conversacion",
-        "notas_trabajo",
-        TEXT_DESCRIPCION_2,
-        TEXT_CAUSA,
-        TEXT_CODIGO_RESOLUCION,
-        "notas_resolucion",
-        TEXT_OBSERVACIONES_ADICIONALES,
-        TEXT_OBSERVACIONES_TRABAJO,
-        TEXT_PRODUCTO,
-        TEXT_CUENTA,
-        TEXT_TIPIFICACION_2,
-        TEXT_CANAL,
-    ]
-    return " ".join(normalizar_texto(row.get(campo)) for campo in campos).strip()
+    return texto_util_caso(row)
 
 
 def texto_contiene_alguno(texto, palabras):
@@ -3013,6 +3010,8 @@ def texto_contiene_alguno(texto, palabras):
 
 
 def clasificar_tipologia_soporte_caso(row):
+    if enviado_a_otros_canales(row):
+        return ENVIADO_OTROS_CANALES
     texto = texto_caso_para_tipologia_soporte(row)
     tipificacion = normalizar_texto(row.get(TEXT_TIPIFICACION_2))
 
@@ -3030,7 +3029,7 @@ def clasificar_tipologia_soporte_caso(row):
 
 
 def agregar_tipologia_soporte_casos(df):
-    trabajo = df.copy()
+    trabajo = agregar_analisis_historial(df)
     if trabajo.empty:
         trabajo[TEXT_TIPOLOGIA_SOPORTE] = pd.Series(dtype=TEXT_OBJECT)
     else:
@@ -3090,6 +3089,9 @@ def resumen_tipologias_soporte_casos(base):
 
 
 def inferir_causa_comun_caso(row):
+    analisis = row if row.get("_version_analisis_historial") == VERSION_ANALISIS else analizar_caso(row)
+    if enviado_a_otros_canales(row, analisis):
+        return ENVIADO_OTROS_CANALES
     # La causa raíz registrada prevalece sobre menciones del producto en el relato.
     for campo in (TEXT_CAUSA, TEXT_CAUSA_COMUN):
         texto = normalizar_texto(row.get(campo))
@@ -3097,14 +3099,25 @@ def inferir_causa_comun_caso(row):
             if any(palabra in texto for palabra in palabras):
                 return causa
 
+    if analisis[COL_FISICO]:
+        return "Token fisico / ePass"
+    if analisis[COL_VIRTUAL]:
+        return "Token virtual / Certitoken"
     texto = texto_caso_para_causa_comun(row)
     for causa, palabras in CASE_COMMON_CAUSE_RULES:
+        if causa in {"Token fisico / ePass", "Token virtual / Certitoken"}:
+            continue  # Las menciones negadas se evalúan en el detector de token.
         if any(palabra in texto for palabra in palabras):
             return causa
     return "Solicitud operativa"
 
 
 def inferir_detalle_causa_comun(row):
+    analisis = row if row.get("_version_analisis_historial") == VERSION_ANALISIS else analizar_caso(row)
+    if enviado_a_otros_canales(row, analisis):
+        return analisis[COL_DESTINO] or ENVIADO_OTROS_CANALES
+    if (analisis[COL_FISICO] or analisis[COL_VIRTUAL]) and analisis[COL_MOTIVO] != "Sin motivo específico":
+        return f"{analisis[COL_TOKEN]} · {analisis[COL_MOTIVO]}"
     texto = texto_caso_para_causa_comun(row)
     for detalle, palabras in CASE_CAUSE_DETAIL_RULES:
         if any(palabra in texto for palabra in palabras):
@@ -3161,7 +3174,7 @@ def conteo_top(serie, etiqueta_columna, top_n=5):
 
 
 def preparar_kpi_casos_cliente_externo(df):
-    trabajo = casos_para_metricas_soporte(df, TEXT_ASIGNADO)
+    trabajo = agregar_analisis_historial(casos_para_metricas_soporte(df, TEXT_ASIGNADO))
     if trabajo.empty:
         return trabajo, {}
 
@@ -4849,6 +4862,7 @@ def resumen_focos_uso_casos(base):
     if base.empty:
         return pd.DataFrame(columns=columnas)
 
+    base = agregar_analisis_historial(base)
     texto = base.apply(texto_caso_para_tipologia_soporte, axis=1)
     total = len(base)
     focos = [
@@ -4862,6 +4876,10 @@ def resumen_focos_uso_casos(base):
     for foco, palabras in focos:
         if foco == "Envio agenda":
             mascara = mascara_envio_agenda_casos(base, texto)
+        elif foco == "Token fisico":
+            mascara = base[COL_FISICO]
+        elif foco == "Token virtual":
+            mascara = base[COL_VIRTUAL]
         else:
             mascara = texto.apply(lambda valor: texto_contiene_alguno(valor, palabras))
         cantidad = int(mascara.sum())
@@ -4885,8 +4903,8 @@ def mascara_envio_agenda_casos(base, texto=None):
     if TEXT_TIPIFICACION_2 in base.columns:
         tipificacion = base[TEXT_TIPIFICACION_2].apply(normalizar_texto)
         mascara = mascara | tipificacion.str.contains("agenda", na=False)
-    if texto is not None:
-        mascara = mascara | texto.apply(lambda valor: texto_contiene_alguno(valor, CASE_AGENDA_DIRECT_TERMS))
+    analisis = agregar_analisis_historial(base)
+    mascara = mascara | analisis[COL_DESTINO].str.contains("Agenda", regex=False, na=False)
     return mascara.fillna(False)
 
 
@@ -4895,12 +4913,12 @@ def resumen_focos_destacados_kpi_casos(base):
     if base.empty:
         return pd.DataFrame(columns=columnas)
 
-    texto = base.apply(texto_caso_para_tipologia_soporte, axis=1)
+    base = agregar_analisis_historial(base)
     total = len(base)
     focos = [
-        ("Token fisico", "USB", texto.apply(lambda valor: texto_contiene_alguno(valor, CASE_TOKEN_FISICO_READING_TERMS)), False),
-        ("Token virtual", "PC", texto.apply(lambda valor: texto_contiene_alguno(valor, CASE_SUPPORT_TOKEN_VIRTUAL_TERMS)), False),
-        ("Envio agenda", "AG", mascara_envio_agenda_casos(base, texto), True),
+        ("Token fisico", "USB", base[COL_FISICO], False),
+        ("Token virtual", "PC", base[COL_VIRTUAL], False),
+        ("Envio agenda", "AG", mascara_envio_agenda_casos(base), True),
     ]
     filas = []
     for foco, icono, mascara, destacado in focos:
@@ -5170,7 +5188,8 @@ def resumen_principales_causas_servicios_casos(base, top_n=5):
 def render_principales_causas_servicios_casos(base, mostrar_tabla=True):
     causas, servicios = resumen_principales_causas_servicios_casos(base)
     st.markdown("#### Principales causas y servicios afectados")
-    st.caption("Dos causas principales y un acumulado del resto. Todas las cifras indican cantidad de casos. Servicios: top 5.")
+    st.caption("Dos causas principales y un acumulado del resto. Todas las cifras indican cantidad de casos. Servicios: top 5. "
+               "Enviado a otros canales agrupa redirecciones sin atención técnica registrada.")
     col_causas, col_servicios = st.columns(2)
     with col_causas:
         render_ranking_kpi(causas, "Causa raíz", TEXT_CANTIDAD, "Causas raíz", top_n=3, conservar_orden=True)
@@ -6719,17 +6738,7 @@ def canal_agrupado_agendamiento(canal):
 
 
 def texto_analisis_agendamiento(row):
-    campos = [
-        "historial_conversacion",
-        TEXT_DESCRIPCION_2,
-        TEXT_CAUSA,
-        TEXT_CODIGO_RESOLUCION,
-        "notas_resolucion",
-        TEXT_OBSERVACIONES_ADICIONALES,
-        TEXT_OBSERVACIONES_TRABAJO,
-        TEXT_PRODUCTO,
-    ]
-    return " ".join(normalizar_texto(row.get(campo)) for campo in campos).strip()
+    return texto_util_caso(row)
 
 
 def inferir_motivo_agendamiento(row):
@@ -7714,8 +7723,8 @@ def resumen_entradas_diarias_casos(df, solo_token=False, inicio=None, fin=None):
     if inicio is None or fin is None:
         return pd.DataFrame(columns=[TEXT_FECHA, TEXT_CASOS_2])
     if solo_token:
-        causas = pd.Series([inferir_causa_comun_caso(row) for _, row in df.iterrows()], index=df.index)
-        fechas = fechas[causas.eq("Token fisico / ePass")]
+        analisis = agregar_analisis_historial(df)
+        fechas = fechas[analisis[COL_FISICO]]
     dias = pd.date_range(inicio, fin, freq="D")
     conteo = fechas.value_counts().reindex(dias, fill_value=0).sort_index()
     return conteo.rename_axis(TEXT_FECHA).reset_index(name=TEXT_CASOS_2)
@@ -7774,6 +7783,111 @@ def render_control_asignacion_casos(segmentos):
     )
 
 
+def render_analisis_historial_casos(df, periodo_label):
+    st.markdown("#### Causas y atención según el historial")
+    st.caption(
+        "El motivo describe lo que reporta el cliente. La causa requiere una explicación registrada. "
+        "Los correos automáticos, pies de página y respuestas citadas no cuentan como atención técnica."
+    )
+    alcance = st.radio("Casos para analizar", ["Todos los casos", "Soporte y sin asignación"],
+                       horizontal=True, key="historial_casos_alcance")
+    fuente = df if alcance == "Todos los casos" else casos_para_metricas_soporte(df, TEXT_ASIGNADO)
+    fuente = fuente.drop_duplicates("numero", keep="last")
+    if fuente.empty:
+        st.info("No hay casos para analizar con este alcance.")
+        return
+    # El detalle completo se lee de la base solo a petición del usuario. La
+    # clasificación inicial reutiliza la conversación ya cargada del período.
+    campos_huella = ("numero", "actualizado", "creado", "estado", "cuenta", "asignado", "descripcion",
+                    "causa", "producto", "codigo_resolucion", "notas_resolucion", "observaciones_adicionales",
+                    "observaciones_trabajo", "notas_trabajo", "historial_conversacion")
+    huella = hash(tuple(tuple(hash(str(row.get(campo, ""))) for campo in campos_huella)
+                        for _, row in fuente.iterrows()))
+    clave = "analisis_historial_casos_completo"
+    identificador = (periodo_label, alcance, huella, st.session_state.get("user"), VERSION_ANALISIS)
+    if st.button("Revisar evidencias completas", key="revisar_evidencias_casos",
+                 help="Lee la descripción completa y los autores de la conversación guardada. No consulta ServiceNow."):
+        with st.spinner("Revisando la conversación guardada..."):
+            try:
+                actor, vista = obtener_contexto_autorizacion()
+                registros = cargar_evidencia_casos_cache(tuple(sorted(set(fuente["numero"]))), actor, vista)
+                st.session_state[clave] = (identificador, analizar_evidencias_completas(fuente, registros))
+            except Exception:
+                st.error("No se pudieron leer las evidencias completas. Puedes revisar el historial ya cargado.")
+    previo = st.session_state.get(clave)
+    base = previo[1].copy() if previo and previo[0] == identificador else agregar_analisis_historial(fuente)
+    st.caption("Descripción completa y autores revisados." if previo and previo[0] == identificador
+               else "Análisis del historial y las notas ya cargadas del período.")
+
+    col_token, col_atencion, col_destino = st.columns(3)
+    with col_token:
+        token = st.selectbox("Tipo de token", [TEXT_TODOS, "Token físico", "Token virtual", "Físico y virtual"],
+                             key="historial_casos_token")
+    with col_atencion:
+        atencion = st.selectbox("Atención registrada", [TEXT_TODOS] + sorted(base[COL_ATENCION].unique()),
+                                key="historial_casos_atencion")
+    with col_destino:
+        destino = st.selectbox("Destino", [TEXT_TODOS, "PQRS", "Canal de ventas", "Agenda", "Comercial"],
+                               key="historial_casos_destino")
+    col_motivo, col_causa = st.columns(2)
+    with col_motivo:
+        motivo = st.selectbox("Motivo del caso", [TEXT_TODOS] + sorted(base[COL_MOTIVO].unique()),
+                              key="historial_casos_motivo")
+    with col_causa:
+        causa = st.selectbox("Causa para revisar", [TEXT_TODOS] + sorted(base["Grupo de causa"].unique()),
+                             key="historial_casos_causa")
+    if token == "Token físico":
+        base = base[base[COL_FISICO]]
+    elif token == "Token virtual":
+        base = base[base[COL_VIRTUAL]]
+    elif token == "Físico y virtual":
+        base = base[base[COL_FISICO] & base[COL_VIRTUAL]]
+    if atencion != TEXT_TODOS:
+        base = base[base[COL_ATENCION].eq(atencion)]
+    if destino != TEXT_TODOS:
+        base = base[base[COL_DESTINO].str.contains(destino, regex=False, na=False)]
+    if motivo != TEXT_TODOS:
+        base = base[base[COL_MOTIVO].eq(motivo)]
+    if causa != TEXT_TODOS:
+        base = base[base["Grupo de causa"].eq(causa)]
+    render_tarjetas([
+        ("Token físico", int(base[COL_FISICO].sum())), ("Token virtual", int(base[COL_VIRTUAL].sum())),
+        ("Redirigidos sin atención técnica", int(base[COL_ATENCION].eq(REDIRIGIDO_SIN_ATENCION).sum())),
+        ("Sin evidencia suficiente", int(base[COL_ATENCION].eq(SIN_ATENCION).sum())),
+    ])
+    st.caption(f"{len(base)} casos únicos. Un caso que menciona ambos tokens aparece en ambos conteos. "
+               "La ausencia de evidencia no demuestra que el caso no haya sido atendido.")
+    if base.empty:
+        st.info("No hay casos que coincidan con los filtros.")
+        return
+    col_motivos, col_causas = st.columns(2)
+    with col_motivos:
+        st.markdown("**Motivos comunes por token**")
+        motivos = base.groupby([COL_TOKEN, COL_MOTIVO], dropna=False).size().reset_index(name="Casos")
+        st.dataframe(motivos.sort_values("Casos", ascending=False), use_container_width=True, hide_index=True)
+    with col_causas:
+        st.markdown("**Causas y clasificación de gestión**")
+        st.dataframe(resumen_causas_historial(base), use_container_width=True, hide_index=True,
+                     column_config={"% casos": st.column_config.ProgressColumn("% casos", min_value=0,
+                         max_value=100, format="%.2f %%")})
+        st.caption("Enviado a otros canales es una clasificación de gestión. La causa original se conserva en el detalle.")
+    st.markdown("**Casos y evidencia para revisar**")
+    columnas = ["numero", "creado", "estado", "cuenta", "asignado", COL_TOKEN, COL_MOTIVO,
+                "Grupo de causa", COL_CAUSA, COL_ESTADO_CAUSA, COL_ATENCION, COL_DESTINO, COL_EVIDENCIA_TOKEN,
+                COL_EVIDENCIA_MOTIVO, COL_EVIDENCIA_CAUSA, COL_EVIDENCIA_ATENCION]
+    detalle = base.reindex(columns=columnas).rename(columns={"numero": "Número", "creado": "Creado",
+        "estado": "Estado", "cuenta": "Cuenta", "asignado": "Asignado a"})
+    dataframe_liviano(detalle, height=420)
+    st.download_button("Descargar análisis con evidencia", dataframe_csv_bytes(detalle),
+                       file_name=f"causas_atencion_{nombre_archivo_seguro(periodo_label)}.csv",
+                       mime="text/csv", key="descarga_analisis_historial_casos")
+    numero = st.selectbox("Ver conversación de un caso", base["numero"].tolist(), key="historial_caso_evidencia")
+    with st.expander(f"Historial de la conversación · {numero}"):
+        fila = base[base["numero"].eq(numero)].iloc[0]
+        historial = str(fila.get("historial_conversacion", "") or "")
+        st.text(historial or "Este caso no tiene conversación registrada.")
+
+
 def dashboard_casos():
     st.subheader("Dashboard de casos")
     st.caption("Vista operativa de volumen, ANS, causas, servicios, tipologías y seguimiento.")
@@ -7790,9 +7904,11 @@ def dashboard_casos():
         st.info(f"No hay casos cargados para {periodo_label}.")
         return
 
+    casos_periodo = df.copy()
     df, metricas = preparar_kpi_casos_cliente_externo(df)
     if df.empty:
         st.warning("No hay casos de soporte ni casos sin asignación para calcular las métricas del periodo.")
+        render_analisis_historial_casos(casos_periodo, periodo_label)
         return
 
     render_tarjetas(
@@ -7811,8 +7927,8 @@ def dashboard_casos():
     )
 
     st.divider()
-    tab_resumen, tab_tipologias, tab_operacion = st.tabs(
-        ["Resumen ejecutivo", "Tipologías", "Operación y seguimiento"]
+    tab_resumen, tab_tipologias, tab_operacion, tab_historial = st.tabs(
+        ["Resumen ejecutivo", "Tipologías", "Operación y seguimiento", "Causas y atención"]
     )
 
     with tab_resumen:
@@ -7852,6 +7968,9 @@ def dashboard_casos():
                 )
                 render_analisis_agendamiento_mesa(df, historico, periodo_key_sql(anio, mes))
         render_seguimiento_casos(df)
+
+    with tab_historial:
+        render_analisis_historial_casos(casos_periodo, periodo_label)
 
 
 def render_resumen_ejecutivo_casos():
