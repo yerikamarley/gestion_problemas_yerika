@@ -1,6 +1,7 @@
 """Lámina ejecutiva con la distribución del estándar de comportamiento de casos."""
 
 from html import escape
+import re
 
 
 MESES = ("", "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre")
@@ -23,6 +24,25 @@ def grafico_volumen(anterior, actual, nombre_anterior, nombre_actual):
             '<line x1="16" y1="160" x2="433" y2="160" stroke="#aaa"/>' + ''.join(barras) + '</svg>')
 
 
+def razon_breve(fila):
+    """Una frase para la diapositiva; la explicación completa sigue en el detalle."""
+    def primero(campo):
+        return str(fila.get(campo, "")).split("; ", 1)[0].strip()
+
+    if fila.get("Clasificación") == "Enviado a otros canales":
+        motivo = re.sub(r"\s*\(\d+\)$", "", primero("Motivos iniciales"))
+        destino = re.sub(r"\s*\(\d+\)$", "", primero("Destinos"))
+        destino = destino.replace("Canal de ventas, Comercial", "Ventas/comercial").replace("Canal de ventas", "Ventas")
+        frase = f"{motivo} → {destino}" if destino else f"Motivo: {motivo}"
+    else:
+        causa = primero("Causa documentada más frecuente")
+        causa = causa.replace("Controlador ausente, incompatible o corrupto", "Problemas del controlador")
+        frase = f"Causa registrada: {causa}" if causa else f"Motivo: {primero('Motivos iniciales')}"
+    if len(frase) > 78:
+        frase = frase[:77].rsplit(" ", 1)[0].rstrip(" ,;:") + "…"
+    return frase
+
+
 def lamina_resumen_casos(reporte, foco="", decision=""):
     a, b = reporte["metricas"]["anterior"], reporte["metricas"]["actual"]
     inicio_a, fin_a = reporte["periodos"]["anterior"]
@@ -38,13 +58,15 @@ def lamina_resumen_casos(reporte, foco="", decision=""):
     delta_sla = "Sin comparación SLA" if dif_sla is None else f"{dif_sla:+.2f} p.p."
     color_sla = "#157044" if dif_sla is not None and dif_sla >= 0 else "#bd341a"
     explicaciones = reporte.get("explicaciones")
-    razones = (explicaciones.set_index("Clasificación")["Explicación"].to_dict()
+    razones = (explicaciones.set_index("Clasificación", drop=False).to_dict("index")
                if explicaciones is not None and not explicaciones.empty else {})
     barras = []
     for i, row in reporte["causas_lamina"].iterrows():
         causa = escape(str(row["Causa"]))
-        razon = escape(razones.get(str(row["Causa"]), ""))
-        texto_razon = f'<p class="razon">{razon}</p>' if razon else ''
+        explicacion = razones.get(str(row["Causa"]))
+        razon = escape(razon_breve(explicacion)) if explicacion else ""
+        completo = escape(explicacion.get("Explicación", "")) if explicacion else ""
+        texto_razon = f'<p class="razon" title="{completo}">{razon}</p>' if razon else ''
         barras.append(f'''<div class="causa"><div class="causa-titulo"><span title="{causa}">{causa}</span>
             <small><b>{int(row['Casos']):,} casos</b></small></div>
             <div class="pista"><div style="width:{row['Porcentaje']:.6f}%;background:{'#ee6325' if i == 0 else '#c9c5bc'}"></div></div>{texto_razon}</div>''')
@@ -75,7 +97,7 @@ def lamina_resumen_casos(reporte, foco="", decision=""):
     .causa-titulo span{{font-weight:600;flex:1;min-width:0;line-height:1.5;white-space:normal;overflow-wrap:break-word}}
     .causa-titulo small{{font-size:11px;white-space:nowrap;flex-shrink:0;line-height:1.5}}.causa-titulo b{{color:#ce4a16;font-weight:600}}
     .pista{{height:9px;background:#f0efeb;border-radius:3px;overflow:hidden}}.pista>div{{height:100%;border-radius:3px}}
-    .razon{{margin:4px 0 9px;font-size:11px;line-height:1.4;color:#565d69;overflow-wrap:anywhere}}
+    .razon{{margin:3px 0 6px;font-size:11px;line-height:1.3;color:#565d69;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}
     .decision{{margin:15px 20px 0 auto;width:76%;min-height:65px;background:#50318b;color:white;border-radius:6px;display:grid;grid-template-columns:180px 1fr;gap:12px;align-items:center;padding:14px 23px}}
     .decision b{{font:700 11px Georgia,serif}}.decision p{{font-size:12px;font-weight:600;line-height:1.3;margin:0;overflow-wrap:anywhere}}
     .pie{{font-size:9px;color:#676572;line-height:1.5;margin-top:11px}}.vacio{{color:#676572;font-size:12px}}
