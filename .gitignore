@@ -3,6 +3,7 @@
 .env
 .env.*
 !.env.example
+.servicenow-*.env
 .streamlit/secrets.toml
 
 # Generated files

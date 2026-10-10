@@ -44,6 +44,7 @@ from services.casos_sla import (
     tabla_casos_plataforma,
 )
 from services.servicenow import ServiceNowError
+from services.servicenow_worker import CaseSyncWorker
 from services.resumen_ejecutivo_casos import periodos_corte, construir_resumen_ejecutivo, agrupar_causas, causas_para_lamina
 from components.resumen_ejecutivo_casos import lamina_resumen_casos
 from services.migracion_pki import (
@@ -72,6 +73,10 @@ from app_logic import (
     guardar_casos,
     sincronizar_servicenow,
     consultar_traza_servicenow,
+    conectar_servicenow,
+    sincronizar_casos_automaticamente,
+    estado_servicenow,
+    exigir_permiso_actor,
     guardar_incidentes,
     guardar_problemas,
     guardar_usuario,
@@ -100,6 +105,7 @@ from app_logic import (
     sla_objetivo_horas_incidente,
 )
 from core.permissions import (
+    ACTION_WRITE_CASES,
     NOMBRES_ROLES,
     ROLES_PERMITIDOS,
     VIEW_ADMINISTRAR_USUARIOS,
@@ -288,6 +294,11 @@ LOGGER = logging.getLogger(__name__)
 
 def limpiar_cache_datos():
     st.cache_data.clear()
+
+
+@st.cache_resource
+def iniciar_sincronizacion_casos():
+    return CaseSyncWorker(sincronizar_casos_automaticamente)
 
 
 def dataframe_liviano(df, limite=DATAFRAME_DISPLAY_LIMIT, height=None):
@@ -11412,14 +11423,83 @@ def procesar_archivo_casos(df, reemplazar_meses):
 
 
 def vista_cargar_casos():
+    try:
+        exigir_permiso_actor(st.session_state.get("user"), ACTION_WRITE_CASES)
+    except AutorizacionError:
+        st.error("Solo un administrador puede conectar ServiceNow.")
+        return
+    st.markdown("#### Conectar ServiceNow")
+    st.caption("La conexión alimenta la base compartida. Los demás roles consultan los datos almacenados.")
+    with st.form("conexion_servicenow_admin", clear_on_submit=True):
+        st.text_input("Usuario de ServiceNow", key="servicenow_login_usuario")
+        st.text_input("Contraseña de ServiceNow", type="password", key="servicenow_login_password")
+        st.text_input("Código de verificación (si la API lo solicita)", type="password", key="servicenow_login_mfa")
+        st.form_submit_button("Conectar y activar actualización automática", type="primary",
+                              on_click=procesar_conexion_servicenow_formulario)
+    resultado = st.session_state.get("servicenow_conexion_resultado")
+    if resultado:
+        (st.success if resultado["ok"] else st.error)(resultado["mensaje"])
+    render_estado_actualizacion_casos()
+    st.caption("Después de conectar se actualizan los casos nuevos y sus cambios automáticamente. "
+               "Puedes completar un mes histórico mediante la API.")
     vista_sincronizar_servicenow("casos")
+
+
+def procesar_conexion_servicenow_formulario():
+    try:
+        conectar_servicenow(
+            st.session_state.get("servicenow_login_usuario", ""),
+            st.session_state.get("servicenow_login_password", ""),
+            actor_email=st.session_state.get("user"),
+            codigo_mfa=st.session_state.get("servicenow_login_mfa", ""),
+        )
+        iniciar_sincronizacion_casos().despertar()
+        resultado = {"ok": True, "mensaje": "Conexión validada. La actualización automática de casos está activa."}
+    except (ServiceNowError, ValueError, AutorizacionError) as error:
+        resultado = {"ok": False, "mensaje": str(error)}
+    except Exception:
+        resultado = {"ok": False, "mensaje": "No se pudo conectar. Revisa el acceso API y la configuración del servidor."}
+    finally:
+        for key in ("servicenow_login_usuario", "servicenow_login_password", "servicenow_login_mfa"):
+            st.session_state[key] = ""
+    st.session_state["servicenow_conexion_resultado"] = resultado
+
+
+@st.fragment(run_every=30)
+def render_estado_actualizacion_casos():
+    actor = st.session_state.get("user")
+    if not actor:
+        return
+    try:
+        estado = estado_servicenow(actor_email=actor)
+    except Exception:
+        st.caption("No se pudo comprobar la última actualización.")
+        return
+    ultima = estado.get("ultima_correcta")
+    if ultima:
+        fecha = pd.Timestamp(ultima).tz_convert(ZONA_PLATAFORMA)
+        st.caption(f"Última actualización de casos: {fecha:%d/%m/%Y %H:%M:%S}")
+        marcador = fecha.isoformat()
+        anterior = st.session_state.get("servicenow_ultima_visible")
+        if anterior != marcador:
+            st.session_state["servicenow_ultima_visible"] = marcador
+            limpiar_cache_datos()
+            if anterior:
+                st.rerun()
+    elif not estado["conectado"]:
+        st.caption("Los datos guardados están disponibles. La conexión a ServiceNow está pendiente del administrador.")
+    if estado.get("estado") == "requiere_autenticacion":
+        st.warning("La actualización está pendiente de que un administrador renueve la conexión a ServiceNow.")
+    elif estado.get("estado") == "error":
+        st.warning("La última actualización no se completó. Se conservan los datos almacenados.")
 
 
 def vista_sincronizar_servicenow(tipo):
     st.markdown(f"#### Sincronizar {tipo} desde ServiceNow")
     st.caption("Actualiza los datos, SLAs y actividades para los reportes y tableros.")
     with st.form(f"servicenow_sync_{tipo}"):
-        modo = st.radio("Consultar", ["Mes", "Número"], horizontal=True)
+        opciones = ["Hoy", "Mes", "Número"] if tipo == "casos" else ["Mes", "Número"]
+        modo = st.radio("Consultar", opciones, horizontal=True)
         mes = st.text_input("Mes (AAAA-MM)", value=pd.Timestamp.now(tz=ZONA_PLATAFORMA).strftime("%Y-%m"))
         numero = st.text_input("Número de caso" if tipo == "casos" else "Número de incidente")
         ejecutar = st.form_submit_button("Sincronizar", type="primary")
@@ -11427,12 +11507,16 @@ def vista_sincronizar_servicenow(tipo):
         return
     progreso = crear_barra_progreso_carga("Consultando ServiceNow...")
     try:
-        result = sincronizar_servicenow(
-            actor_email=st.session_state.get("user"), tipo=tipo,
-            mes=mes.strip() if modo == "Mes" else None,
-            numero=numero.strip().upper() if modo == "Número" else None,
-            progress_callback=progreso,
-        )
+        if modo == "Hoy":
+            result = sincronizar_casos_automaticamente(actor_email=st.session_state.get("user"))
+            progreso(1, "Actualización de casos finalizada.")
+        else:
+            result = sincronizar_servicenow(
+                actor_email=st.session_state.get("user"), tipo=tipo,
+                mes=mes.strip() if modo == "Mes" else None,
+                numero=numero.strip().upper() if modo == "Número" else None,
+                progress_callback=progreso,
+            )
     except (ServiceNowError, ValueError, AutorizacionError) as error:
         limpiar_cache_datos()
         progreso(1, "Sincronización interrumpida.")
@@ -11445,6 +11529,9 @@ def vista_sincronizar_servicenow(tipo):
         st.error("No se pudo completar la sincronización. Revisa la conexión y configuración del servidor.")
         return
     limpiar_cache_datos()
+    if result.get("ocupado"):
+        st.info("Ya hay una actualización automática en curso.")
+        return
     if result["cargados"]:
         st.success(f"Sincronizados: {result['cargados']} | Registros existentes actualizados: {result['actualizados']}")
     else:
@@ -11509,6 +11596,7 @@ def selector_fechas_casos():
 
 
 def vista_casos():
+    render_estado_actualizacion_casos()
     render_consulta_traza_servicenow("casos")
     st.subheader("Casos")
     st.caption("Consulta y control de casos por estado, tipología, servicio y segmento de asignación.")
@@ -12318,6 +12406,7 @@ def render_menu_y_vista():
 def run_app():
     aplicar_tema_visual()
     init_db()
+    iniciar_sincronizacion_casos()
     if not hay_usuarios():
         configurar_primer_admin()
         return

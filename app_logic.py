@@ -1,14 +1,20 @@
 import re
 import unicodedata
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from math import ceil
 
 import pandas as pd
 from services.casos_sla import guardar_fecha_plataforma
 from services.servicenow import (
-    ServiceNowClient, mapear_documento, validar_tipo, validar_numero, limites_mes_utc,
+    ServiceNowClient, ServiceNowError, ServiceNowMFARequiredError,
+    mapear_documento, validar_tipo, validar_numero, limites_mes_utc,
 )
-from repositories.servicenow import ensure_servicenow_schema, guardar_documento, leer_documento
+from repositories.servicenow import (
+    ensure_servicenow_schema, guardar_documento, leer_documento,
+    leer_estado_sincronizacion, guardar_estado_sincronizacion,
+)
+from core.servicenow_config import guardar_conexion_servidor, conexion_configurada, sincronizacion_habilitada
 
 from core.settings import (
     ADMIN_EMAIL,
@@ -2172,6 +2178,100 @@ def consultar_traza_servicenow(numero, *, actor_email, tipo="casos"):
         return leer_documento(conn, tabla, numero)
     finally:
         conn.close()
+
+
+def conectar_servicenow(usuario, password, *, actor_email, codigo_mfa=""):
+    """Conecta la cuenta del Admin al servidor y habilita la ingesta compartida."""
+    exigir_permiso_actor(actor_email, ACTION_WRITE_CASES)
+    if not usuario or not password or any(c in usuario + password for c in "\r\n\0"):
+        raise ValueError("Introduce tu usuario y contraseña de ServiceNow.")
+    with ServiceNowClient(user=usuario.strip(), password=password, mfa_code=codigo_mfa.strip()) as client:
+        client.validar_acceso()
+        conn = get_conn()
+        try:
+            _bloquear_y_validar_admin(conn, actor_email)
+            guardar_conexion_servidor({
+                "SERVICENOW_USER": usuario.strip(), "SERVICENOW_PASSWORD": password,
+                "SERVICENOW_SYNC_ACTOR": normalizar_email(actor_email), "SERVICENOW_SYNC_ENABLED": "true",
+            })
+            client.recordar_sesion()
+            conn.commit()
+        except AutorizacionError:
+            conn.rollback()
+            raise
+        except OSError:
+            conn.rollback()
+            raise ServiceNowError("No se pudo guardar la conexión en la configuración privada del servidor.") from None
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+    return {"conectado": True, "automatica": True}
+
+
+def estado_servicenow(*, actor_email):
+    """Estado público de la ingesta, sin usuario remoto, contraseña ni cookies."""
+    from core.permissions import VIEW_CASOS
+
+    exigir_permiso_actor(actor_email, VIEW_CASOS)
+    conn = get_conn()
+    try:
+        estado = leer_estado_sincronizacion(conn) or {"estado": "pendiente", "ultima_correcta": None}
+    finally:
+        conn.close()
+    return {**estado, "conectado": bool(conexion_configurada()), "automatica": sincronizacion_habilitada()}
+
+
+def sincronizar_casos_automaticamente(*, actor_email):
+    """Cursor durable: solo avanza después de guardar todas las fuentes y páginas."""
+    exigir_permiso_actor(actor_email, ACTION_WRITE_CASES)
+    control = get_conn()
+    bloqueo = False
+    intento = datetime.now(timezone.utc).replace(microsecond=0)
+    cargados = actualizados = 0
+    try:
+        bloqueo = bool(db_execute(control, "SELECT pg_try_advisory_lock(hashtext(?))",
+                                 ("servicenow:casos:automatico",)).fetchone()[0])
+        if not bloqueo:
+            return {"ocupado": True, "cargados": 0}
+        estado = leer_estado_sincronizacion(control) or {}
+        ultima = estado.get("ultima_correcta")
+        if ultima:
+            desde = ultima - timedelta(minutes=2)
+        else:
+            desde = intento.astimezone(ZoneInfo("America/Bogota")).replace(hour=0, minute=0, second=0).astimezone(timezone.utc)
+        guardar_estado_sincronizacion(control, estado="sincronizando", intento=intento)
+        control.commit()
+        with ServiceNowClient() as client:
+            for documentos in client.listar_casos_actualizados(desde, intento):
+                nuevos, existentes = ejecutar_con_reintentos_db(
+                    lambda: _guardar_pagina_servicenow(documentos, "casos", actor_email)
+                )
+                cargados += nuevos
+                actualizados += existentes
+        guardar_estado_sincronizacion(control, estado="correcto", intento=intento, correcta=intento, registros=cargados)
+        control.commit()
+        return {"cargados": cargados, "actualizados": actualizados}
+    except Exception as error:
+        control.rollback()
+        if bloqueo:
+            mensaje = str(error) if isinstance(error, (ServiceNowError, AutorizacionError)) else "No se pudo completar la actualización automática."
+            guardar_estado_sincronizacion(
+                control, estado="requiere_autenticacion" if isinstance(error, ServiceNowMFARequiredError) else "error",
+                intento=intento, mensaje=mensaje, registros=cargados,
+            )
+            control.commit()
+        raise
+    finally:
+        if bloqueo:
+            try:
+                db_execute(control, "SELECT pg_advisory_unlock(hashtext(?))", ("servicenow:casos:automatico",))
+                control.commit()
+            finally:
+                control.close()
+        else:
+            control.close()
 
 
 def aplicar_tipificaciones_casos(df):

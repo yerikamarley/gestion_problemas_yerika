@@ -19,6 +19,15 @@ def ensure_servicenow_schema(conn):
     # Supabase expone tablas públicas por REST: solo el backend PostgreSQL
     # (propietario/BYPASSRLS) puede consultar estos snapshots sin políticas.
     db_execute(conn, "ALTER TABLE servicenow_records ENABLE ROW LEVEL SECURITY")
+    db_execute(conn, """CREATE TABLE IF NOT EXISTS servicenow_sync_state (
+        tipo TEXT PRIMARY KEY,
+        ultima_correcta TIMESTAMPTZ,
+        ultimo_intento TIMESTAMPTZ,
+        estado TEXT NOT NULL DEFAULT 'pendiente',
+        mensaje TEXT NOT NULL DEFAULT '',
+        registros INTEGER NOT NULL DEFAULT 0
+    )""")
+    db_execute(conn, "ALTER TABLE servicenow_sync_state ENABLE ROW LEVEL SECURITY")
 
 
 def guardar_documento(conn, documento, tabla_local, row, actor_email):
@@ -42,3 +51,20 @@ def leer_documento(conn, tabla, numero):
     result = db_execute(conn, "SELECT documento FROM servicenow_records WHERE tabla = ? AND numero = ?",
                         (tabla, numero)).fetchone()
     return result[0] if result else None
+
+
+def leer_estado_sincronizacion(conn):
+    row = db_execute(conn, """SELECT ultima_correcta, ultimo_intento, estado, mensaje, registros
+        FROM servicenow_sync_state WHERE tipo = 'casos'""").fetchone()
+    return dict(zip(("ultima_correcta", "ultimo_intento", "estado", "mensaje", "registros"), row)) if row else None
+
+
+def guardar_estado_sincronizacion(conn, *, estado, intento, correcta=None, mensaje="", registros=0):
+    db_execute(conn, """INSERT INTO servicenow_sync_state
+        (tipo, ultima_correcta, ultimo_intento, estado, mensaje, registros)
+        VALUES ('casos', ?, ?, ?, ?, ?)
+        ON CONFLICT (tipo) DO UPDATE SET
+            ultima_correcta = COALESCE(EXCLUDED.ultima_correcta, servicenow_sync_state.ultima_correcta),
+            ultimo_intento = EXCLUDED.ultimo_intento, estado = EXCLUDED.estado,
+            mensaje = EXCLUDED.mensaje, registros = EXCLUDED.registros""",
+        (correcta, intento, estado, mensaje, registros))
