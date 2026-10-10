@@ -119,9 +119,9 @@ class ConversationHistoryTest(unittest.TestCase):
              patch.object(app_logic, "bloquear_escritura_casos"), \
              patch.object(app_logic, "numeros_existentes", return_value={"CS0215905"}), \
              patch.object(app_logic, "db_execute", return_value=MagicMock(fetchall=lambda: [fila])), \
-             patch.object(app_logic, "guardar_documento") as save:
+             patch.object(app_logic, "guardar_documentos_pagina") as save:
             self.assertEqual((1, 1), app_logic._guardar_pagina_servicenow([doc], "casos", "admin"))
-        row = save.call_args.args[3]
+        row = save.call_args.args[3][0]
         self.assertNotIn("historial_conversacion", row)
         self.assertEqual("1 - phishing", row["tipificacion"])
         self.assertEqual(2, row["tiempo_respuesta"])

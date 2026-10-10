@@ -6,9 +6,11 @@ from copy import copy
 import re
 import math
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor, wait, FIRST_COMPLETED
+from queue import SimpleQueue, Empty
 from html.parser import HTMLParser
 from time import monotonic
-from threading import RLock
+from threading import RLock, Event
 from urllib.parse import urlsplit
 from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
@@ -31,6 +33,7 @@ SOURCE_FIELDS = {
 SOURCE_LABELS = {"sn_customerservice_case": "casos", "incident": "incidentes",
                  "task_sla": "SLAs", "sys_journal_field": "notas y comentarios",
                  "sys_email": "correos del historial"}
+RELATED_SOURCES = (("task_sla", "task"), ("sys_journal_field", "element_id"), ("sys_email", "instance"))
 _sesiones_api = {}
 _sesiones_lock = RLock()
 _tokens_oauth = {}
@@ -55,6 +58,17 @@ class ServiceNowQueryError(ServiceNowError):
 
 class ServiceNowMFARequiredError(ServiceNowAuthenticationError):
     """La API pide al administrador renovar su verificación multifactor."""
+
+
+class _ConsultaCancelada(Exception):
+    """Detiene las siguientes páginas de una fuente que ya no se necesita."""
+
+
+def _adaptador_http():
+    return HTTPAdapter(max_retries=Retry(
+        total=1, connect=1, read=0, status=1, backoff_factor=0.5, status_forcelist=[429, 502, 503, 504],
+        allowed_methods=["GET"], respect_retry_after_header=False,
+    ))
 
 
 def validar_tipo(tipo):
@@ -222,6 +236,8 @@ class ServiceNowClient:
     def __init__(self, *, user=None, password=None, mfa_code=None, instance=None, auth_type=None, progress_callback=None):
         self.progress_callback = progress_callback
         self.total_registros = None
+        self._lectores = {}
+        self._executor = None
         instance = normalizar_instancia(config_value("SERVICENOW_INSTANCE") if instance is None else instance)
         mode = auth_type or ("basic" if user is not None or password is not None
                              else config_value("SERVICENOW_AUTH_TYPE", "basic"))
@@ -254,16 +270,19 @@ class ServiceNowClient:
                 self._session.close()
                 raise ValueError("El código de verificación debe tener entre 6 y 10 dígitos.")
             self._session.headers["X-MFA_TOKEN"] = mfa_code
-        self._session.mount("https://", HTTPAdapter(max_retries=Retry(
-            total=1, connect=1, read=0, status=1, backoff_factor=0.5, status_forcelist=[429, 502, 503, 504],
-            allowed_methods=["GET"], respect_retry_after_header=False,
-        )))
+        self._session.mount("https://", _adaptador_http())
 
     def __enter__(self):
         return self
 
     def __exit__(self, *args):
-        self._session.close()
+        try:
+            if self._executor is not None:
+                self._executor.shutdown(wait=True, cancel_futures=True)
+        finally:
+            for lector in self._lectores.values():
+                lector._session.close()
+            self._session.close()
 
     def validar_acceso(self):
         """Comprueba autenticación y acceso HTTP a las cuatro fuentes de casos."""
@@ -328,15 +347,19 @@ class ServiceNowClient:
 
     def _paginas(self, tabla, query, *, fields=None):
         offset = 0
+        cursor = None
+        pagina = 0
         # No se interpolan tablas ni filtros procedentes del cliente HTTP.
         if tabla not in {*TABLES.values(), "task_sla", "sys_journal_field", "sys_email"}:
             raise ValueError("Tabla no permitida.")
         seen = set()
         while True:
+            pagina += 1
             etiqueta = SOURCE_LABELS[tabla]
-            self._informar_consulta(f"Consultando {etiqueta} · página {offset // PAGE_SIZE + 1}...")
+            self._informar_consulta(f"Consultando {etiqueta} · página {pagina}...")
             try:
-                params = {"sysparm_query": query + "^ORDERBYsys_id",
+                filtro = query + (f"^sys_id>{cursor}" if cursor else "")
+                params = {"sysparm_query": filtro + "^ORDERBYsys_id",
                           "sysparm_display_value": "all" if tabla in TABLES.values() or (tabla == "task_sla" and fields is None) else "false",
                           "sysparm_exclude_reference_link": "true",
                           "sysparm_suppress_pagination_header": "true",
@@ -375,8 +398,10 @@ class ServiceNowClient:
                 total = int(total) if total is not None else None
                 if total is not None and total < 0:
                     raise ValueError
-                if tabla in TABLES.values() and offset == 0:
+                if tabla in TABLES.values() and pagina == 1:
                     self.total_registros = total
+                    if total is not None:
+                        self._informar_consulta(f"La API reporta {total} {etiqueta} para esta consulta.")
                 with _sesiones_lock:
                     if self._session_key in _sesiones_api:
                         _sesiones_api[self._session_key] = copy(self._session.cookies)
@@ -389,18 +414,28 @@ class ServiceNowClient:
                 raise ServiceNowError(f"No se pudo consultar {tabla} en ServiceNow.") from None
             for row in result:
                 identity = valor(row.get("sys_id"))
-                if not identity or identity in seen:
+                if (not isinstance(identity, str) or not re.fullmatch(r"[0-9a-fA-F]{32}", identity)
+                        or identity in seen or (cursor and identity <= cursor)):
                     raise ServiceNowError(f"Paginación inconsistente en {tabla}; vuelve a sincronizar.")
                 seen.add(identity)
             if result:
                 if tabla == "sys_email" and fields is None:
                     self._completar_correos_html(result)
-                self._informar_consulta(f"Recibidos {len(result)} registros de {etiqueta} · página {offset // PAGE_SIZE + 1}.")
+                self._informar_consulta(f"Recibidos {len(result)} registros de {etiqueta} · página {pagina}.")
                 yield result
-            offset += PAGE_SIZE
-            # ACLs pueden devolver páginas cortas/vacías antes del último offset.
-            if (total is not None and offset >= total) or (total is None and not result):
+            if total is not None and offset + len(result) >= total:
                 break
+            if result and (cursor or len(result) < PAGE_SIZE):
+                # Una página corta puede deberse a ACLs o a un límite del servidor.
+                # Continuar tras el último ID recibido evita saltar casos visibles.
+                cursor = max(valor(row["sys_id"]) for row in result)
+                offset = 0
+            else:
+                # Si una ventana entera queda oculta por ACLs, avanzar dentro del
+                # filtro actual hasta encontrar IDs visibles o agotar su total.
+                offset += PAGE_SIZE
+                if (total is not None and offset >= total) or (total is None and not result):
+                    break
 
     def _completar_correos_html(self, rows):
         """El HTML solo se descarga cuando el correo no contiene una versión de texto."""
@@ -479,17 +514,80 @@ class ServiceNowClient:
         if any(not isinstance(s, str) or not re.fullmatch(r"[0-9a-fA-F]{32}", s) for s in ids):
             raise ServiceNowError("ServiceNow devolvió un sys_id inválido.")
         grupos = {s: defaultdict(list) for s in ids}
-        for fuente, referencia in (
-            ("task_sla", "task"),
-            ("sys_journal_field", "element_id"),
-            ("sys_email", "instance"),
-        ):
-            for page in self._paginas_referencias(fuente, referencia, ids, tabla):
+        if self._oauth:
+            fuentes = self._leer_fuentes_paralelas(ids, tabla)
+        else:
+            # Las sesiones antiguas con cookies/MFA conservan su secuencia.
+            fuentes = {fuente: self._paginas_referencias(fuente, referencia, ids, tabla)
+                       for fuente, referencia in RELATED_SOURCES}
+        for fuente, referencia in RELATED_SOURCES:
+            for page in fuentes[fuente]:
                 for row in page:
                     referencia_id = valor(row.get(referencia))
                     if referencia_id in grupos:
                         grupos[referencia_id][fuente].append(row)
         return [self.consolidar(row, tipo, relacionados=grupos[valor(row["sys_id"])]) for row in rows]
+
+    def _lector_fuente(self, fuente):
+        if fuente not in self._lectores:
+            # Crear el lector con la configuración ya validada en el hilo principal:
+            # ningún trabajador accede a st.secrets ni comparte una sesión mutable.
+            lector = object.__new__(ServiceNowClient)
+            for nombre in ("_oauth", "_base_url", "_token_url", "_client_id", "_client_secret", "_scope", "_session_key"):
+                setattr(lector, nombre, getattr(self, nombre))
+            lector.total_registros = None
+            lector._session = requests.Session()
+            lector._session.headers.update(self._session.headers)
+            lector._session.mount("https://", _adaptador_http())
+            self._lectores[fuente] = lector
+        return self._lectores[fuente]
+
+    def _leer_fuentes_paralelas(self, ids, tabla):
+        if self._executor is None:
+            self._executor = ThreadPoolExecutor(max_workers=3, thread_name_prefix="servicenow-historial")
+        mensajes = SimpleQueue()
+        cancelar = Event()
+
+        def progreso(_, mensaje):
+            if cancelar.is_set():
+                raise _ConsultaCancelada
+            mensajes.put(mensaje)
+
+        futuros = {}
+        resultados = {}
+        try:
+            for fuente, referencia in RELATED_SOURCES:
+                lector = self._lector_fuente(fuente)
+                lector.progress_callback = progreso
+                futuros[self._executor.submit(lambda l=lector, f=fuente, r=referencia:
+                    list(l._paginas_referencias(f, r, ids, tabla)))] = fuente
+            ultima = monotonic()
+            while futuros:
+                terminados, _ = wait(futuros, timeout=0.2, return_when=FIRST_COMPLETED)
+                for futuro in terminados:
+                    resultados[futuros.pop(futuro)] = futuro.result()
+                # Solo el hilo principal actualiza Streamlit o la conexión que
+                # coordina el turno; los trabajadores entregan mensajes en cola.
+                while True:
+                    try:
+                        mensaje = mensajes.get_nowait()
+                    except Empty:
+                        break
+                    self._informar_consulta(mensaje)
+                    ultima = monotonic()
+                if futuros and monotonic() - ultima >= 1:
+                    fuentes = ", ".join(SOURCE_LABELS[f] for f in futuros.values())
+                    self._informar_consulta(f"Esperando {fuentes} del lote actual...")
+                    ultima = monotonic()
+            return resultados
+        except BaseException:
+            # No dejar consultas huérfanas al cancelar desde Streamlit o ceder el
+            # turno. Las peticiones ya enviadas finalizan con su timeout normal.
+            cancelar.set()
+            for futuro in futuros:
+                futuro.cancel()
+            wait(futuros)
+            raise
 
     def obtener(self, numero, tipo="casos"):
         tabla = validar_tipo(tipo)

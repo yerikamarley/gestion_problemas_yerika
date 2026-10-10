@@ -81,11 +81,13 @@ class ServiceNowClientTest(unittest.TestCase):
 
     def test_pagina_corta_por_acl_no_trunca_la_consulta(self):
         with patch.object(self.client._session, "get", side_effect=[
-            response([caso()], 201), response([], 201), response([{"sys_id": "b" * 32}], 201),
+            response([caso()], 201), response([], 200), response([{"sys_id": "b" * 32}], 200), response([], 0),
         ]) as get:
             pages = list(self.client._paginas("sn_customerservice_case", "active=true"))
         self.assertEqual(2, len(pages))
-        self.assertEqual([0, 100, 200], [c.kwargs["params"]["sysparm_offset"] for c in get.call_args_list])
+        self.assertEqual([0, 0, 100, 0], [c.kwargs["params"]["sysparm_offset"] for c in get.call_args_list])
+        self.assertIn("sys_id>" + CASE_ID, get.call_args_list[1].kwargs["params"]["sysparm_query"])
+        self.assertEqual(201, self.client.total_registros)
         self.assertTrue(all(c.kwargs["params"]["sysparm_limit"] == 100 for c in get.call_args_list))
 
     def test_lote_largo_de_correos_conserva_todas_las_paginas_sin_header_link(self):
@@ -160,7 +162,7 @@ class ServiceNowClientTest(unittest.TestCase):
                 return response([], 0)
             ids = params["sysparm_query"].split("instanceIN")[1].split("^")[0].split(",")
             if len(ids) > 2:
-                return response(emails[:2], 101) if params["sysparm_offset"] == 0 else response([], status=400)
+                return response([], status=400) if "^sys_id>" in params["sysparm_query"] else response(emails[:2], 101)
             return response([r for r in emails if r["instance"]["value"] in ids], len(ids) * 2)
 
         with patch.object(self.client._session, "get", side_effect=consultar) as get:
@@ -342,9 +344,9 @@ class ServiceNowPersistenceTest(unittest.TestCase):
                     else:
                         self.assertEqual((1, 1), app_logic._guardar_pagina_servicenow([documento()], "casos", "ADMIN@EXAMPLE.TEST"))
                         conn.commit.assert_called_once()
-                        params = execute.call_args_list[-1].args[2]
-                        self.assertEqual("admin@example.test", params[-1])
-                        self.assertEqual("codigo", json.loads(params[-2])["campos_raw"]["u_campo_extra"]["value"])
+                        snapshot = json.loads(execute.call_args_list[-1].args[2][0])[0]
+                        self.assertEqual("admin@example.test", snapshot["sincronizado_por"])
+                        self.assertEqual("codigo", snapshot["documento"]["campos_raw"]["u_campo_extra"]["value"])
                     self.assertIn("INSERT INTO cases", execute.call_args_list[0].args[1])
                     self.assertIn("ON CONFLICT", execute.call_args_list[-1].args[1])
                     conn.close.assert_called_once()
@@ -353,7 +355,7 @@ class ServiceNowPersistenceTest(unittest.TestCase):
         conn = MagicMock()
         with patch.object(app_logic, "get_conn", return_value=conn), \
              patch.object(app_logic, "_bloquear_y_validar_admin", side_effect=app_logic.AutorizacionError), \
-             patch.object(app_logic, "guardar_documento") as save:
+             patch.object(app_logic, "guardar_documentos_pagina") as save:
             with self.assertRaises(app_logic.AutorizacionError):
                 app_logic._guardar_pagina_servicenow([documento()], "casos", "admin")
         save.assert_not_called()
@@ -377,7 +379,7 @@ class ServiceNowPersistenceTest(unittest.TestCase):
              patch.object(app_logic, "bloquear_escritura_casos"), \
              patch.object(app_logic, "numeros_existentes", return_value=set()), \
              patch("services.servicenow.config_value", return_value='{"hack":"u_campo_extra"}'), \
-             patch.object(app_logic, "guardar_documento") as save:
+             patch.object(app_logic, "guardar_documentos_pagina") as save:
             with self.assertRaises(ValueError):
                 app_logic._guardar_pagina_servicenow([documento()], "casos", "admin")
         save.assert_not_called()

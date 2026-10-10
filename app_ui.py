@@ -11572,6 +11572,8 @@ def vista_sincronizar_servicenow(tipo):
         limpiar_cache_datos()
     if result["cargados"]:
         st.success(f"Sincronizados: {result['cargados']} | Registros existentes actualizados: {result['actualizados']}")
+        if result.get("reportados") is not None:
+            st.caption(f"Registros reportados por la API para este período: {result['reportados']}.")
     else:
         st.info("No se encontraron registros para la consulta.")
 

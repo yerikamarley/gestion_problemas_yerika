@@ -7,12 +7,13 @@ from time import monotonic, sleep
 
 import pandas as pd
 from services.casos_sla import guardar_fecha_plataforma
+from services.servicenow_diagnostico import diagnosticar_fallo, cerrar_control
 from services.servicenow import (
     ServiceNowClient, ServiceNowError, ServiceNowAuthenticationError,
     mapear_documento, validar_tipo, validar_numero, limites_mes_utc, limites_rango_utc, normalizar_instancia,
 )
 from repositories.servicenow import (
-    ensure_servicenow_schema, guardar_documento, leer_documento,
+    ensure_servicenow_schema, guardar_documentos_pagina, leer_documento,
     leer_estado_sincronizacion, guardar_estado_sincronizacion,
     activar_sincronizacion_casos, leer_activacion_casos, leer_historial_conversacion,
     leer_campos_casos,
@@ -2123,6 +2124,7 @@ def _guardar_pagina_servicenow(documentos, tipo, actor_email):
             filas = db_execute(conn, f"SELECT {', '.join(CASE_READ_COLUMNS)} FROM cases "
                                f"WHERE numero IN ({db_placeholders(len(existentes))})", tuple(sorted(existentes))).fetchall()
             previos = {fila[0]: dict(zip(CASE_READ_COLUMNS, fila)) for fila in filas}
+        filas_preparadas = []
         for documento in documentos:
             row = mapear_documento(documento, tipo)
             permitidas = CASE_READ_COLUMNS if tipo == "casos" else INCIDENT_DB_COLUMNS
@@ -2142,7 +2144,8 @@ def _guardar_pagina_servicenow(documentos, tipo, actor_email):
                 else:
                     row["duracion_segundos"] = None
                     row["duracion_horas"] = None
-            guardar_documento(conn, documento, tabla_local, row, normalizar_email(actor_email))
+            filas_preparadas.append(row)
+        guardar_documentos_pagina(conn, documentos, tabla_local, filas_preparadas, normalizar_email(actor_email))
         conn.commit()
         return len(documentos), len(existentes)
     except Exception:
@@ -2258,17 +2261,24 @@ def sincronizar_servicenow(*, actor_email, tipo="casos", mes=None, numero=None,
         avance = max(avance, valor)
         emitir_progreso(progress_callback, avance, f"{mensaje} Casos guardados: {cargados}." if tipo == "casos" else mensaje)
 
-    control = get_conn() if tipo == "casos" else None
+    control = None
     bloqueo = False
     pulsar = None
     intento = datetime.now(timezone.utc)
+    etapa = "obtener el turno"
+    reportados = None
+    client = None
     try:
+        if tipo == "casos":
+            control = get_conn()
         if control is not None:
             bloqueo = _esperar_turno_manual(control, progress_callback)
             if not bloqueo:
                 return {"ocupado": True, "cargados": 0, "actualizados": 0}
             pulsar = _crear_pulso_sincronizacion(control)
+            etapa = "registrar el inicio"
             _registrar_estado_ingesta(automatica=False, estado="sincronizando", intento=intento)
+        etapa = "consultar ServiceNow"
         informar(0, "Iniciando la consulta del período seleccionado...")
         with ServiceNowClient(progress_callback=informar) as client:
             if numero is not None:
@@ -2279,6 +2289,8 @@ def sincronizar_servicenow(*, actor_email, tipo="casos", mes=None, numero=None,
             else:
                 paginas = client.listar_rango(fecha_inicio, fecha_fin, tipo)
             for documentos in paginas:
+                reportados = client.total_registros if isinstance(client.total_registros, int) else None
+                etapa = "guardar la página en la base"
                 informar(avance, f"Guardando {len(documentos)} {tipo} y su historial...")
                 nuevos, existentes = ejecutar_con_reintentos_db(
                     lambda: _guardar_pagina_servicenow(documentos, tipo, actor_email)
@@ -2288,21 +2300,36 @@ def sincronizar_servicenow(*, actor_email, tipo="casos", mes=None, numero=None,
                 total = client.total_registros
                 progreso = min(0.95, cargados / total) if isinstance(total, int) and total > 0 else avance
                 informar(progreso, f"Registros sincronizados: {cargados}.")
+                etapa = "consultar ServiceNow"
+            reportados = client.total_registros if isinstance(client.total_registros, int) else None
+        if numero is None and reportados is not None and cargados < reportados:
+            raise ServiceNowError(
+                f"La API de ServiceNow reportó {reportados} registros pero entregó {cargados}. "
+                "Los recibidos se guardaron. Revisa los permisos de lectura de la integración y vuelve a consultar; "
+                "esta sincronización está incompleta."
+            )
         if control is not None:
+            etapa = "registrar la finalización"
             _registrar_estado_ingesta(automatica=False, estado="correcto", intento=intento, registros=cargados)
         informar(1, "Sincronización finalizada.")
-        return {"tipo": tipo, "mes": mes, "numero": numero, "cargados": cargados, "actualizados": reemplazados}
+        return {"tipo": tipo, "mes": mes, "numero": numero, "cargados": cargados,
+                "actualizados": reemplazados, "reportados": reportados}
     except Exception as error:
+        if client is not None and isinstance(client.total_registros, int):
+            reportados = client.total_registros
+        seguro = error if isinstance(error, (ServiceNowError, AutorizacionError)) else diagnosticar_fallo(
+            error, etapa=etapa, guardados=cargados, total=reportados)
         if control is not None and bloqueo:
-            mensaje = str(error) if isinstance(error, (ServiceNowError, AutorizacionError)) else "No se pudo completar la sincronización."
-            _registrar_estado_ingesta(automatica=False, estado="error", intento=intento, mensaje=mensaje, registros=cargados)
-        raise
+            try:
+                _registrar_estado_ingesta(automatica=False, estado="error", intento=intento, mensaje=str(seguro), registros=cargados)
+            except Exception as fallo_estado:
+                diagnosticar_fallo(fallo_estado, etapa="registrar el error", guardados=cargados, total=reportados)
+        if seguro is error:
+            raise
+        raise seguro from None
     finally:
         if control is not None:
-            try:
-                control.rollback()  # Libera automáticamente el bloqueo, incluso tras un error.
-            finally:
-                control.close()
+            cerrar_control(control)
 
 
 def consultar_traza_servicenow(numero, *, actor_email, tipo="casos"):
@@ -2415,22 +2442,26 @@ def estado_servicenow(*, actor_email):
 def sincronizar_casos_automaticamente(*, actor_email):
     """Cursor durable: solo avanza después de guardar todas las fuentes y páginas."""
     exigir_permiso_actor(actor_email, ACTION_WRITE_CASES)
-    control = get_conn()
+    control = None
     bloqueo = False
     intento = datetime.now(timezone.utc).replace(microsecond=0)
     cargados = actualizados = 0
+    etapa = "obtener el turno automático"
     try:
+        control = get_conn()
         bloqueo = _tomar_bloqueo_sincronizacion(control)
         if not bloqueo:
             return {"ocupado": True, "cargados": 0}
         if _hay_solicitud_manual(control):
             return {"cedida": True, "cargados": 0, "actualizados": 0}
+        etapa = "leer el cursor automático"
         estado = _consultar_estado_ingesta()
         ultima = estado.get("ultima_correcta")
         if ultima:
             desde = ultima - timedelta(minutes=2)
         else:
             desde = intento.astimezone(ZoneInfo("America/Bogota")).replace(hour=0, minute=0, second=0).astimezone(timezone.utc)
+        etapa = "registrar el inicio automático"
         _registrar_estado_ingesta(automatica=True, estado="sincronizando", intento=intento)
         pulsar = _crear_pulso_sincronizacion(control)
 
@@ -2440,35 +2471,46 @@ def sincronizar_casos_automaticamente(*, actor_email):
                 raise _TurnoManualSolicitado
 
         with ServiceNowClient(progress_callback=comprobar_turno) as client:
+            etapa = "consultar ServiceNow"
             for documentos in client.listar_casos_actualizados(desde, intento):
                 comprobar_turno()
+                etapa = "guardar la página en la base"
                 nuevos, existentes = ejecutar_con_reintentos_db(
                     lambda: _guardar_pagina_servicenow(documentos, "casos", actor_email)
                 )
                 cargados += nuevos
                 actualizados += existentes
+                etapa = "consultar ServiceNow"
         comprobar_turno()
+        etapa = "registrar la finalización automática"
         _registrar_estado_ingesta(automatica=True, estado="correcto", intento=intento, correcta=intento, registros=cargados)
         return {"cargados": cargados, "actualizados": actualizados}
     except _TurnoManualSolicitado:
-        _registrar_estado_ingesta(
-            automatica=True, estado="pendiente", intento=intento, registros=cargados,
-            mensaje="La actualización automática cedió el turno a la consulta manual. Se conservan los casos guardados.",
-        )
+        try:
+            _registrar_estado_ingesta(
+                automatica=True, estado="pendiente", intento=intento, registros=cargados,
+                mensaje="La actualización automática cedió el turno a la consulta manual. Se conservan los casos guardados.",
+            )
+        except Exception as fallo_estado:
+            diagnosticar_fallo(fallo_estado, etapa="registrar la cesión de turno", guardados=cargados)
         return {"cedida": True, "cargados": cargados, "actualizados": actualizados}
     except Exception as error:
+        seguro = error if isinstance(error, (ServiceNowError, AutorizacionError)) else diagnosticar_fallo(
+            error, etapa=etapa, guardados=cargados)
         if bloqueo:
-            mensaje = str(error) if isinstance(error, (ServiceNowError, AutorizacionError)) else "No se pudo completar la actualización automática."
-            _registrar_estado_ingesta(
-                automatica=True, estado="requiere_autenticacion" if isinstance(error, ServiceNowAuthenticationError) else "error",
-                intento=intento, mensaje=mensaje, registros=cargados,
-            )
-        raise
+            try:
+                _registrar_estado_ingesta(
+                    automatica=True, estado="requiere_autenticacion" if isinstance(error, ServiceNowAuthenticationError) else "error",
+                    intento=intento, mensaje=str(seguro), registros=cargados,
+                )
+            except Exception as fallo_estado:
+                diagnosticar_fallo(fallo_estado, etapa="registrar el error automático", guardados=cargados)
+        if seguro is error:
+            raise
+        raise seguro from None
     finally:
-        try:
-            control.rollback()
-        finally:
-            control.close()
+        if control is not None:
+            cerrar_control(control)
 
 
 def aplicar_tipificaciones_casos(df):

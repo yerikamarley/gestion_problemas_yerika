@@ -37,7 +37,8 @@ def get_conn():
 
     import psycopg
 
-    return psycopg.connect(SUPABASE_DATABASE_URL, connect_timeout=30)
+    # Supavisor en modo transacción (6543) no conserva sentencias preparadas.
+    return psycopg.connect(SUPABASE_DATABASE_URL, connect_timeout=30, prepare_threshold=None)
 
 
 def db_execute(conn, sql, params=()):
