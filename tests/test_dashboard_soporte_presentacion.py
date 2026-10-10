@@ -25,7 +25,7 @@ class DashboardSoporteTest(unittest.TestCase):
         total = ui.resumen_entradas_diarias_casos(base, inicio="2026-09-01", fin="2026-09-04")
         token = ui.resumen_entradas_diarias_casos(base, True, "2026-09-01", "2026-09-04")
         self.assertEqual([2, 1, 1, 0], total[ui.TEXT_CASOS_2].tolist())
-        self.assertEqual([2, 0, 0, 0], token[ui.TEXT_CASOS_2].tolist())
+        self.assertEqual([1, 0, 0, 0], token[ui.TEXT_CASOS_2].tolist())
         self.assertEqual(total[ui.TEXT_FECHA].tolist(), token[ui.TEXT_FECHA].tolist())
 
     def test_periodo_sin_token_mantiene_ceros(self):
@@ -49,7 +49,14 @@ with patch.object(ui, "selector_periodo_sql", return_value=(2026, 9, "Septiembre
 ''').run()
         self.assertFalse(app.exception)
         self.assertEqual(2, len(app.get("plotly_chart")))
-        self.assertTrue(any("Token físico / ePass" in item.value for item in app.markdown))
+        self.assertTrue(any("Token físico explícito" in item.value for item in app.markdown))
+        self.assertFalse(any(button.key == "revisar_evidencias_casos" for button in app.button))
+        self.assertEqual(["Resumen", "Detalle y evidencia", "Operación"],
+                         app.radio(key="vista_dashboard_soporte").options)
+        app.radio(key="vista_dashboard_soporte").set_value("Detalle y evidencia").run()
+        self.assertFalse(app.exception)
+        self.assertEqual(0, len(app.get("plotly_chart")))
+        self.assertTrue(any(button.key == "revisar_evidencias_casos" for button in app.button))
 
 
 if __name__ == "__main__":

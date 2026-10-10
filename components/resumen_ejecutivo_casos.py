@@ -31,7 +31,7 @@ def lamina_resumen_casos(reporte, foco="", decision=""):
     titulo_periodo = f"{mes_a} - {mes_b} {fin_b.year}" if fin_a.year == fin_b.year else f"{mes_a} {fin_a.year} - {mes_b} {fin_b.year}"
     causas = reporte["causas"]
     if not foco.strip():
-        foco = f"Principal causa agrupada: {causas.iloc[0]['Causa']}" if not causas.empty else "Sin casos de soporte registrados en el período actual"
+        foco = f"Clasificación principal: {causas.iloc[0]['Causa']}" if not causas.empty else "Sin casos de soporte registrados en el período actual"
     decision = decision.strip() or "Pendiente de definir por el responsable del reporte."
     diferencia = reporte["diferencia"]
     dif_sla = reporte["diferencia_sla"]
@@ -86,7 +86,7 @@ def lamina_resumen_casos(reporte, foco="", decision=""):
       <div class="tarjeta actual"><div class="et">SLA {mes_b}</div><div class="cifra">{porcentaje(b['sla'])}</div><div class="nota"><span class="rojo">{b['no_cumple']}</span> no cumplen ANS · <b style="color:{color_sla}">{delta_sla}</b></div></div>
     </div>
     <div class="graficas"><section class="panel volumen"><h2>Casos por mes</h2>{grafico}</section>
-      <section class="panel causas"><h2>Causas agrupadas · {mes_b}</h2>{causas_html}</section></div>
+      <section class="panel causas"><h2>Clasificación de casos · {mes_b}</h2>{causas_html}</section></div>
     <div class="decision"><b>DECISIÓN REQUERIDA</b><p>{escape(decision)}</p></div>
     <div class="pie">Solo equipo de soporte · Creación: {inicio_a:%d/%m/%Y}–{fin_a:%d/%m/%Y} vs. {inicio_b:%d/%m/%Y}–{fin_b:%d/%m/%Y}.<br>
     Estados y asignación según última carga; no reconstruye el estado histórico al corte. SLA por vencimiento oficial: {a['evaluados']}/{b['evaluados']} cerrados evaluados; {a['sin_evaluar']}/{b['sin_evaluar']} sin evaluación ({mes_a}/{mes_b}).</div>

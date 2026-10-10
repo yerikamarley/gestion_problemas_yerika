@@ -38,7 +38,7 @@ class ConversationHistoryTest(unittest.TestCase):
         self.assertNotIn("noise", event["contenido"])
         row = mapear_documento(doc)
         self.assertIn("cliente@example.test", row["historial_conversacion"])
-        self.assertEqual("Fallas al firmar", app_ui.inferir_detalle_causa_comun(row))
+        self.assertEqual("Falla al firmar", app_ui.inferir_detalle_causa_comun(row))
         self.assertEqual("Firma digital", app_ui.inferir_causa_comun_caso(row))
         self.assertNotIn("observaciones_trabajo", row)
 

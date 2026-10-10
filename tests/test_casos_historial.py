@@ -13,6 +13,7 @@ from services.casos_historial import (
     COL_ATENCION, COL_DESTINO, COL_EVIDENCIA_TOKEN, COL_EVIDENCIA_MOTIVO,
     COL_EVIDENCIA_CAUSA, COL_EVIDENCIA_ATENCION, REDIRIGIDO_SIN_ATENCION, SIN_ATENCION,
     ENVIADO_OTROS_CANALES,
+    COL_CLASIFICACION, resumen_clasificacion_casos,
 )
 from services.servicenow import texto_historial
 
@@ -46,7 +47,7 @@ class EvidenciaTokenTest(TestCase):
             ("Tengo dificultades al usar mi token físico", "Uso del token"),
             ("Mi token físico no permite firmar", "Falla al firmar"),
             ("El equipo no reconoce el token físico", "Token no reconocido"),
-            ("Ayuda para configurar ePass2003", "Instalación o configuración"),
+            ("Ayuda para configurar token físico ePass2003", "Instalación o configuración"),
             ("Necesito instalar el toquen fisico", "Instalación o configuración"),
         ]:
             with self.subTest(contenido=contenido):
@@ -82,7 +83,7 @@ class EvidenciaTokenTest(TestCase):
         focos = app_ui.resumen_focos_destacados_kpi_casos(pd.DataFrame([row])).set_index("Foco")
         self.assertEqual(0, focos.loc["Token fisico", "Cantidad"])
         self.assertEqual(0, focos.loc["Token virtual", "Cantidad"])
-        self.assertEqual(0, focos.loc["Envio agenda", "Cantidad"])
+        self.assertEqual(0, focos.loc[ENVIADO_OTROS_CANALES, "Cantidad"])
 
     def test_mensaje_real_con_pie_se_analiza_y_cita_original_queda_excluida(self):
         row = {"historial_conversacion": [evento(
@@ -127,7 +128,7 @@ class AtencionCausaTest(TestCase):
                 self.assertEqual("Sin causa documentada", resultado[COL_CAUSA])
                 self.assertNotIn("token fisico", texto_util_caso(row))
                 focos = app_ui.resumen_focos_destacados_kpi_casos(pd.DataFrame([row])).set_index("Foco")
-                self.assertEqual(1, focos.loc["Envio agenda", "Cantidad"])
+                self.assertEqual(1, focos.loc[ENVIADO_OTROS_CANALES, "Cantidad"])
                 self.assertEqual(0, focos.loc["Token fisico", "Cantidad"])
                 self.assertEqual(0, focos.loc["Token virtual", "Cantidad"])
 
@@ -256,10 +257,10 @@ class IntegracionHistorialTest(TestCase):
         self.assertEqual(6, tipologias[app_ui.TEXT_CANTIDAD].sum())
         self.assertAlmostEqual(66.67, tipologias.loc[ENVIADO_OTROS_CANALES, "% casos"], places=2)
         causas, _ = app_ui.resumen_principales_causas_servicios_casos(base)
-        self.assertEqual(4, causas.set_index("Causa raíz").loc[ENVIADO_OTROS_CANALES, "Cantidad"])
+        self.assertEqual(4, causas.set_index(COL_CLASIFICACION).loc[ENVIADO_OTROS_CANALES, "Cantidad"])
         resumen = resumen_causas_historial(base).set_index("Grupo de causa")
-        self.assertEqual(4, resumen.loc[ENVIADO_OTROS_CANALES, "Casos"])
-        self.assertEqual("Clasificación de gestión", resumen.loc[ENVIADO_OTROS_CANALES, COL_ESTADO_CAUSA])
+        self.assertNotIn(ENVIADO_OTROS_CANALES, resumen.index)
+        self.assertEqual(6, resumen.loc["Certificado vencido o revocado", "Casos"])
         self.assertEqual(6, resumen["Casos"].sum())
 
     def test_categoria_manual_enviado_a_otros_canales_tambien_aparece_en_tipologia(self):
@@ -345,6 +346,7 @@ with patch.object(ui, "cargar_evidencia_casos_cache", side_effect=evidencia), \\
     ui.render_analisis_historial_casos(datos, "Octubre 2026")
 '''.encode("ascii", errors="backslashreplace").decode("ascii")).run()
         self.assertFalse(app.exception)
+        app.radio(key="historial_casos_alcance").set_value("Todos los casos").run()
         detalle = app.session_state["descarga_analisis"]
         self.assertEqual({"CS1", "CS2", "CS3", "CS4"}, set(detalle["Número"]))
         self.assertEqual(0, app.session_state.filtered_state.get("consultas_evidencia", 0))

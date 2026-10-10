@@ -84,7 +84,7 @@ class ResumenEjecutivoTest(unittest.TestCase):
         for raiz, categoria in [
             ("Caso duplicado", "Duplicado"),
             ("Captores", "Captores"),
-            ("Token fisico", "Token fisico / ePass"),
+            ("Token fisico", "Firma digital"),
             ("Firma digital", "Firma digital"),
         ]:
             with self.subTest(raiz=raiz):
@@ -106,20 +106,20 @@ class ResumenEjecutivoTest(unittest.TestCase):
                          reporte["causas"].set_index("Causa")["Casos"].to_dict())
         tabla, _ = resumen_principales_causas_servicios_casos(base)
         pd.testing.assert_frame_equal(reporte["causas_lamina"], tabla.rename(columns={
-            "Causa raíz": "Causa", "Cantidad": "Casos", "% casos": "Porcentaje",
+            "Clasificación principal": "Causa", "Cantidad": "Casos", "% casos": "Porcentaje",
         }))
 
     def test_tabla_kpi_dos_principales_y_acumulado_maximo_cuatro_nombres(self):
         from app_ui import preparar_kpi_casos_cliente_externo, resumen_principales_causas_servicios_casos
-        raices = ["duplicado", "captores", "solicitud operativa", "token fisico", "firma", "activacion"]
+        raices = ["Caso duplicado", "Captores", "Solicitud de pago", "Necesito instalar token físico", "Firma digital", "Activar certificado"]
         base, _ = preparar_kpi_casos_cliente_externo(pd.DataFrame([
-            caso(str(i), causa=raiz) for i, raiz in enumerate(raices)
+            caso(str(i), causa="", descripcion=raiz) for i, raiz in enumerate(raices)
         ]))
         tabla, _ = resumen_principales_causas_servicios_casos(base)
         self.assertEqual(3, len(tabla))
         self.assertEqual(6, tabla["Cantidad"].sum())
         self.assertAlmostEqual(100, tabla["% casos"].sum())
-        etiqueta = tabla.iloc[0]["Causa raíz"]
+        etiqueta = tabla.iloc[0]["Clasificación principal"]
         self.assertEqual(4, etiqueta.count("(1 casos)"))
         self.assertNotIn("+", etiqueta)
         self.assertNotIn("\n", etiqueta)
@@ -137,14 +137,15 @@ class ResumenEjecutivoTest(unittest.TestCase):
 
     def test_no_usa_etiqueta_sin_causa_identificada(self):
         from app_ui import inferir_causa_comun_caso
-        self.assertEqual("Solicitud operativa", inferir_causa_comun_caso(pd.Series(dtype=object)))
+        self.assertEqual("Por revisar", inferir_causa_comun_caso(pd.Series(dtype=object)))
 
-    def test_catalogo_limitado_a_captura_mas_duplicado_y_captores(self):
-        from app_ui import CASE_COMMON_CAUSE_RULES, inferir_causa_comun_caso
-        permitidas = {"Firma digital", "Token fisico / ePass",
-                      "Activacion o descarga de certificado", "Solicitud operativa",
-                      "Duplicado", "Captores", "Token virtual / Certitoken", "Enviado a otros canales"}
-        self.assertEqual(permitidas, {nombre for nombre, _ in CASE_COMMON_CAUSE_RULES})
+    def test_clasificaciones_provienen_de_un_solo_catalogo_sin_productos(self):
+        from app_ui import inferir_causa_comun_caso
+        from services.casos_historial import CLASIFICACIONES_PRINCIPALES
+        permitidas = set(CLASIFICACIONES_PRINCIPALES)
+        self.assertNotIn("Token fisico / ePass", permitidas)
+        self.assertNotIn("Token virtual / Certitoken", permitidas)
+        self.assertNotIn("Envio agenda / manual de uso", permitidas)
         for anterior in ["Sin causa comun", "Sin causa identificada", "Pendiente de revisión",
                          "Falla técnica", "Instalacion o configuracion", "Plataforma externa",
                          "Enviado a otros canales", "Solicitud básica de soporte"]:
@@ -165,7 +166,7 @@ class ResumenEjecutivoTest(unittest.TestCase):
         html = lamina_resumen_casos(reporte, foco='<img src=x>', decision='<script>acción</script>')
         self.assertNotIn('<script>', html)
         self.assertIn('&lt;script&gt;', html)
-        for texto in ["DECISIÓN REQUERIDA", "BACKLOG DEL PERÍODO", "Casos por mes", "Causas agrupadas", "Impacto al cliente"]:
+        for texto in ["DECISIÓN REQUERIDA", "BACKLOG DEL PERÍODO", "Casos por mes", "Clasificación de casos", "Impacto al cliente"]:
             self.assertIn(texto, html)
 
     def test_interfaz_consulta_solo_los_dos_periodos_y_muestra_soporte(self):
