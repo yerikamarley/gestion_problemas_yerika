@@ -81,6 +81,94 @@ class ServiceNowClientTest(unittest.TestCase):
         self.assertEqual([0, 100, 200], [c.kwargs["params"]["sysparm_offset"] for c in get.call_args_list])
         self.assertTrue(all(c.kwargs["params"]["sysparm_limit"] == 100 for c in get.call_args_list))
 
+    def test_lote_largo_de_correos_conserva_todas_las_paginas_sin_header_link(self):
+        query = "target_table=sn_customerservice_case^instanceIN" + ",".join(f"{i:032x}" for i in range(100))
+        rows = [{"sys_id": f"{i + 1000:032x}"} for i in range(225)]
+
+        def consultar(url, **kwargs):
+            params = kwargs["params"]
+            if params.get("sysparm_suppress_pagination_header") != "true":
+                rejected = response([], status=400)
+                rejected.json.return_value = {"error": {"message": "Pagination not supported"}}
+                return rejected
+            offset = params["sysparm_offset"]
+            return response(rows[offset:offset + 100], len(rows))
+
+        with patch.object(self.client._session, "get", side_effect=consultar) as get:
+            result = [row for page in self.client._paginas("sys_email", query) for row in page]
+        self.assertEqual(rows, result)
+        self.assertEqual([0, 100, 200], [c.kwargs["params"]["sysparm_offset"] for c in get.call_args_list])
+
+    def test_mes_con_664_casos_conserva_numero_campos_y_relaciones(self):
+        rows = []
+        for i in range(664):
+            row = caso()
+            row.update(sys_id=field(f"{i + 1:032x}"), number=field(f"CS{i + 1000000}"))
+            rows.append(row)
+
+        def consultar(url, **kwargs):
+            params = kwargs["params"]
+            if url.endswith("/sn_customerservice_case"):
+                offset = params["sysparm_offset"]
+                return response(rows[offset:offset + 100], len(rows))
+            if not params.get("sysparm_suppress_pagination_header"):
+                return response([], status=400)
+            return response([], 0)
+
+        with patch.object(self.client._session, "get", side_effect=consultar) as get:
+            docs = [doc for page in self.client.listar_mes("2026-10") for doc in page]
+        self.assertEqual(664, len(docs))
+        self.assertEqual(664, len({doc["case_id"] for doc in docs}))
+        self.assertEqual("CS1000663", docs[-1]["campos_raw"]["number"]["value"])
+        self.assertTrue(all("u_campo_extra" in doc["campos_raw"] for doc in docs))
+        self.assertEqual(28, get.call_count)  # Siete páginas, cuatro fuentes por página.
+
+    def test_error_table_api_reconocido_no_expone_cuerpo_remoto(self):
+        rejected = response([], status=400)
+        rejected.json.return_value = {"error": {
+            "message": "Pagination not supported", "detail": "password-test correo-privado",
+        }}
+        with patch.object(self.client._session, "get", return_value=rejected):
+            with self.assertRaisesRegex(ServiceNowError, "enlaces de paginación") as error:
+                list(self.client._paginas("sys_email", "instanceIN" + CASE_ID))
+        self.assertNotIn("password-test", str(error.exception))
+        self.assertNotIn("correo-privado", str(error.exception))
+
+    def test_lote_email_rechazado_se_divide_sin_duplicar_resultados_parciales(self):
+        rows = []
+        emails = []
+        for i in range(4):
+            raw = caso()
+            raw.update(sys_id=field(f"{i + 1:032x}"), number=field(f"CS{i + 1000000}"))
+            rows.append(raw)
+            for j in range(2):
+                emails.append({"sys_id": field(f"{i * 2 + j + 4000:032x}"),
+                               "instance": raw["sys_id"], "type": field("received"),
+                               "body_text": field(f"Mensaje {i}-{j}"),
+                               "sys_created_on": field("2026-10-09 23:20:38")})
+
+        def consultar(url, **kwargs):
+            params = kwargs["params"]
+            if not url.endswith("/sys_email"):
+                return response([], 0)
+            ids = params["sysparm_query"].split("instanceIN")[1].split("^")[0].split(",")
+            if len(ids) > 2:
+                return response(emails[:2], 101) if params["sysparm_offset"] == 0 else response([], status=400)
+            return response([r for r in emails if r["instance"]["value"] in ids], len(ids) * 2)
+
+        with patch.object(self.client._session, "get", side_effect=consultar) as get:
+            docs = self.client._consolidar_pagina(rows)
+        self.assertEqual(4, len(docs))
+        self.assertEqual([2] * 4, [len(d["historial_conversacion"]) for d in docs])
+        self.assertEqual(8, len({r["id"] for d in docs for r in d["historial_conversacion"]}))
+        self.assertEqual(6, get.call_count)  # SLA y notas una vez; solo correos se reintentan.
+
+    def test_rechazo_email_individual_se_reporta_sin_bucle(self):
+        with patch.object(self.client._session, "get", return_value=response([], status=400)) as get:
+            with self.assertRaisesRegex(ServiceNowError, "sys_email.*400"):
+                list(self.client._paginas_referencias("sys_email", "instance", [CASE_ID], "sn_customerservice_case"))
+        get.assert_called_once()
+
     def test_sin_total_consulta_hasta_pagina_vacia(self):
         with patch.object(self.client._session, "get", side_effect=[response([caso()]), response([])]) as get:
             self.assertEqual(1, len(list(self.client._paginas("sn_customerservice_case", "active=true"))))
@@ -172,6 +260,28 @@ def documento(tipo="casos"):
 
 
 class ServiceNowMappingTest(unittest.TestCase):
+    def test_campos_estandar_sla_y_notas_antes_omitidos(self):
+        doc = documento()
+        doc["campos_raw"].update({
+            "made_sla": field("true", "verdadero"),
+            "comments_and_work_notes": field("Observación completa"),
+            "work_notes": field("Nota original"),
+        })
+        row = mapear_documento(doc)
+        self.assertEqual("verdadero", row["sla_creado"])
+        self.assertEqual("Observación completa", row["observaciones_trabajo"])
+        self.assertEqual("Nota original", row["notas_trabajo"])
+
+    def test_campo_personalizado_vacio_no_oculta_alternativa_estandar(self):
+        doc = documento()
+        doc["campos_raw"].update({"u_producto": field(""), "product": field("id", "Firma digital"),
+                                  "close_notes": field(""), "resolution_notes": field("Resolución"),
+                                  "u_sla_creado": field(""), "made_sla": False})
+        row = mapear_documento(doc)
+        self.assertEqual("Firma digital", row["producto"])
+        self.assertEqual("Resolución", row["notas_resolucion"])
+        self.assertIs(False, row["sla_creado"])
+
     def test_fechas_y_limites_mensuales_en_colombia(self):
         self.assertEqual(("2026-12-01 05:00:00", "2027-01-01 05:00:00"), limites_mes_utc("2026-12"))
         for mes in ("2026-13", "2026-1", "2026-10^ORactive=true", "9999-12"):

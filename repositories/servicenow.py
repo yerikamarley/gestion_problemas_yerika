@@ -78,6 +78,16 @@ def leer_historial_conversacion(conn, tabla, numero):
     return row[0] if row else None
 
 
+def leer_campos_casos(conn, numeros):
+    """Una consulta por selección; no descarga nuevamente los cuerpos de correo."""
+    if not numeros:
+        return []
+    return db_execute(conn, """SELECT numero, documento->'campos_raw', documento->'slas'
+        FROM servicenow_records
+        WHERE tabla = 'sn_customerservice_case' AND numero = ANY(?::text[])""",
+        (list(dict.fromkeys(numeros)),)).fetchall()
+
+
 def activar_sincronizacion_casos(conn, actor_email):
     # La activación sobrevive al reinicio del servidor y no guarda credenciales.
     db_execute(conn, """INSERT INTO servicenow_sync_state (tipo, habilitada, actor_email)

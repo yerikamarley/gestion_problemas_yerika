@@ -14,6 +14,7 @@ from repositories.servicenow import (
     ensure_servicenow_schema, guardar_documento, leer_documento,
     leer_estado_sincronizacion, guardar_estado_sincronizacion,
     activar_sincronizacion_casos, leer_activacion_casos, leer_historial_conversacion,
+    leer_campos_casos,
 )
 from core.servicenow_config import guardar_conexion_servidor, conexion_configurada, sincronizacion_habilitada
 
@@ -2346,6 +2347,17 @@ def aplicar_tipificaciones_casos(df):
 def load_casos():
     exigir_contexto_lectura()
     return aplicar_tipificaciones_casos(read_table("cases"))
+
+
+def load_campos_casos(numeros):
+    exigir_contexto_lectura()
+    if not numeros:
+        return []
+    conn = get_conn()
+    try:
+        return leer_campos_casos(conn, numeros)
+    finally:
+        conn.close()
 
 
 def load_casos_filtrados(anio=None, mes=None, cliente=None, estado=None, servicio=None, tipificacion=None, limit=None,

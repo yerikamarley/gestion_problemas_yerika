@@ -37,6 +37,14 @@ class ServiceNowAuthenticationError(ServiceNowError):
     """El administrador debe volver a autenticar la conexión API."""
 
 
+class ServiceNowQueryError(ServiceNowError):
+    """Rechazo de Table API con estado HTTP, sin guardar el cuerpo remoto."""
+
+    def __init__(self, mensaje, http_status):
+        super().__init__(mensaje)
+        self.http_status = http_status
+
+
 class ServiceNowMFARequiredError(ServiceNowAuthenticationError):
     """La API pide al administrador renovar su verificación multifactor."""
 
@@ -150,6 +158,23 @@ def mensaje_rechazo_oauth(response):
     return (f"ServiceNow rechazó la solicitud del token OAuth (HTTP {response.status_code}). "
             "Revisa el ID, el secreto, el usuario de aplicación OAuth y que las credenciales de cliente estén habilitadas. "
             "Consulta el registro OAuth de ServiceNow para identificar el motivo concreto.")
+
+
+def mensaje_rechazo_consulta(response, tabla):
+    """Reconoce motivos de Table API sin publicar correos ni texto remoto libre."""
+    base = f"ServiceNow rechazó la consulta de {tabla} (HTTP {response.status_code})."
+    try:
+        payload = response.json()
+        error = payload.get("error") if isinstance(payload, dict) else None
+        message = error.get("message") if isinstance(error, dict) else None
+    except (ValueError, TypeError):
+        message = None
+    motivos = {
+        "Pagination not supported": " La instancia rechazó los enlaces de paginación de una consulta larga.",
+        "Invalid table": " La tabla no está disponible mediante Table API; revisa su acceso por servicios web.",
+        "Invalid query": " La instancia rechazó el filtro de consulta; revisa los nombres de sus campos.",
+    }
+    return base + (motivos.get(message, "") if isinstance(message, str) else "")
 
 
 def normalizar_instancia(instance):
@@ -285,6 +310,9 @@ class ServiceNowClient:
                     f"{self._base_url}/{tabla}",
                     params={"sysparm_query": query + "^ORDERBYsys_id",
                             "sysparm_display_value": "all", "sysparm_exclude_reference_link": "true",
+                            # Los lotes IN pueden superar el tamaño permitido para
+                            # los enlaces Link. Paginamos con offset, sin usarlos.
+                            "sysparm_suppress_pagination_header": "true",
                             "sysparm_limit": PAGE_SIZE, "sysparm_offset": offset},
                     timeout=(10, 60), allow_redirects=False,
                 )
@@ -306,7 +334,7 @@ class ServiceNowClient:
                         raise ServiceNowError(
                             f"ServiceNow no permite consultar {tabla} por API (HTTP 403). Revisa los permisos de lectura y la política de acceso API."
                         )
-                    raise ServiceNowError(f"ServiceNow rechazó la consulta de {tabla} (HTTP {response.status_code}).")
+                    raise ServiceNowQueryError(mensaje_rechazo_consulta(response, tabla), response.status_code)
                 result = response.json().get("result")
                 if not isinstance(result, list) or any(not isinstance(row, dict) for row in result):
                     raise ServiceNowError(f"ServiceNow devolvió datos inválidos para {tabla}.")
@@ -372,19 +400,35 @@ class ServiceNowClient:
                 "campos_raw": raw, "slas": slas, "traza_unificada": timeline,
                 "historial_conversacion": timeline}
 
+    def _paginas_referencias(self, fuente, referencia, ids, tabla):
+        if not ids:
+            return
+        prefijo = f"target_table={tabla}^" if fuente == "sys_email" else ""
+        query = f"{prefijo}{referencia}IN{','.join(ids)}"
+        try:
+            # No entregar resultados parciales si hay que reintentar el lote.
+            paginas = list(self._paginas(fuente, query))
+        except ServiceNowQueryError as error:
+            if error.http_status != 400 or len(ids) <= 1:
+                raise
+            mitad = len(ids) // 2
+            for parte in (ids[:mitad], ids[mitad:]):
+                yield from self._paginas_referencias(fuente, referencia, parte, tabla)
+            return
+        yield from paginas
+
     def _consolidar_pagina(self, rows, tipo="casos"):
         tabla = validar_tipo(tipo)
         ids = [valor(row.get("sys_id")) for row in rows]
         if any(not isinstance(s, str) or not re.fullmatch(r"[0-9a-fA-F]{32}", s) for s in ids):
             raise ServiceNowError("ServiceNow devolvió un sys_id inválido.")
         grupos = {s: defaultdict(list) for s in ids}
-        lista = ",".join(ids)
-        for fuente, referencia, query in (
-            ("task_sla", "task", f"taskIN{lista}"),
-            ("sys_journal_field", "element_id", f"element_idIN{lista}"),
-            ("sys_email", "instance", f"target_table={tabla}^instanceIN{lista}"),
+        for fuente, referencia in (
+            ("task_sla", "task"),
+            ("sys_journal_field", "element_id"),
+            ("sys_email", "instance"),
         ):
-            for page in self._paginas(fuente, query):
+            for page in self._paginas_referencias(fuente, referencia, ids, tabla):
                 for row in page:
                     referencia_id = valor(row.get(referencia))
                     if referencia_id in grupos:
@@ -448,6 +492,10 @@ CASE_FIELDS = {
     "notas_resolucion": ("close_notes", "resolution_notes"), "causa": ("u_causa_raiz",),
     "nombre_proveedor": ("u_nombre_del_proveedor",), "numero_caso_externo": ("u_numero_de_caso_externo",),
     "observaciones_adicionales": ("u_observaciones_adicionales",),
+    "sla_creado": ("u_sla_creado", "made_sla"),
+    "observaciones_trabajo": ("comments_and_work_notes",),
+    "notas_trabajo": ("work_notes",),
+    "caso_referencia": ("case",),
 }
 INCIDENT_FIELDS = {
     "numero": ("number",), "solicitante": ("caller_id",), "breve_descripcion": ("short_description",),
@@ -459,7 +507,7 @@ INCIDENT_FIELDS = {
     "escalado_proveedor": ("u_escalado_a_proveedor",), "nombre_proveedor": ("u_nombre_del_proveedor",),
     "tipo_falla": ("u_tipo_de_falla",),
 }
-DATE_COLUMNS = {"creado", "cerrado", "actualizado", "fecha_vencimiento_sla", "sla_creado"}
+DATE_COLUMNS = {"creado", "cerrado", "actualizado", "fecha_vencimiento_sla"}
 
 
 def mapear_documento(documento, tipo="casos"):
@@ -478,7 +526,11 @@ def mapear_documento(documento, tipo="casos"):
     raw = documento["campos_raw"]
     mapped = {}
     for column, candidates in fields.items():
-        field = next((field for field in candidates if field in raw), None)
+        presentes = [field for field in candidates if field in raw]
+        # Un campo personalizado vacío no debe ocultar su alternativa estándar
+        # cuando ambas claves vienen en la respuesta completa de la API.
+        field = next((field for field in presentes if valor(raw[field]) not in (None, "")),
+                     presentes[0] if presentes else None)
         if field is None:
             continue
         content = valor(raw[field], legible=column not in DATE_COLUMNS and column != "numero")
@@ -490,7 +542,8 @@ def mapear_documento(documento, tipo="casos"):
                 content = content.astimezone(ZoneInfo("America/Bogota")).strftime("%Y-%m-%d %H:%M:%S")
             except ValueError:
                 raise ServiceNowError(f"Fecha inválida en el campo {field}.") from None
-        mapped[column] = content or ""
+        # Mantener False/0: son valores reales de origen, no campos vacíos.
+        mapped[column] = "" if content is None else content
     timeline = documento.get("historial_conversacion", documento.get("traza_unificada", []))
     traza = texto_historial(timeline)
     notas = " --- ".join(r["contenido"] for r in timeline if r["tipo"] == "Nota de Trabajo")

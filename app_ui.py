@@ -44,6 +44,7 @@ from services.casos_sla import (
     tabla_casos_plataforma,
 )
 from services.servicenow import ServiceNowError
+from services.casos_campos import ampliar_columnas_casos
 from services.servicenow_worker import CaseSyncWorker
 from services.resumen_ejecutivo_casos import periodos_corte, construir_resumen_ejecutivo, agrupar_causas, causas_para_lamina
 from components.resumen_ejecutivo_casos import lamina_resumen_casos
@@ -88,6 +89,7 @@ from app_logic import (
     load_casos,
     load_casos_anios,
     load_casos_filtrados,
+    load_campos_casos,
     load_incidentes,
     load_incidentes_anios,
     load_incidentes_filtrados,
@@ -130,7 +132,9 @@ from core.permissions import (
     obtener_vistas_permitidas,
     puede_acceder,
 )
-from core.auth_context import establecer_contexto_autorizacion, restaurar_contexto_autorizacion
+from core.auth_context import (
+    establecer_contexto_autorizacion, restaurar_contexto_autorizacion, obtener_contexto_autorizacion,
+)
 
 
 # Constantes genericas para literales repetidos detectados por SonarQube
@@ -407,6 +411,12 @@ def render_descarga_dataframe(df, key, nombre_base, periodo_label):
         key=key,
         help="Incluye todos los registros del periodo y filtros actuales, no solo la pagina visible.",
     )
+
+
+@st.cache_data(ttl=CACHE_TTL_SEGUNDOS, show_spinner=False)
+def cargar_casos_campos_cache(numeros, actor_email, vista):
+    # Identidad y vista forman parte de la clave, también al reutilizar el caché.
+    return load_campos_casos(numeros)
 
 
 @st.cache_data(ttl=CACHE_TTL_SEGUNDOS, show_spinner=False)
@@ -11624,6 +11634,10 @@ def vista_casos():
         return
     fecha_inicio, fecha_fin, periodo_label = periodo
     df = cargar_casos_soporte_filtrados_cache(fecha_inicio=fecha_inicio, fecha_fin=fecha_fin)
+    if not df.empty:
+        actor, vista = obtener_contexto_autorizacion()
+        campos = cargar_casos_campos_cache(tuple(sorted(set(df["numero"]))), actor, vista)
+        df = ampliar_columnas_casos(df, campos)
     filtro_estado = TEXT_TODOS
     filtro_soporte = TEXT_TODOS
     filtro_servicio = TEXT_TODOS

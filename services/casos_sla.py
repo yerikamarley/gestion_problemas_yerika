@@ -118,11 +118,16 @@ def resumen_sla_casos(df):
 
 
 def tabla_casos_plataforma(df, adicionales=()):
-    """Mantiene las 26 columnas de origen y añade los resultados de la herramienta."""
+    """Mantiene las columnas históricas e incluye todos los campos sincronizados."""
+    from services.casos_campos import etiquetas_columnas_adicionales
+
     extras = [col for col in adicionales if col in df.columns and col not in COLUMNAS_CASOS_PLATAFORMA]
+    etiquetas_api = etiquetas_columnas_adicionales(df.columns)
+    extras.extend(col for col in etiquetas_api if col not in extras)
     if "historial_conversacion" in df.columns and "historial_conversacion" not in extras:
         extras.append("historial_conversacion")
     return df.reindex(columns=[*COLUMNAS_CASOS_PLATAFORMA, *extras]).rename(
-        columns={**COLUMNAS_CASOS_PLATAFORMA, "historial_conversacion": "Historial de la conversación",
+        columns={**COLUMNAS_CASOS_PLATAFORMA, **etiquetas_api,
+                 "historial_conversacion": "Historial de la conversación",
                  COL_ESTADO_SLA: "Estado SLA", "horas_para_vencer": "Horas restantes / margen al cierre"}
     )
