@@ -3,18 +3,20 @@ import unicodedata
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 from math import ceil
+from time import monotonic
 
 import pandas as pd
 from services.casos_sla import guardar_fecha_plataforma
 from services.servicenow import (
     ServiceNowClient, ServiceNowError, ServiceNowAuthenticationError,
-    mapear_documento, validar_tipo, validar_numero, limites_mes_utc, normalizar_instancia,
+    mapear_documento, validar_tipo, validar_numero, limites_mes_utc, limites_rango_utc, normalizar_instancia,
 )
 from repositories.servicenow import (
     ensure_servicenow_schema, guardar_documento, leer_documento,
     leer_estado_sincronizacion, guardar_estado_sincronizacion,
     activar_sincronizacion_casos, leer_activacion_casos, leer_historial_conversacion,
     leer_campos_casos,
+    guardar_estado_sincronizacion_manual,
 )
 from core.servicenow_config import guardar_conexion_servidor, conexion_configurada, sincronizacion_habilitada
 
@@ -2106,6 +2108,7 @@ def _guardar_pagina_servicenow(documentos, tipo, actor_email):
     """La fila analítica y su JSON se confirman en la misma transacción por página."""
     conn = get_conn()
     try:
+        db_execute(conn, "SET LOCAL lock_timeout = '10s'")
         _bloquear_y_validar_admin(conn, actor_email)
         tabla_local = "cases" if tipo == "casos" else "incidents"
         if tipo == "casos":
@@ -2149,33 +2152,118 @@ def _guardar_pagina_servicenow(documentos, tipo, actor_email):
         conn.close()
 
 
-def sincronizar_servicenow(*, actor_email, tipo="casos", mes=None, numero=None, progress_callback=None):
+def _tomar_bloqueo_sincronizacion(control):
+    # Un bloqueo de transacción mantiene el backend asignado en el pooler 6543.
+    # La nueva clave evita depender de bloqueos de sesión de versiones anteriores.
+    db_execute(control, "SET LOCAL idle_in_transaction_session_timeout = '5min'")
+    return bool(db_execute(control, "SELECT pg_try_advisory_xact_lock(hashtext(?))",
+                           ("servicenow:casos:ingesta:v2",)).fetchone()[0])
+
+
+def _crear_pulso_sincronizacion(control):
+    ultima = monotonic()
+
+    def pulsar():
+        nonlocal ultima
+        if monotonic() - ultima >= 30:
+            db_execute(control, "SELECT 1")
+            ultima = monotonic()
+    return pulsar
+
+
+def _registrar_estado_ingesta(*, automatica, **estado):
+    # Confirmar el estado en otra conexión permite mostrarlo mientras sigue
+    # activa la transacción que coordina la sincronización.
+    conn = get_conn()
+    try:
+        guardar = guardar_estado_sincronizacion if automatica else guardar_estado_sincronizacion_manual
+        guardar(conn, **estado)
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def _consultar_estado_ingesta():
+    # La transacción de coordinación no lee tablas: tampoco bloquea migraciones.
+    conn = get_conn()
+    try:
+        return leer_estado_sincronizacion(conn) or {}
+    finally:
+        conn.close()
+
+
+def sincronizar_servicenow(*, actor_email, tipo="casos", mes=None, numero=None,
+                          fecha_inicio=None, fecha_fin=None, progress_callback=None):
     """Fachada para Streamlit, proxy HTTP y tareas programadas; exige Admin vigente."""
     validar_tipo(tipo)
     exigir_permiso_actor(actor_email, ACTION_WRITE_CASES if tipo == "casos" else ACTION_WRITE_INCIDENTS)
-    if (mes is None) == (numero is None):
-        raise ValueError("Indica un mes o un número de registro.")
+    tiene_rango = fecha_inicio is not None or fecha_fin is not None
+    if sum((mes is not None, numero is not None, tiene_rango)) != 1:
+        raise ValueError("Indica un período de fechas, un mes o un número de registro.")
     if mes is not None:
         limites_mes_utc(mes)
-    else:
+    elif numero is not None:
         validar_numero(numero, tipo)
+    else:
+        limites_rango_utc(fecha_inicio, fecha_fin)
     cargados = reemplazados = 0
-    emitir_progreso(progress_callback, 0, "Consultando ServiceNow...")
-    with ServiceNowClient() as client:
-        if numero is not None:
-            documento = client.obtener(numero, tipo)
-            paginas = [[documento]] if documento else []
-        else:
-            paginas = client.listar_mes(mes, tipo)
-        for documentos in paginas:
-            nuevos, existentes = ejecutar_con_reintentos_db(
-                lambda: _guardar_pagina_servicenow(documentos, tipo, actor_email)
-            )
-            cargados += nuevos
-            reemplazados += existentes
-            emitir_progreso(progress_callback, 0.5, f"Registros sincronizados: {cargados}")
-    emitir_progreso(progress_callback, 1, "Sincronización finalizada.")
-    return {"tipo": tipo, "mes": mes, "numero": numero, "cargados": cargados, "actualizados": reemplazados}
+    avance = 0
+
+    def informar(valor, mensaje):
+        nonlocal avance
+        if pulsar:
+            pulsar()
+        avance = max(avance, valor)
+        emitir_progreso(progress_callback, avance, f"{mensaje} Casos guardados: {cargados}." if tipo == "casos" else mensaje)
+
+    control = get_conn() if tipo == "casos" else None
+    bloqueo = False
+    pulsar = None
+    intento = datetime.now(timezone.utc)
+    try:
+        if control is not None:
+            bloqueo = _tomar_bloqueo_sincronizacion(control)
+            if not bloqueo:
+                return {"ocupado": True, "cargados": 0, "actualizados": 0}
+            pulsar = _crear_pulso_sincronizacion(control)
+            _registrar_estado_ingesta(automatica=False, estado="sincronizando", intento=intento)
+        informar(0, "Iniciando la consulta del período seleccionado...")
+        with ServiceNowClient(progress_callback=informar) as client:
+            if numero is not None:
+                documento = client.obtener(numero, tipo)
+                paginas = [[documento]] if documento else []
+            elif mes is not None:
+                paginas = client.listar_mes(mes, tipo)
+            else:
+                paginas = client.listar_rango(fecha_inicio, fecha_fin, tipo)
+            for documentos in paginas:
+                informar(avance, f"Guardando {len(documentos)} {tipo} y su historial...")
+                nuevos, existentes = ejecutar_con_reintentos_db(
+                    lambda: _guardar_pagina_servicenow(documentos, tipo, actor_email)
+                )
+                cargados += nuevos
+                reemplazados += existentes
+                total = client.total_registros
+                progreso = min(0.95, cargados / total) if isinstance(total, int) and total > 0 else avance
+                informar(progreso, f"Registros sincronizados: {cargados}.")
+        if control is not None:
+            _registrar_estado_ingesta(automatica=False, estado="correcto", intento=intento, registros=cargados)
+        informar(1, "Sincronización finalizada.")
+        return {"tipo": tipo, "mes": mes, "numero": numero, "cargados": cargados, "actualizados": reemplazados}
+    except Exception as error:
+        if control is not None and bloqueo:
+            mensaje = str(error) if isinstance(error, (ServiceNowError, AutorizacionError)) else "No se pudo completar la sincronización."
+            _registrar_estado_ingesta(automatica=False, estado="error", intento=intento, mensaje=mensaje, registros=cargados)
+        raise
+    finally:
+        if control is not None:
+            try:
+                control.rollback()  # Libera automáticamente el bloqueo, incluso tras un error.
+            finally:
+                control.close()
 
 
 def consultar_traza_servicenow(numero, *, actor_email, tipo="casos"):
@@ -2293,46 +2381,38 @@ def sincronizar_casos_automaticamente(*, actor_email):
     intento = datetime.now(timezone.utc).replace(microsecond=0)
     cargados = actualizados = 0
     try:
-        bloqueo = bool(db_execute(control, "SELECT pg_try_advisory_lock(hashtext(?))",
-                                 ("servicenow:casos:automatico",)).fetchone()[0])
+        bloqueo = _tomar_bloqueo_sincronizacion(control)
         if not bloqueo:
             return {"ocupado": True, "cargados": 0}
-        estado = leer_estado_sincronizacion(control) or {}
+        estado = _consultar_estado_ingesta()
         ultima = estado.get("ultima_correcta")
         if ultima:
             desde = ultima - timedelta(minutes=2)
         else:
             desde = intento.astimezone(ZoneInfo("America/Bogota")).replace(hour=0, minute=0, second=0).astimezone(timezone.utc)
-        guardar_estado_sincronizacion(control, estado="sincronizando", intento=intento)
-        control.commit()
-        with ServiceNowClient() as client:
+        _registrar_estado_ingesta(automatica=True, estado="sincronizando", intento=intento)
+        pulsar = _crear_pulso_sincronizacion(control)
+        with ServiceNowClient(progress_callback=lambda *_: pulsar()) as client:
             for documentos in client.listar_casos_actualizados(desde, intento):
                 nuevos, existentes = ejecutar_con_reintentos_db(
                     lambda: _guardar_pagina_servicenow(documentos, "casos", actor_email)
                 )
                 cargados += nuevos
                 actualizados += existentes
-        guardar_estado_sincronizacion(control, estado="correcto", intento=intento, correcta=intento, registros=cargados)
-        control.commit()
+        _registrar_estado_ingesta(automatica=True, estado="correcto", intento=intento, correcta=intento, registros=cargados)
         return {"cargados": cargados, "actualizados": actualizados}
     except Exception as error:
-        control.rollback()
         if bloqueo:
             mensaje = str(error) if isinstance(error, (ServiceNowError, AutorizacionError)) else "No se pudo completar la actualización automática."
-            guardar_estado_sincronizacion(
-                control, estado="requiere_autenticacion" if isinstance(error, ServiceNowAuthenticationError) else "error",
+            _registrar_estado_ingesta(
+                automatica=True, estado="requiere_autenticacion" if isinstance(error, ServiceNowAuthenticationError) else "error",
                 intento=intento, mensaje=mensaje, registros=cargados,
             )
-            control.commit()
         raise
     finally:
-        if bloqueo:
-            try:
-                db_execute(control, "SELECT pg_advisory_unlock(hashtext(?))", ("servicenow:casos:automatico",))
-                control.commit()
-            finally:
-                control.close()
-        else:
+        try:
+            control.rollback()
+        finally:
             control.close()
 
 

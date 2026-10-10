@@ -8,6 +8,7 @@ from services.casos_sla import (
     COL_ESTADO_SLA, COLUMNAS_CASOS_PLATAFORMA, agregar_sla_casos,
     guardar_fecha_plataforma, resumen_sla_casos, tabla_casos_plataforma,
 )
+from services.casos_campos import COLUMNAS_CASOS_PORTAL
 
 
 class CasosSlaTest(unittest.TestCase):
@@ -181,7 +182,7 @@ with patch.object(ui, "selector_fechas_casos", return_value=(date(2026, 8, 1), d
     ui.vista_casos()
 ''').run()
         self.assertEqual(0, len(app.exception))
-        self.assertEqual(list(COLUMNAS_CASOS_PLATAFORMA.values()), app.dataframe[0].value.columns[:26].tolist())
+        self.assertEqual(list(COLUMNAS_CASOS_PORTAL), app.dataframe[0].value.columns.tolist())
         self.assertIn("Horas restantes / margen al cierre", app.dataframe[0].value.columns)
         app.selectbox(key="estado_sla_casos").select("Vencido").run()
         self.assertEqual(0, len(app.exception))

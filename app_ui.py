@@ -44,7 +44,7 @@ from services.casos_sla import (
     tabla_casos_plataforma,
 )
 from services.servicenow import ServiceNowError
-from services.casos_campos import ampliar_columnas_casos
+from services.casos_campos import ampliar_columnas_casos, tabla_casos_portal
 from services.servicenow_worker import CaseSyncWorker
 from services.resumen_ejecutivo_casos import periodos_corte, construir_resumen_ejecutivo, agrupar_causas, causas_para_lamina
 from components.resumen_ejecutivo_casos import lamina_resumen_casos
@@ -308,6 +308,11 @@ def limpiar_cache_casos():
     cargar_meses_disponibles_cache.clear()
     cargar_ultimo_mes_disponible_cache.clear()
     cargar_meses_disponibles_multi_cache.clear()
+
+
+@st.cache_resource
+def inicializar_base_datos_cache():
+    init_db()
 
 
 @st.cache_resource
@@ -11464,7 +11469,7 @@ def vista_cargar_casos():
         (st.success if resultado["ok"] else st.error)(resultado["mensaje"])
     render_estado_actualizacion_casos()
     st.caption("Después de conectar se actualizan los casos nuevos y sus cambios automáticamente. "
-               "Puedes completar un mes histórico mediante la API.")
+               "Puedes completar otros períodos mediante la consulta por fechas.")
     vista_sincronizar_servicenow("casos")
 
 
@@ -11493,7 +11498,7 @@ def render_estado_actualizacion_casos():
     except Exception:
         st.caption("No se pudo comprobar la última actualización.")
         return
-    ultima = estado.get("ultima_correcta")
+    ultima = estado.get("ultima_datos") or estado.get("ultima_correcta")
     if ultima:
         fecha = pd.Timestamp(ultima).tz_convert(ZONA_PLATAFORMA)
         st.caption(f"Última actualización de casos: {fecha:%d/%m/%Y %H:%M:%S}")
@@ -11511,24 +11516,36 @@ def render_estado_actualizacion_casos():
         st.warning("Un administrador debe revisar la autorización de la integración y validar la conexión.")
     elif estado.get("estado") == "error":
         st.warning("La última actualización no se completó. Se conservan los datos almacenados.")
+        if estado.get("mensaje"):
+            st.caption(estado["mensaje"])
 
 
 def vista_sincronizar_servicenow(tipo):
     st.markdown(f"#### Sincronizar {tipo} desde ServiceNow")
     st.caption("Actualiza los datos, SLAs y actividades para los reportes y tableros.")
-    with st.form(f"servicenow_sync_{tipo}"):
-        opciones = ["Hoy", "Mes", "Número"] if tipo == "casos" else ["Mes", "Número"]
-        modo = st.radio("Consultar", opciones, horizontal=True)
-        mes = st.text_input("Mes (AAAA-MM)", value=pd.Timestamp.now(tz=ZONA_PLATAFORMA).strftime("%Y-%m"))
-        numero = st.text_input("Número de caso" if tipo == "casos" else "Número de incidente")
-        ejecutar = st.form_submit_button("Sincronizar", type="primary")
+    if tipo == "casos":
+        st.caption("Trae y actualiza los casos creados en el período elegido, con sus SLAs y el historial completo.")
+        periodo = selector_fechas_casos(clave="sync_casos", etiqueta="Período para sincronizar", opcion_mes="Mes")
+        if periodo is None:
+            return
+        inicio, fin, etiqueta = periodo
+        st.caption(f"Período seleccionado: {etiqueta}")
+        ejecutar = st.button("Sincronizar", type="primary", key="servicenow_sync_casos_ejecutar")
+    else:
+        with st.form(f"servicenow_sync_{tipo}"):
+            modo = st.radio("Consultar", ["Mes", "Número"], horizontal=True)
+            mes = st.text_input("Mes (AAAA-MM)", value=pd.Timestamp.now(tz=ZONA_PLATAFORMA).strftime("%Y-%m"))
+            numero = st.text_input("Número de incidente")
+            ejecutar = st.form_submit_button("Sincronizar", type="primary")
     if not ejecutar:
         return
     progreso = crear_barra_progreso_carga("Consultando ServiceNow...")
     try:
-        if modo == "Hoy":
-            result = sincronizar_casos_automaticamente(actor_email=st.session_state.get("user"))
-            progreso(1, "Actualización de casos finalizada.")
+        if tipo == "casos":
+            result = sincronizar_servicenow(
+                actor_email=st.session_state.get("user"), tipo=tipo,
+                fecha_inicio=inicio, fecha_fin=fin, progress_callback=progreso,
+            )
         else:
             result = sincronizar_servicenow(
                 actor_email=st.session_state.get("user"), tipo=tipo,
@@ -11547,10 +11564,12 @@ def vista_sincronizar_servicenow(tipo):
         progreso(1, "Sincronización interrumpida.")
         st.error("No se pudo completar la sincronización. Revisa la conexión y configuración del servidor.")
         return
-    limpiar_cache_datos()
     if result.get("ocupado"):
-        st.info("Ya hay una actualización automática en curso.")
+        progreso(1, "Ya hay otra sincronización en curso.")
+        st.info("Ya hay una sincronización de casos en curso. Espera a que termine antes de iniciar otra.")
         return
+    if result["cargados"]:
+        limpiar_cache_datos()
     if result["cargados"]:
         st.success(f"Sincronizados: {result['cargados']} | Registros existentes actualizados: {result['actualizados']}")
     else:
@@ -11586,31 +11605,31 @@ def render_consulta_traza_servicenow(tipo):
             except Exception:
                 st.error("No se pudo consultar el historial de la conversación.")
 
-def selector_fechas_casos():
+def selector_fechas_casos(*, clave="casos", etiqueta="Fecha de creación de los casos", opcion_mes="Mes completo"):
     hoy = pd.Timestamp.now(tz=ZONA_PLATAFORMA).date()
     modo = st.radio(
-        "Fecha de creación de los casos",
-        ["Hoy", "Ayer y hoy", "Mes completo", "Rango de fechas"],
+        etiqueta,
+        ["Hoy", "Ayer y hoy", opcion_mes, "Rango de fechas"],
         horizontal=True,
-        key="periodo_consulta_casos",
+        key=f"periodo_consulta_{clave}",
     )
     inicio = fin = hoy
     if modo == "Ayer y hoy":
         inicio = (pd.Timestamp(hoy) - pd.Timedelta(days=1)).date()
-    elif modo == "Mes completo":
+    elif modo == opcion_mes:
         col_anio, col_mes = st.columns(2)
         with col_anio:
-            anio = int(st.number_input("Año", min_value=1900, max_value=2100, value=hoy.year, step=1, key="anio_consulta_casos"))
+            anio = int(st.number_input("Año", min_value=1900, max_value=2100, value=hoy.year, step=1, key=f"anio_consulta_{clave}"))
         with col_mes:
             mes = st.selectbox("Mes", list(range(1, 13)), index=hoy.month - 1,
-                               format_func=lambda valor: MONTH_NAMES_ES[valor], key="mes_consulta_casos")
+                               format_func=lambda valor: MONTH_NAMES_ES[valor], key=f"mes_consulta_{clave}")
         inicio = pd.Timestamp(year=anio, month=mes, day=1).date()
         fin = (pd.Timestamp(inicio) + pd.offsets.MonthEnd(0)).date()
     elif modo == "Rango de fechas":
         rango = st.date_input(
             "Desde / hasta", value=(hoy, hoy), format="DD/MM/YYYY",
             min_value=pd.Timestamp("1900-01-01").date(),
-            key="rango_consulta_casos",
+            key=f"rango_consulta_{clave}",
             help="Incluye ambos días completos. Puedes elegir un solo día o un rango entre meses.",
         )
         if len(rango) != 2:
@@ -11637,7 +11656,7 @@ def vista_casos():
     if not df.empty:
         actor, vista = obtener_contexto_autorizacion()
         campos = cargar_casos_campos_cache(tuple(sorted(set(df["numero"]))), actor, vista)
-        df = ampliar_columnas_casos(df, campos)
+        df = ampliar_columnas_casos(df, campos, solo_portal=True)
     filtro_estado = TEXT_TODOS
     filtro_soporte = TEXT_TODOS
     filtro_servicio = TEXT_TODOS
@@ -11756,18 +11775,12 @@ def vista_casos():
             "Horas positivas: tiempo restante o margen al cierre; negativas: atraso. "
             "El porcentaje de cumplimiento considera solo casos cerrados con fechas evaluables."
         )
-        df = tabla_casos_plataforma(df, adicionales=[
-            COL_ESTADO_SLA, "horas_para_vencer", "mes",
-            "Grupo cliente clave", "Cliente clave detectado", "Fuente identificación VIP",
-            COL_SEGMENTO_ASIGNACION, TEXT_TIPOLOGIA_SOPORTE,
-            TEXT_TIPIFICACION_2, TEXT_TIEMPO_RESPUESTA,
-            "Grupo migración PKI",
-        ])
+        df = tabla_casos_portal(df)
         st.caption(f"Registros encontrados: {len(df)}")
         st.caption(f"{TEXT_PERIODO}{periodo_label}")
     else:
         st.info(f"No hay casos creados en el período {periodo_label}.")
-        df = tabla_casos_plataforma(df)
+        df = tabla_casos_portal(df)
     render_descarga_dataframe(df, "descargar_casos_completos", "casos", periodo_label)
     dataframe_paginado(
         df,
@@ -12438,7 +12451,7 @@ def render_menu_y_vista():
 
 def run_app():
     aplicar_tema_visual()
-    init_db()
+    inicializar_base_datos_cache()
     iniciar_sincronizacion_casos()
     if not hay_usuarios():
         configurar_primer_admin()

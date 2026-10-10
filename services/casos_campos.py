@@ -40,6 +40,20 @@ PREFIJO_CAMPO = "sn__"
 PREFIJO_SLA = "sn_sla__"
 ETIQUETAS_SLA = {"sla": "Nombre", "stage": "Estado", "start_time": "Inicio",
                  "planned_end_time": "Vencimiento", "has_breached": "Incumplido", "sys_id": "ID"}
+CAMPO_PORTAL = {"active", "opened_at", "opened_by", "assigned_on", "case_report", "description",
+                "u_boolean_3", "sys_mod_count", "sys_updated_by"}
+COLUMNAS_CASOS_PORTAL = (
+    "Número", "Estado", "Breve descripción", "Contacto", "Creado por", "Cuenta", "Creado",
+    "Fecha de vencimiento del SLA", "Cerrado", "Asignado a", "Prioridad", "Producto",
+    "Notas de resolución", "Observaciones adicionales", "Observaciones y notas de trabajo",
+    "Notas del trabajo", "Causa Raiz*", "Escalado a proveedor", "Nombre del proveedor", "Actualizado",
+    "Estado SLA", "Horas restantes / margen al cierre", "mes", "Grupo cliente clave",
+    "Cliente clave detectado", "Fuente identificación VIP", "Segmento de asignación", "Tipologia caso",
+    "tipificacion", "tiempo_respuesta", "Grupo migración PKI", "Activo", "Abierto", "Abierto por",
+    "Asignado el", "Informe de caso", "Descripción", "Escalado a proveedor (u_boolean_3)",
+    "Actualizaciones", "Actualizado por", "SLA 1 · Estado", "SLA 1 · Inicio", "SLA 1 · Vencimiento",
+    "Historial de la conversación",
+)
 
 
 def valor_columna(campo, nombre):
@@ -61,7 +75,7 @@ def valor_columna(campo, nombre):
     return str(contenido)
 
 
-def ampliar_columnas_casos(df, registros):
+def ampliar_columnas_casos(df, registros, *, solo_portal=False):
     """Conserva filas e índices; expande campos y todos los SLA sin duplicar casos."""
     if df.empty or not registros:
         return df.copy()
@@ -80,11 +94,12 @@ def ampliar_columnas_casos(df, registros):
             if campo and ETIQUETAS_CAMPOS.get(campo) == COLUMNAS_CASOS_PLATAFORMA[col]:
                 usados.add(campo)
         fila = {PREFIJO_CAMPO + campo: valor_columna(contenido, campo)
-                for campo, contenido in raw.items() if campo not in usados}
-        if raw or slas:
+                for campo, contenido in raw.items()
+                if campo not in usados and (not solo_portal or campo in CAMPO_PORTAL)}
+        if (raw or slas) and not solo_portal:
             fila[PREFIJO_SLA + "cantidad"] = str(len(slas))
-        for posicion, sla in enumerate(slas, 1):
-            for campo in ETIQUETAS_SLA:
+        for posicion, sla in enumerate(slas[:1] if solo_portal else slas, 1):
+            for campo in ("stage", "start_time", "planned_end_time") if solo_portal else ETIQUETAS_SLA:
                 fila[f"{PREFIJO_SLA}{posicion}__{campo}"] = valor_columna(sla.get(campo), campo)
         filas.append(fila)
     trabajo = df.copy()
@@ -112,3 +127,10 @@ def etiquetas_columnas_adicionales(columnas):
         resultado[columna] = etiqueta
         existentes.add(etiqueta)
     return resultado
+
+
+def tabla_casos_portal(df):
+    from services.casos_sla import COL_ESTADO_SLA, tabla_casos_plataforma
+
+    tabla = tabla_casos_plataforma(df, adicionales=[COL_ESTADO_SLA, "horas_para_vencer", *COLUMNAS_CASOS_PORTAL])
+    return tabla.reindex(columns=COLUMNAS_CASOS_PORTAL)

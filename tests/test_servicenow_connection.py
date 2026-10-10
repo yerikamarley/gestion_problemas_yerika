@@ -148,7 +148,7 @@ class IncrementalSyncTest(unittest.TestCase):
         antiguo = caso()
         antiguo["sys_id"] = field("b" * 32)
 
-        def pages(table, query):
+        def pages(table, query, **kwargs):
             calls.append((table, query))
             if table == "sn_customerservice_case":
                 return iter([[antiguo]]) if "sys_idIN" in query else iter([[caso()]])
@@ -170,8 +170,10 @@ class IncrementalSyncTest(unittest.TestCase):
         for falla in (False, True):
             with self.subTest(falla=falla):
                 control = MagicMock()
+                lector = MagicMock()
+                estados = [MagicMock(), MagicMock()]
                 with patch.object(app_logic, "exigir_permiso_actor"), \
-                     patch.object(app_logic, "get_conn", return_value=control), \
+                     patch.object(app_logic, "get_conn", side_effect=[control, lector, *estados]), \
                      patch.object(app_logic, "db_execute", return_value=MagicMock(fetchone=lambda: (True,))), \
                      patch.object(app_logic, "leer_estado_sincronizacion", return_value={"ultima_correcta": ultima}), \
                      patch.object(app_logic, "guardar_estado_sincronizacion") as state, \
@@ -192,6 +194,12 @@ class IncrementalSyncTest(unittest.TestCase):
                         self.assertEqual(now, state.call_args.kwargs["correcta"])
                     remote.listar_casos_actualizados.assert_called_once_with(ultima - timedelta(minutes=2), now)
                 control.close.assert_called_once()
+                control.rollback.assert_called_once()
+                control.commit.assert_not_called()
+                lector.close.assert_called_once()
+                for conn_estado in estados:
+                    conn_estado.commit.assert_called_once()
+                    conn_estado.close.assert_called_once()
 
     def test_ciclo_simultaneo_no_hace_llamadas_a_api(self):
         control = MagicMock()

@@ -5,7 +5,7 @@ import pandas as pd
 
 import app_logic
 from repositories.servicenow import leer_campos_casos
-from services.casos_campos import ampliar_columnas_casos
+from services.casos_campos import ampliar_columnas_casos, COLUMNAS_CASOS_PORTAL
 from services.casos_sla import tabla_casos_plataforma
 from tests.test_servicenow import field
 
@@ -145,8 +145,12 @@ with patch.object(ui, "selector_fechas_casos", return_value=(date(2026, 8, 1), d
         self.assertEqual(0, len(app.exception))
         tabla = app.dataframe[0].value
         self.assertEqual(2, len(tabla))
-        for columna in ["Caso", "Categoría", "Grupo de asignación", "SLA 2 · Nombre", "Historial de la conversación"]:
-            self.assertIn(columna, tabla.columns)
+        self.assertEqual(list(COLUMNAS_CASOS_PORTAL), tabla.columns.tolist())
+        for columna in ["Caso", "Categoría", "Grupo de asignación", "SLA 2 · Nombre", "u_campo_nuevo"]:
+            self.assertNotIn(columna, tabla.columns)
+        self.assertEqual("En curso", tabla.iloc[0]["SLA 1 · Estado"])
+        self.assertEqual("2026-10-09 18:20:48", tabla.iloc[0]["SLA 1 · Inicio"])
+        self.assertEqual("2026-10-15 13:00:00", tabla.iloc[0]["SLA 1 · Vencimiento"])
         pd.testing.assert_frame_equal(
             tabla.fillna("").astype(str),
             app.session_state["descarga_completa"].reset_index(drop=True).fillna("").astype(str),

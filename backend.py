@@ -47,12 +47,14 @@ def _operar(request, body=None):
             return _respuesta(documento) if documento else _respuesta({"error": "Registro no sincronizado."}, 404)
         if numero:
             resultado = sincronizar_servicenow(actor_email=actor, tipo=tipo, numero=numero)
-            if not resultado["cargados"]:
+            if not resultado["cargados"] and not resultado.get("ocupado"):
                 return _respuesta({"error": "Registro no encontrado."}, 404)
         else:
-            if not isinstance(body, dict) or set(body) != {"mes"}:
-                raise ValueError("Envía únicamente el campo mes con formato AAAA-MM.")
-            resultado = sincronizar_servicenow(actor_email=actor, tipo=tipo, mes=body["mes"])
+            if not isinstance(body, dict) or set(body) not in ({"mes"}, {"fecha_inicio", "fecha_fin"}):
+                raise ValueError("Envía mes (AAAA-MM) o fecha_inicio y fecha_fin (AAAA-MM-DD).")
+            resultado = sincronizar_servicenow(actor_email=actor, tipo=tipo, **body)
+        if resultado.get("ocupado"):
+            return _respuesta({"error": "Ya hay una sincronización de casos en curso."}, 409)
         return _respuesta(resultado)
     except AutorizacionError:
         return _respuesta({"error": "No tienes permisos para realizar esta operación."}, 403)

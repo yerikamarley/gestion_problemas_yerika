@@ -10,7 +10,7 @@ from html.parser import HTMLParser
 from time import monotonic
 from threading import RLock
 from urllib.parse import urlsplit
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 import requests
@@ -23,6 +23,14 @@ from core.settings import config_value
 
 TABLES = {"casos": "sn_customerservice_case", "incidentes": "incident"}
 PAGE_SIZE = 100
+SOURCE_FIELDS = {
+    "task_sla": "sys_id,task,sla,stage,start_time,planned_end_time,has_breached",
+    "sys_journal_field": "sys_id,element_id,sys_created_on,sys_created_by,element,value",
+    "sys_email": "sys_id,instance,sys_created_on,sys_created_by,type,origemail,sender,subject,recipients,body_text",
+}
+SOURCE_LABELS = {"sn_customerservice_case": "casos", "incident": "incidentes",
+                 "task_sla": "SLAs", "sys_journal_field": "notas y comentarios",
+                 "sys_email": "correos del historial"}
 _sesiones_api = {}
 _sesiones_lock = RLock()
 _tokens_oauth = {}
@@ -75,6 +83,20 @@ def limites_mes_utc(mes):
     zona = ZoneInfo("America/Bogota")
     return tuple(datetime(d.year, d.month, 1, tzinfo=zona).astimezone(timezone.utc)
                  .strftime("%Y-%m-%d %H:%M:%S") for d in (inicio, fin))
+
+
+def limites_rango_utc(inicio, fin):
+    """Incluye ambos días de Colombia y usa un límite superior exclusivo en UTC."""
+    try:
+        inicio, fin = (date.fromisoformat(d) if isinstance(d, str) else d for d in (inicio, fin))
+        if any(type(d) is not date for d in (inicio, fin)) or fin < inicio:
+            raise ValueError
+        fin = fin + timedelta(days=1)
+        zona = ZoneInfo("America/Bogota")
+        return tuple(datetime(d.year, d.month, d.day, tzinfo=zona).astimezone(timezone.utc)
+                     .strftime("%Y-%m-%d %H:%M:%S") for d in (inicio, fin))
+    except (ValueError, TypeError, OverflowError):
+        raise ValueError("Selecciona una fecha inicial y final válidas, en ese orden.") from None
 
 
 def valor(campo, legible=False):
@@ -197,7 +219,9 @@ def normalizar_instancia(instance):
 
 
 class ServiceNowClient:
-    def __init__(self, *, user=None, password=None, mfa_code=None, instance=None, auth_type=None):
+    def __init__(self, *, user=None, password=None, mfa_code=None, instance=None, auth_type=None, progress_callback=None):
+        self.progress_callback = progress_callback
+        self.total_registros = None
         instance = normalizar_instancia(config_value("SERVICENOW_INSTANCE") if instance is None else instance)
         mode = auth_type or ("basic" if user is not None or password is not None
                              else config_value("SERVICENOW_AUTH_TYPE", "basic"))
@@ -231,7 +255,7 @@ class ServiceNowClient:
                 raise ValueError("El código de verificación debe tener entre 6 y 10 dígitos.")
             self._session.headers["X-MFA_TOKEN"] = mfa_code
         self._session.mount("https://", HTTPAdapter(max_retries=Retry(
-            total=3, backoff_factor=0.5, status_forcelist=[429, 502, 503, 504],
+            total=1, connect=1, read=0, status=1, backoff_factor=0.5, status_forcelist=[429, 502, 503, 504],
             allowed_methods=["GET"], respect_retry_after_header=False,
         )))
 
@@ -298,23 +322,32 @@ class ServiceNowClient:
             response = self._session.get(url, headers={"Authorization": f"Bearer {token}"}, **kwargs)
         return response
 
-    def _paginas(self, tabla, query):
+    def _informar_consulta(self, mensaje):
+        if self.progress_callback:
+            self.progress_callback(0, mensaje)
+
+    def _paginas(self, tabla, query, *, fields=None):
         offset = 0
         # No se interpolan tablas ni filtros procedentes del cliente HTTP.
         if tabla not in {*TABLES.values(), "task_sla", "sys_journal_field", "sys_email"}:
             raise ValueError("Tabla no permitida.")
         seen = set()
         while True:
+            etiqueta = SOURCE_LABELS[tabla]
+            self._informar_consulta(f"Consultando {etiqueta} · página {offset // PAGE_SIZE + 1}...")
             try:
+                params = {"sysparm_query": query + "^ORDERBYsys_id",
+                          "sysparm_display_value": "all" if tabla in TABLES.values() or (tabla == "task_sla" and fields is None) else "false",
+                          "sysparm_exclude_reference_link": "true",
+                          "sysparm_suppress_pagination_header": "true",
+                          "sysparm_limit": PAGE_SIZE, "sysparm_offset": offset}
+                proyeccion = fields or SOURCE_FIELDS.get(tabla)
+                if proyeccion:
+                    params["sysparm_fields"] = proyeccion
                 response = self._consultar_api(
                     f"{self._base_url}/{tabla}",
-                    params={"sysparm_query": query + "^ORDERBYsys_id",
-                            "sysparm_display_value": "all", "sysparm_exclude_reference_link": "true",
-                            # Los lotes IN pueden superar el tamaño permitido para
-                            # los enlaces Link. Paginamos con offset, sin usarlos.
-                            "sysparm_suppress_pagination_header": "true",
-                            "sysparm_limit": PAGE_SIZE, "sysparm_offset": offset},
-                    timeout=(10, 60), allow_redirects=False,
+                    params=params,
+                    timeout=(10, 30), allow_redirects=False,
                 )
                 if response.status_code != 200:
                     if response.status_code == 401 and response.headers.get("X-MFA_TOKEN") == "invalid":
@@ -342,9 +375,16 @@ class ServiceNowClient:
                 total = int(total) if total is not None else None
                 if total is not None and total < 0:
                     raise ValueError
+                if tabla in TABLES.values() and offset == 0:
+                    self.total_registros = total
                 with _sesiones_lock:
                     if self._session_key in _sesiones_api:
                         _sesiones_api[self._session_key] = copy(self._session.cookies)
+            except requests.Timeout:
+                raise ServiceNowError(
+                    f"ServiceNow tardó demasiado al consultar {etiqueta}. "
+                    "La consulta se interrumpió; puedes volver a sincronizar."
+                ) from None
             except (requests.RequestException, ValueError, AttributeError):
                 raise ServiceNowError(f"No se pudo consultar {tabla} en ServiceNow.") from None
             for row in result:
@@ -353,11 +393,27 @@ class ServiceNowClient:
                     raise ServiceNowError(f"Paginación inconsistente en {tabla}; vuelve a sincronizar.")
                 seen.add(identity)
             if result:
+                if tabla == "sys_email" and fields is None:
+                    self._completar_correos_html(result)
+                self._informar_consulta(f"Recibidos {len(result)} registros de {etiqueta} · página {offset // PAGE_SIZE + 1}.")
                 yield result
             offset += PAGE_SIZE
             # ACLs pueden devolver páginas cortas/vacías antes del último offset.
             if (total is not None and offset >= total) or (total is None and not result):
                 break
+
+    def _completar_correos_html(self, rows):
+        """El HTML solo se descarga cuando el correo no contiene una versión de texto."""
+        pendientes = {valor(row.get("sys_id")): row for row in rows
+                      if not str(valor(row.get("body_text")) or "").strip() and not valor(row.get("body"))}
+        if not pendientes:
+            return
+        self._informar_consulta("Recuperando el contenido de correos sin versión de texto...")
+        for page in self._paginas("sys_email", "sys_idIN" + ",".join(pendientes), fields="sys_id,body"):
+            for row in page:
+                original = pendientes.get(valor(row.get("sys_id")))
+                if original is not None:
+                    original["body"] = row.get("body", "")
 
     def consolidar(self, raw, tipo="casos", relacionados=None):
         tabla = validar_tipo(tipo)
@@ -448,6 +504,12 @@ class ServiceNowClient:
         for page in self._paginas(tabla, f"sys_created_on>={inicio}^sys_created_on<{fin}"):
             yield self._consolidar_pagina(page, tipo)
 
+    def listar_rango(self, inicio, fin, tipo="casos"):
+        tabla = validar_tipo(tipo)
+        desde, hasta = limites_rango_utc(inicio, fin)
+        for page in self._paginas(tabla, f"sys_created_on>={desde}^sys_created_on<{hasta}"):
+            yield self._consolidar_pagina(page, tipo)
+
     def listar_casos_actualizados(self, desde, hasta):
         """Incluye actividad nueva de casos antiguos aunque el caso no cambie."""
         if desde.tzinfo is None or hasta.tzinfo is None or desde > hasta:
@@ -464,7 +526,7 @@ class ServiceNowClient:
                    ("sys_journal_field", "element_id", f"name={TABLES['casos']}^{rango}"),
                    ("sys_email", "instance", f"target_table={TABLES['casos']}^{rango}"))
         for tabla, referencia, query in fuentes:
-            for page in self._paginas(tabla, query):
+            for page in self._paginas(tabla, query, fields=f"sys_id,{referencia}"):
                 for row in page:
                     sys_id = valor(row.get(referencia))
                     if isinstance(sys_id, str) and re.fullmatch(r"[0-9a-fA-F]{32}", sys_id):

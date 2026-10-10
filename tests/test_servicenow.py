@@ -65,9 +65,16 @@ class ServiceNowClientTest(unittest.TestCase):
         self.assertEqual(["Email", "Journal"], [r["origen"] for r in doc["traza_unificada"]])
         self.assertEqual("primera --- segunda --- tercera", doc["traza_unificada"][1]["contenido"])
         for call in get.call_args_list:
-            self.assertEqual("all", call.kwargs["params"]["sysparm_display_value"])
-            self.assertNotIn("sysparm_fields", call.kwargs["params"])
-            self.assertEqual((10, 60), call.kwargs["timeout"])
+            params = call.kwargs["params"]
+            if call.args[0].endswith(("/sn_customerservice_case", "/task_sla")):
+                self.assertEqual("all", params["sysparm_display_value"])
+            else:
+                self.assertEqual("false", params["sysparm_display_value"])
+            if call.args[0].endswith("/sn_customerservice_case"):
+                self.assertNotIn("sysparm_fields", params)
+            else:
+                self.assertIn("sysparm_fields", params)
+            self.assertEqual((10, 30), call.kwargs["timeout"])
             self.assertFalse(call.kwargs["allow_redirects"])
         self.assertIn(f"target_table=sn_customerservice_case^instance={CASE_ID}",
                       get.call_args_list[-1].kwargs["params"]["sysparm_query"])
@@ -83,7 +90,7 @@ class ServiceNowClientTest(unittest.TestCase):
 
     def test_lote_largo_de_correos_conserva_todas_las_paginas_sin_header_link(self):
         query = "target_table=sn_customerservice_case^instanceIN" + ",".join(f"{i:032x}" for i in range(100))
-        rows = [{"sys_id": f"{i + 1000:032x}"} for i in range(225)]
+        rows = [{"sys_id": f"{i + 1000:032x}", "body_text": "Correo completo"} for i in range(225)]
 
         def consultar(url, **kwargs):
             params = kwargs["params"]
@@ -355,6 +362,7 @@ class ServiceNowPersistenceTest(unittest.TestCase):
 
     def test_fallo_fuente_remota_no_invoca_persistencia(self):
         with patch.object(app_logic, "exigir_permiso_actor"), \
+             patch.object(app_logic, "get_conn", return_value=MagicMock()), \
              patch.object(app_logic, "ServiceNowClient") as client, \
              patch.object(app_logic, "_guardar_pagina_servicenow") as save:
             client.return_value.__enter__.return_value.listar_mes.side_effect = ServiceNowError("fallo journal")

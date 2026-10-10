@@ -117,3 +117,15 @@ def guardar_estado_sincronizacion(conn, *, estado, intento, correcta=None, mensa
             ultima_datos = CASE WHEN EXCLUDED.ultima_correcta IS NOT NULL AND EXCLUDED.registros > 0
                 THEN EXCLUDED.ultima_correcta ELSE servicenow_sync_state.ultima_datos END""",
         (correcta, intento, estado, mensaje, registros, correcta if registros > 0 else None))
+
+
+def guardar_estado_sincronizacion_manual(conn, *, estado, intento, mensaje="", registros=0):
+    """Actualiza el estado visible sin mover el cursor de la ingesta automática."""
+    db_execute(conn, """INSERT INTO servicenow_sync_state
+        (tipo, ultimo_intento, estado, mensaje, registros, ultima_datos)
+        VALUES ('casos', ?, ?, ?, ?, CASE WHEN ? > 0 THEN CURRENT_TIMESTAMP ELSE NULL END)
+        ON CONFLICT (tipo) DO UPDATE SET
+            ultimo_intento = EXCLUDED.ultimo_intento, estado = EXCLUDED.estado,
+            mensaje = EXCLUDED.mensaje, registros = EXCLUDED.registros,
+            ultima_datos = COALESCE(EXCLUDED.ultima_datos, servicenow_sync_state.ultima_datos)""",
+        (intento, estado, mensaje, registros, registros))
