@@ -43,6 +43,7 @@ from services.casos_sla import (
     resumen_sla_casos,
     tabla_casos_plataforma,
 )
+from services.servicenow import ServiceNowError
 from services.resumen_ejecutivo_casos import periodos_corte, construir_resumen_ejecutivo, agrupar_causas, causas_para_lamina
 from components.resumen_ejecutivo_casos import lamina_resumen_casos
 from services.migracion_pki import (
@@ -69,6 +70,8 @@ from app_logic import (
     eliminar_usuario,
     es_error_db_transitorio,
     guardar_casos,
+    sincronizar_servicenow,
+    consultar_traza_servicenow,
     guardar_incidentes,
     guardar_problemas,
     guardar_usuario,
@@ -11409,29 +11412,63 @@ def procesar_archivo_casos(df, reemplazar_meses):
 
 
 def vista_cargar_casos():
-    st.markdown("#### Carga diaria de casos")
-    archivo = st.file_uploader("Sube Excel de casos", type=["xlsx"], key="casos_upload")
-    if not archivo:
-        return
+    vista_sincronizar_servicenow("casos")
 
-    df = pd.read_excel(archivo)
-    st.write(f"Filas detectadas: {len(df)}")
-    st.dataframe(df.head(), use_container_width=True, hide_index=True)
-    st.caption(
-        "El SLA se evalúa con la fecha de vencimiento exportada por la plataforma. "
-        "Los casos sin vencimiento quedan sin evaluación; para actualizar históricos, "
-        "incluye esa columna en una nueva exportación."
-    )
-    reemplazar_meses = st.checkbox(
-        "Reemplazar los meses incluidos en este archivo",
-        value=True,
-        help=(
-            "Si esta activo, antes de cargar se eliminan de la base los casos de los meses "
-            "presentes en el Excel y luego se carga el archivo. Asi el mes queda igual al corte subido."
-        ),
-    )
-    if st.button("Procesar casos", type="primary"):
-        procesar_archivo_casos(df, reemplazar_meses)
+
+def vista_sincronizar_servicenow(tipo):
+    st.markdown(f"#### Sincronizar {tipo} desde ServiceNow")
+    st.caption("Actualiza los datos, SLAs y actividades para los reportes y tableros.")
+    with st.form(f"servicenow_sync_{tipo}"):
+        modo = st.radio("Consultar", ["Mes", "Número"], horizontal=True)
+        mes = st.text_input("Mes (AAAA-MM)", value=pd.Timestamp.now(tz=ZONA_PLATAFORMA).strftime("%Y-%m"))
+        numero = st.text_input("Número de caso" if tipo == "casos" else "Número de incidente")
+        ejecutar = st.form_submit_button("Sincronizar", type="primary")
+    if not ejecutar:
+        return
+    progreso = crear_barra_progreso_carga("Consultando ServiceNow...")
+    try:
+        result = sincronizar_servicenow(
+            actor_email=st.session_state.get("user"), tipo=tipo,
+            mes=mes.strip() if modo == "Mes" else None,
+            numero=numero.strip().upper() if modo == "Número" else None,
+            progress_callback=progreso,
+        )
+    except (ServiceNowError, ValueError, AutorizacionError) as error:
+        limpiar_cache_datos()
+        progreso(1, "Sincronización interrumpida.")
+        st.error(str(error))
+        st.caption("Las páginas ya sincronizadas se conservan. Puedes volver a ejecutar la consulta.")
+        return
+    except Exception:
+        limpiar_cache_datos()
+        progreso(1, "Sincronización interrumpida.")
+        st.error("No se pudo completar la sincronización. Revisa la conexión y configuración del servidor.")
+        return
+    limpiar_cache_datos()
+    if result["cargados"]:
+        st.success(f"Sincronizados: {result['cargados']} | Registros existentes actualizados: {result['actualizados']}")
+    else:
+        st.info("No se encontraron registros para la consulta.")
+
+
+def render_consulta_traza_servicenow(tipo):
+    with st.expander("Consultar campos, SLAs y actividades sincronizadas"):
+        with st.form(f"servicenow_traza_{tipo}"):
+            numero = st.text_input("Número del registro")
+            consultar = st.form_submit_button("Consultar traza")
+        if consultar:
+            try:
+                documento = consultar_traza_servicenow(
+                    numero.strip().upper(), actor_email=st.session_state.get("user"), tipo=tipo
+                )
+                if documento:
+                    st.json(documento)
+                else:
+                    st.info("Este registro todavía no tiene una traza sincronizada.")
+            except (ValueError, AutorizacionError) as error:
+                st.error(str(error))
+            except Exception:
+                st.error("No se pudo consultar la traza en la base de datos.")
 
 def selector_fechas_casos():
     hoy = pd.Timestamp.now(tz=ZONA_PLATAFORMA).date()
@@ -11472,6 +11509,7 @@ def selector_fechas_casos():
 
 
 def vista_casos():
+    render_consulta_traza_servicenow("casos")
     st.subheader("Casos")
     st.caption("Consulta y control de casos por estado, tipología, servicio y segmento de asignación.")
     periodo = selector_fechas_casos()
@@ -11631,39 +11669,11 @@ def vista_casos():
 
 
 def vista_cargar_incidentes():
-    archivo = st.file_uploader("Sube Excel de incidentes", type=["xlsx"], key="incidentes_upload")
-    if archivo:
-        df = pd.read_excel(archivo)
-        st.write(f"Filas detectadas: {len(df)}")
-        st.dataframe(df.head(), use_container_width=True, hide_index=True)
-        if st.button("Procesar incidentes", type="primary"):
-            actualizar_progreso = crear_barra_progreso_carga("Procesando incidentes...")
-            try:
-                cargados, reemplazados = guardar_incidentes(
-                    df,
-                    progress_callback=actualizar_progreso,
-                    actor_email=st.session_state.get("user"),
-                )
-            except Exception as error:
-                actualizar_progreso(1, "No se pudo finalizar la carga de incidentes.")
-                if es_error_db_transitorio(error):
-                    st.error(
-                        "La base de datos estaba ocupada por otra carga. Espera unos segundos y vuelve a procesar el archivo."
-                    )
-                    return
-                raise
-            if cargados == 0:
-                st.error("No se guardaron incidentes. Revisa que el archivo tenga una columna de numero de incidente.")
-            else:
-                limpiar_cache_datos()
-                actualizar_progreso(1, "Carga de incidentes finalizada.")
-                st.success(
-                    f"Cargados: {cargados} | Registros existentes actualizados: {reemplazados} | "
-                    "Los meses anteriores se conservan."
-                )
+    vista_sincronizar_servicenow("incidentes")
 
 
 def vista_incidentes():
+    render_consulta_traza_servicenow("incidentes")
     anio, mes, periodo_label = selector_periodo_sql("incidents", "vista_incidentes_periodo")
     if not periodo_sql_valido(anio, "incidentes"):
         return
@@ -12201,12 +12211,12 @@ CATEGORY_KEY_CLIENTS = "Clientes clave"
 CATEGORY_ADMIN = "Administración"
 
 VIEW_CATALOG = (
-    (VIEW_CARGAR_CASOS, "Cargar Excel Casos", CATEGORY_CASES, 10, vista_cargar_casos),
+    (VIEW_CARGAR_CASOS, "Sincronizar Casos", CATEGORY_CASES, 10, vista_cargar_casos),
     (VIEW_CASOS, TEXT_CASOS, CATEGORY_CASES, 20, vista_casos),
     (VIEW_DASHBOARD_CASOS_SOPORTE, MENU_DASHBOARD_CASOS_SOPORTE, CATEGORY_CASES, 30, dashboard_casos),
     (VIEW_CONTROL_DIARIO_SOPORTE, MENU_CONTROL_DIARIO_SOPORTE, CATEGORY_CASES, 40, vista_control_diario_soporte),
     (VIEW_KPI_CASOS_CLIENTE_EXTERNO, MENU_KPI_CASOS_CLIENTE_EXTERNO, CATEGORY_CASES, 50, dashboard_kpi_casos_cliente_externo),
-    (VIEW_CARGAR_INCIDENTES, "Cargar Excel Incidentes", CATEGORY_INCIDENTS, 10, vista_cargar_incidentes),
+    (VIEW_CARGAR_INCIDENTES, "Sincronizar Incidentes", CATEGORY_INCIDENTS, 10, vista_cargar_incidentes),
     (VIEW_CARGAR_PROBLEMAS, "Cargar Excel Problemas", CATEGORY_INCIDENTS, 15, vista_cargar_problemas),
     (VIEW_INCIDENTES, TEXT_INCIDENTES, CATEGORY_INCIDENTS, 20, vista_incidentes),
     (VIEW_PROBLEMAS, "Problemas", CATEGORY_INCIDENTS, 25, vista_problemas),

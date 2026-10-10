@@ -4,8 +4,13 @@ import os
 import tomllib
 from pathlib import Path
 
+from dotenv import load_dotenv
+
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+# Solo el proceso Python lee .env; el entorno del despliegue tiene prioridad.
+load_dotenv(PROJECT_ROOT / ".env", override=False)
 
 
 def streamlit_secrets_path():

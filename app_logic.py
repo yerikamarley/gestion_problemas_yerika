@@ -5,6 +5,10 @@ from math import ceil
 
 import pandas as pd
 from services.casos_sla import guardar_fecha_plataforma
+from services.servicenow import (
+    ServiceNowClient, mapear_documento, validar_tipo, validar_numero, limites_mes_utc,
+)
+from repositories.servicenow import ensure_servicenow_schema, guardar_documento, leer_documento
 
 from core.settings import (
     ADMIN_EMAIL,
@@ -1715,6 +1719,7 @@ def init_db():
     )
     ensure_table_columns(conn, "cases", {columna: "TEXT" for columna in CASE_ALIASES})
     ensure_indexes(conn)
+    ensure_servicenow_schema(conn)
     db_execute(
         conn,
         """CREATE TABLE IF NOT EXISTS incident_risk_matrix_edits (
@@ -2083,6 +2088,90 @@ def guardar_casos(df, reemplazar_meses=False, progress_callback=None, actor_emai
             df, reemplazar_meses, duplicados_archivo, progress_callback, actor_email
         )
     )
+
+
+def _guardar_pagina_servicenow(documentos, tipo, actor_email):
+    """La fila analítica y su JSON se confirman en la misma transacción por página."""
+    conn = get_conn()
+    try:
+        _bloquear_y_validar_admin(conn, actor_email)
+        tabla_local = "cases" if tipo == "casos" else "incidents"
+        if tipo == "casos":
+            bloquear_escritura_casos(conn)
+        else:
+            db_execute(conn, "LOCK TABLE incidents IN SHARE ROW EXCLUSIVE MODE")
+        existentes = numeros_existentes(
+            conn, tabla_local, [d["campos_caso"]["number"] for d in documentos]
+        )
+        for documento in documentos:
+            row = mapear_documento(documento, tipo)
+            permitidas = CASE_DB_COLUMNS if tipo == "casos" else INCIDENT_DB_COLUMNS
+            desconocidas = set(row) - set(permitidas)
+            if desconocidas:
+                raise ValueError("El mapa de campos contiene columnas locales no admitidas.")
+            if tipo == "casos":
+                row["tipificacion"] = tipificar_caso(row)
+                row["tiempo_respuesta"] = tiempo(row.get("creado", ""), row.get("cerrado", ""))
+            else:
+                row.update(clasificacion_incidente_detallada(row))
+                if row.get("creado") and row.get("cerrado"):
+                    duracion = (pd.Timestamp(row["cerrado"]) - pd.Timestamp(row["creado"])).total_seconds()
+                    row["duracion_segundos"] = max(0, duracion)
+                    row["duracion_horas"] = segundos_a_horas(row["duracion_segundos"])
+                else:
+                    row["duracion_segundos"] = None
+                    row["duracion_horas"] = None
+            guardar_documento(conn, documento, tabla_local, row, normalizar_email(actor_email))
+        conn.commit()
+        return len(documentos), len(existentes)
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def sincronizar_servicenow(*, actor_email, tipo="casos", mes=None, numero=None, progress_callback=None):
+    """Fachada para Streamlit, proxy HTTP y tareas programadas; exige Admin vigente."""
+    validar_tipo(tipo)
+    exigir_permiso_actor(actor_email, ACTION_WRITE_CASES if tipo == "casos" else ACTION_WRITE_INCIDENTS)
+    if (mes is None) == (numero is None):
+        raise ValueError("Indica un mes o un número de registro.")
+    if mes is not None:
+        limites_mes_utc(mes)
+    else:
+        validar_numero(numero, tipo)
+    cargados = reemplazados = 0
+    emitir_progreso(progress_callback, 0, "Consultando ServiceNow...")
+    with ServiceNowClient() as client:
+        if numero is not None:
+            documento = client.obtener(numero, tipo)
+            paginas = [[documento]] if documento else []
+        else:
+            paginas = client.listar_mes(mes, tipo)
+        for documentos in paginas:
+            nuevos, existentes = ejecutar_con_reintentos_db(
+                lambda: _guardar_pagina_servicenow(documentos, tipo, actor_email)
+            )
+            cargados += nuevos
+            reemplazados += existentes
+            emitir_progreso(progress_callback, 0.5, f"Registros sincronizados: {cargados}")
+    emitir_progreso(progress_callback, 1, "Sincronización finalizada.")
+    return {"tipo": tipo, "mes": mes, "numero": numero, "cargados": cargados, "actualizados": reemplazados}
+
+
+def consultar_traza_servicenow(numero, *, actor_email, tipo="casos"):
+    """Lectura local autorizada; nunca comunica credenciales del conector al cliente."""
+    from core.permissions import VIEW_CASOS, VIEW_INCIDENTES
+
+    tabla = validar_tipo(tipo)
+    validar_numero(numero, tipo)
+    exigir_permiso_actor(actor_email, VIEW_CASOS if tipo == "casos" else VIEW_INCIDENTES)
+    conn = get_conn()
+    try:
+        return leer_documento(conn, tabla, numero)
+    finally:
+        conn.close()
 
 
 def aplicar_tipificaciones_casos(df):

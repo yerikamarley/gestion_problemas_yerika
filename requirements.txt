@@ -5,3 +5,6 @@ plotly
 psycopg[binary]
 pillow
 starlette==0.50.0
+requests
+python-dotenv
+uvicorn
