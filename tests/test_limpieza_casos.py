@@ -8,12 +8,163 @@ from services.casos_historial import (
     analizar_caso, agregar_analisis_historial, resumen_clasificacion_casos,
     COL_CLASIFICACION, COL_FISICO, COL_VIRTUAL, COL_MOTIVO, COL_CAUSA, COL_ESTADO_CAUSA,
     COL_ATENCION, COL_TIPOLOGIA, ENVIADO_OTROS_CANALES, SIN_CAUSA,
+    COL_MOTIVO_INICIAL, COL_CLASIFICACION_INICIAL, COL_DESTINO,
+    CLASIFICACIONES_PRINCIPALES, resumen_causas_historial, COL_EVIDENCIA_MOTIVO,
 )
 from tests.test_casos_historial import evento, DERIVACION_AGENDA, ACUSE
 from tests.test_resumen_ejecutivo_casos import caso
 
 
+DERIVACION_VENTAS = """Buen día,
+Reciba un cordial saludo.
+Entendemos que actualmente está presentando dificultades para la reactivación del servicio
+y sabemos que este tipo de situaciones puede afectar la continuidad de sus actividades.
+Para brindarle una atención más rápida y especializada, este tipo de requerimientos se atiende
+a través de nuestro canal de ventas y será atendido directamente por uno de nuestros comerciales,
+quien lo acompañará hasta solucionar el inconveniente presentado.
+Tienda virtual: https://ventadigital.certicamara.com
+(601) 744 2725 — opción 2
+Este es el canal oficial habilitado para atender este tipo de solicitudes y garantizar un
+acompañamiento personalizado durante todo el proceso.
+Agradecemos su comprensión y quedamos atentos a cualquier inquietud adicional.
+Cordialmente, Mesa de Ayuda Certicámara S.A."""
+
+
 class LimpiezaCasosTest(TestCase):
+    def test_respuesta_real_ventas_comerciales_se_cuenta_en_canales(self):
+        from services.servicenow import texto_historial
+        for historial in ([evento(DERIVACION_VENTAS, "Correo Saliente")],
+                           texto_historial([evento(DERIVACION_VENTAS, "Correo Saliente")])):
+            with self.subTest(formato=type(historial).__name__):
+                row = caso("CS1", causa="", descripcion="Necesito reactivar el servicio",
+                           historial_conversacion=historial)
+                resultado = analizar_caso(row)
+                self.assertEqual(ENVIADO_OTROS_CANALES, resultado[COL_CLASIFICACION])
+                self.assertEqual(ENVIADO_OTROS_CANALES, resultado[COL_TIPOLOGIA])
+                self.assertEqual("Canal de ventas, Comercial", resultado[COL_DESTINO])
+                self.assertEqual("Redirigido sin atención técnica registrada", resultado[COL_ATENCION])
+                self.assertEqual("Reactivación del servicio", resultado[COL_MOTIVO_INICIAL])
+                self.assertEqual(SIN_CAUSA, resultado[COL_CAUSA])
+                self.assertFalse(resultado[COL_FISICO])
+
+    def test_promesas_de_acompanamiento_no_son_trabajo_tecnico_realizado(self):
+        row = {"descripcion": "Necesito reactivar el servicio", "historial_conversacion": [
+            evento(DERIVACION_VENTAS, "Correo Entrante", "cliente")]}
+        self.assertEqual("", analizar_caso(row)[COL_DESTINO])
+        row["historial_conversacion"] = [evento("Se verificó el servicio y se realizaron pruebas."),
+                                         evento(DERIVACION_VENTAS, "Correo Saliente")]
+        resultado = analizar_caso(row)
+        self.assertNotEqual(ENVIADO_OTROS_CANALES, resultado[COL_CLASIFICACION])
+        self.assertEqual("Redirigido con atención técnica registrada", resultado[COL_ATENCION])
+
+    def test_catalogo_de_siete_grupos_concilia_dashboard_y_kpi(self):
+        mensajes = ["Necesito firmar", "Instalar token físico", "Activar certificado",
+                    "Token virtual no reconocido", "El sistema está caído", "Consultar facturas",
+                    "Necesito reactivar el servicio"]
+        filas = [caso(str(i), causa="", descripcion=m) for i, m in enumerate(mensajes)]
+        filas[-1]["historial_conversacion"] = [evento(DERIVACION_VENTAS, "Correo Saliente")]
+        base = agregar_analisis_historial(pd.DataFrame(filas + [filas[-1]]))
+        self.assertEqual(7, len(CLASIFICACIONES_PRINCIPALES))
+        tablero = resumen_clasificacion_casos(base).set_index(COL_CLASIFICACION)
+        kpi, _ = ui.resumen_principales_causas_servicios_casos(base)
+        kpi = kpi.set_index(COL_CLASIFICACION)
+        self.assertEqual(set(CLASIFICACIONES_PRINCIPALES), set(tablero.index))
+        self.assertEqual(tablero["Casos"].to_dict(), kpi["Cantidad"].to_dict())
+        self.assertEqual(7, tablero["Casos"].sum())
+        self.assertAlmostEqual(100, kpi["% casos"].sum())
+
+    def test_motivo_inicial_se_conserva_despues_de_resolver_otro_sintoma(self):
+        row = {"descripcion": "Necesito instalar mi token físico", "historial_conversacion": [
+            {**evento("Necesito instalar mi token físico", "Correo Entrante", "cliente"), "fecha": "2026-10-01 10:00:00"},
+            {**evento("Ahora el PIN está bloqueado", "Correo Entrante", "cliente"), "fecha": "2026-10-02 10:00:00"},
+            evento("Se desbloqueó el PIN del token físico. Causa raíz: PIN bloqueado por intentos fallidos")],
+            "causa": "PIN bloqueado por intentos fallidos"}
+        for descripcion in (row["descripcion"], ""):
+            resultado = analizar_caso({**row, "descripcion": descripcion})
+            self.assertEqual("Instalación o configuración", resultado[COL_MOTIVO_INICIAL])
+            self.assertEqual("Instalación o configuración", resultado[COL_CLASIFICACION_INICIAL])
+            self.assertEqual(row["causa"], resultado[COL_CAUSA])
+
+    def test_solicitud_clara_sin_regla_es_consulta_con_evidencia_y_no_por_revisar(self):
+        solicitud = "Necesito actualizar los datos de nuestra empresa"
+        resultado = analizar_caso({"descripcion": solicitud, "notas_resolucion": "Se instaló una actualización del software"})
+        self.assertEqual("Solicitudes y consultas", resultado[COL_CLASIFICACION_INICIAL])
+        self.assertEqual("Solicitud o consulta", resultado[COL_MOTIVO_INICIAL])
+        self.assertIn(solicitud, resultado[COL_EVIDENCIA_MOTIVO])
+        self.assertEqual(SIN_CAUSA, resultado[COL_CAUSA])
+
+    def test_causas_documentadas_se_agrupan_y_conservan_explicacion_por_caso(self):
+        filas = [caso(str(i), causa=f"Detalle técnico particular {i}", descripcion="Necesito instalar token físico")
+                 for i in range(20)]
+        filas.append(caso("AGENTE", causa="", notas_trabajo="Causa raíz: detalle técnico particular explicado por el agente"))
+        base = agregar_analisis_historial(pd.DataFrame(filas))
+        resumen = resumen_causas_historial(base)
+        self.assertEqual(["Otras causas documentadas"], resumen["Grupo de causa"].tolist())
+        self.assertEqual([21], resumen["Casos"].tolist())
+        self.assertEqual(filas[0]["causa"], base.iloc[0][COL_CAUSA])
+        self.assertEqual(filas[-2]["causa"], base.iloc[-2][COL_CAUSA])
+
+    def test_agenda_usa_evidencia_actual_y_motivo_inicial_sin_duplicar_producto(self):
+        filas = [
+            caso("INSTALAR", causa="", descripcion="Instalar token físico", creado="2026-10-09", cuenta="Banco", canal="Web",
+                 historial_conversacion=[evento(DERIVACION_AGENDA, "Correo Saliente")]),
+            caso("DESCARGAR", causa="", descripcion="No puedo descargar token físico", creado="2026-10-10", cuenta="Banco", canal="Web",
+                 historial_conversacion=[evento(DERIVACION_AGENDA, "Correo Saliente")]),
+            caso("ANTIGUA", causa="", descripcion="Consultar factura", creado="2026-10-10", cuenta="Banco",
+                 tipificacion="9 - Redireccionamiento Agenda"),
+            caso("VENTAS", causa="", descripcion="Reactivar servicio", creado="2026-10-10", cuenta="Banco",
+                 historial_conversacion=[evento(DERIVACION_VENTAS, "Correo Saliente")]),
+        ]
+        base = pd.DataFrame(filas + [filas[0]])
+        agenda = ui.preparar_analisis_agendamiento(base, base, "2026-10").set_index("numero")
+        self.assertEqual({"INSTALAR", "DESCARGAR"}, set(agenda.index))
+        self.assertEqual("Instalación o configuración", agenda.loc["INSTALAR", ui.COL_MOTIVO_INFERIDO])
+        self.assertEqual("Falla de descarga o activación", agenda.loc["DESCARGAR", ui.COL_MOTIVO_INFERIDO])
+        self.assertEqual(2, agenda[COL_FISICO].sum())
+        self.assertEqual("No", agenda.loc["INSTALAR", ui.COL_REINCIDENTE_AGENDA])
+        self.assertEqual("Si", agenda.loc["DESCARGAR", ui.COL_REINCIDENTE_AGENDA])
+
+    def test_operacion_agenda_sin_historico_muestra_motivo_y_token_separados(self):
+        from streamlit.testing.v1 import AppTest
+        app = AppTest.from_string('''
+from unittest.mock import patch
+import pandas as pd
+import streamlit as st
+import app_ui as ui
+from tests.test_limpieza_casos import DERIVACION_VENTAS
+from tests.test_casos_historial import evento, DERIVACION_AGENDA
+from tests.test_resumen_ejecutivo_casos import caso
+base = pd.DataFrame([
+    caso("INSTALAR", causa="", descripcion="Instalar token físico", creado="2026-10-09", cuenta="Banco", canal="Web",
+         historial_conversacion=[evento(DERIVACION_AGENDA, "Correo Saliente")]),
+    caso("VENTAS", causa="", descripcion="Reactivar servicio", creado="2026-10-10", cuenta="Banco",
+         historial_conversacion=[evento(DERIVACION_VENTAS, "Correo Saliente")]),
+])
+with patch("services.servicenow.ServiceNowClient", side_effect=AssertionError("Sin consulta a ServiceNow")):
+    ui.render_analisis_agendamiento_mesa(base, pd.DataFrame(), "2026-10")
+'''.encode("ascii", errors="backslashreplace").decode("ascii")).run()
+        self.assertFalse(app.exception)
+        detalle = app.dataframe[-1].value
+        self.assertEqual(["INSTALAR"], detalle["numero"].tolist())
+        self.assertEqual(["Instalación o configuración"], detalle[COL_MOTIVO_INICIAL].tolist())
+        self.assertEqual(["Token físico"], detalle[ui.COL_TOKEN].tolist())
+
+    def test_siete_grupos_se_conservan_en_resumen_ejecutivo(self):
+        from services.resumen_ejecutivo_casos import construir_resumen_ejecutivo
+        from components.resumen_ejecutivo_casos import lamina_resumen_casos
+        from datetime import date
+        mensajes = ["Necesito firmar", "Instalar token físico", "Activar certificado",
+                    "Token virtual no reconocido", "El sistema está caído", "Consultar facturas",
+                    "Necesito reactivar el servicio"]
+        filas = [caso(str(i), causa="", descripcion=m, creado="2026-10-09") for i, m in enumerate(mensajes)]
+        filas[-1]["historial_conversacion"] = [evento(DERIVACION_VENTAS, "Correo Saliente")]
+        reporte = construir_resumen_ejecutivo(pd.DataFrame(), pd.DataFrame(filas), date(2026, 10, 10), ui.inferir_causa_comun_caso)
+        self.assertEqual(7, len(reporte["causas_lamina"]))
+        self.assertEqual(7, reporte["causas_lamina"]["Casos"].sum())
+        html = lamina_resumen_casos(reporte)
+        for grupo in CLASIFICACIONES_PRINCIPALES:
+            self.assertIn(f'title="{grupo}"', html)
+
     def test_token_fisico_exige_mencion_explicita_y_no_marca_modelos_o_usb(self):
         for mensaje in ["Instalar ePass2003", "Ayuda con SafeNet", "Descarga de token USB",
                         "Configurar Feitian", "Instalar el driver", "Token gris no funciona",
@@ -36,18 +187,20 @@ class LimpiezaCasosTest(TestCase):
             ("Se callo tal servicio", "Caída o indisponibilidad"),
             ("El portal no funciona", "Caída o indisponibilidad"),
             ("Tenemos fallas en la plataforma", "Falla del servicio"),
-            ("No podemos ver consumos", "Consulta o visualización de consumos"),
+            ("No podemos ver consumos", "Falla de visualización de consumos"),
             ("Solicito reporte de consumo", "Consulta o visualización de consumos"),
         ]:
             with self.subTest(mensaje=mensaje):
                 row = {"descripcion": mensaje, "causa": "Token físico", "historial_conversacion": [
                     evento(ACUSE, "Correo Saliente")]}
                 resultado = analizar_caso(row)
-                self.assertEqual(categoria, resultado[COL_CLASIFICACION])
-                self.assertEqual(categoria, ui.inferir_causa_comun_caso(row))
+                self.assertEqual(categoria, resultado[COL_MOTIVO_INICIAL])
+                grupo = "Solicitudes y consultas" if categoria == "Consulta o visualización de consumos" else "Fallas del servicio"
+                self.assertEqual(grupo, resultado[COL_CLASIFICACION])
+                self.assertEqual(grupo, ui.inferir_causa_comun_caso(row))
                 self.assertEqual(SIN_CAUSA, resultado[COL_CAUSA])
                 self.assertEqual("Pendiente de validar", resultado[COL_ESTADO_CAUSA])
-                if "consumos" not in categoria:
+                if grupo == "Fallas del servicio":
                     self.assertEqual("Incidentes", resultado[COL_TIPOLOGIA])
 
     def test_instalacion_enviada_a_agenda_se_cuenta_una_vez(self):
@@ -82,7 +235,7 @@ class LimpiezaCasosTest(TestCase):
     def test_tipificacion_antigua_no_fabrica_redireccion_o_atencion(self):
         row = {"descripcion": "El sistema está caído", "tipificacion": "9 - Redireccionamiento Agenda"}
         base = ui.agregar_tipologia_soporte_casos(pd.DataFrame([row]))
-        self.assertEqual("Caída o indisponibilidad", base.iloc[0][COL_CLASIFICACION])
+        self.assertEqual("Fallas del servicio", base.iloc[0][COL_CLASIFICACION])
         self.assertEqual("Incidentes", base.iloc[0][COL_TIPOLOGIA])
         self.assertFalse(ui.mascara_envio_agenda_casos(base).any())
         self.assertEqual(row["tipificacion"], base.iloc[0]["tipificacion"])
@@ -118,7 +271,7 @@ class LimpiezaCasosTest(TestCase):
         resultado = analizar_caso({"descripcion": "El sistema está caído", "historial_conversacion": [
             evento("Se verificó el sistema y se realizaron pruebas en el portal."),
             evento("Se remite a comercial para renovación")]})
-        self.assertEqual("Caída o indisponibilidad", resultado[COL_CLASIFICACION])
+        self.assertEqual("Fallas del servicio", resultado[COL_CLASIFICACION])
         self.assertEqual("Redirigido con atención técnica registrada", resultado[COL_ATENCION])
 
     def test_comparativo_usa_un_solo_indicador_de_canales(self):

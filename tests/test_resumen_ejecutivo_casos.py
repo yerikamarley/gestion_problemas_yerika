@@ -75,15 +75,15 @@ class ResumenEjecutivoTest(unittest.TestCase):
         self.assertEqual(6, reporte["causas"]["Casos"].sum())
         self.assertEqual(6, reporte["causas_lamina"]["Casos"].sum())
         self.assertAlmostEqual(100, reporte["causas_lamina"]["Porcentaje"].sum())
-        self.assertEqual(3, len(reporte["causas_lamina"]))
+        self.assertEqual(5, len(reporte["causas_lamina"]))
         self.assertIn("Solicitud operativa", reporte["causas"]["Causa"].tolist())
         self.assertTrue(reporte["causas_lamina"]["Porcentaje"].is_monotonic_decreasing)
 
     def test_causa_raiz_prevalece_sobre_producto_en_descripcion(self):
         from app_ui import inferir_causa_comun_caso
         for raiz, categoria in [
-            ("Caso duplicado", "Duplicado"),
-            ("Captores", "Captores"),
+            ("Caso duplicado", "Solicitudes y consultas"),
+            ("Captores", "Solicitudes y consultas"),
             ("Token fisico", "Firma digital"),
             ("Firma digital", "Firma digital"),
         ]:
@@ -109,26 +109,23 @@ class ResumenEjecutivoTest(unittest.TestCase):
             "Clasificación principal": "Causa", "Cantidad": "Casos", "% casos": "Porcentaje",
         }))
 
-    def test_tabla_kpi_dos_principales_y_acumulado_maximo_cuatro_nombres(self):
+    def test_tabla_kpi_muestra_grupos_sin_etiquetas_acumuladas(self):
         from app_ui import preparar_kpi_casos_cliente_externo, resumen_principales_causas_servicios_casos
         raices = ["Caso duplicado", "Captores", "Solicitud de pago", "Necesito instalar token físico", "Firma digital", "Activar certificado"]
         base, _ = preparar_kpi_casos_cliente_externo(pd.DataFrame([
             caso(str(i), causa="", descripcion=raiz) for i, raiz in enumerate(raices)
         ]))
         tabla, _ = resumen_principales_causas_servicios_casos(base)
-        self.assertEqual(3, len(tabla))
+        self.assertEqual(4, len(tabla))
         self.assertEqual(6, tabla["Cantidad"].sum())
         self.assertAlmostEqual(100, tabla["% casos"].sum())
-        etiqueta = tabla.iloc[0]["Clasificación principal"]
-        self.assertEqual(4, etiqueta.count("(1 casos)"))
-        self.assertNotIn("+", etiqueta)
-        self.assertNotIn("\n", etiqueta)
-        self.assertEqual(4, tabla.iloc[0]["Cantidad"])
+        self.assertEqual(3, tabla.set_index("Clasificación principal").loc["Solicitudes y consultas", "Cantidad"])
+        self.assertTrue(tabla["Clasificación principal"].map(lambda s: ";" not in s and " casos)" not in s).all())
         self.assertTrue(tabla["% casos"].is_monotonic_decreasing)
 
-    def test_porcentaje_descendente_incluye_acumulado(self):
-        for cantidades, esperado in [([40, 30, 20, 10], [40, 30, 30]),
-                                     ([30, 25, 24, 21], [45, 30, 25]),
+    def test_porcentaje_descendente_conserva_cada_grupo(self):
+        for cantidades, esperado in [([40, 30, 20, 10], [40, 30, 20, 10]),
+                                     ([30, 25, 24, 21], [30, 25, 24, 21]),
                                      ([20, 50, 30], [50, 30, 20]),
                                      ([25, 75], [75, 25])]:
             causas = pd.DataFrame({"Causa": list("ABCD")[:len(cantidades)],
@@ -137,7 +134,7 @@ class ResumenEjecutivoTest(unittest.TestCase):
 
     def test_no_usa_etiqueta_sin_causa_identificada(self):
         from app_ui import inferir_causa_comun_caso
-        self.assertEqual("Por revisar", inferir_causa_comun_caso(pd.Series(dtype=object)))
+        self.assertEqual("Solicitudes y consultas", inferir_causa_comun_caso(pd.Series(dtype=object)))
 
     def test_clasificaciones_provienen_de_un_solo_catalogo_sin_productos(self):
         from app_ui import inferir_causa_comun_caso

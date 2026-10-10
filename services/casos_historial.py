@@ -10,6 +10,8 @@ from config.equipo_soporte import EQUIPO_SOPORTE_CASOS
 
 COL_TOKEN = "Tipo de token detectado"
 COL_MOTIVO = "Motivo observado"
+COL_MOTIVO_INICIAL = "Motivo inicial"
+COL_CLASIFICACION_INICIAL = "Clasificación inicial"
 COL_CAUSA = "Causa identificada"
 COL_ESTADO_CAUSA = "Estado de la causa"
 COL_ATENCION = "Atención registrada"
@@ -26,7 +28,7 @@ REDIRIGIDO_SIN_ATENCION = "Redirigido sin atención técnica registrada"
 ENVIADO_OTROS_CANALES = "Enviado a otros canales"
 SIN_ATENCION = "Sin evidencia suficiente de atención"
 SIN_CAUSA = "Sin causa documentada"
-VERSION_ANALISIS = "historial-limpieza-v4"
+VERSION_ANALISIS = "historial-limpieza-v5"
 
 HEADER_EVENTO = re.compile(
     r"(?:^| --- )(?P<fecha>\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2})\s*\|\s*"
@@ -51,12 +53,13 @@ REDIRECCION = re.compile(r"\b(?:se (?:redirig\w*|redireccion\w*|remit\w*|deriv\w
                          r"(?:debe|debes|favor|por favor)\s+(?:contactar|comunicarse|comunicarte|agendar|radicar)|"
                          r"(?:contacte|contacta|comuniquese|comunicate|agende|agenda tu cita|radique)|"
                          r"(?:separe|reserve|programe)\s+(?:su|tu|una)\s+cita|"
+                         r"(?:se atiende|se atienden|sera atendid[oa])\s+(?:a traves de|por|directamente por)|"
                          r"envio (?:del? |un )?(?:enlace|link)|"
                          r"(?:corresponde|competencia)\s+(?:a|del|de la)|canal correcto|fuera del alcance)\b")
 DESTINOS = (("PQRS", re.compile(r"\b(?:pqrs|pqrf|pqr|quejas y reclamos)\b")),
             ("Canal de ventas", re.compile(r"\b(?:canal de ventas|ventas)\b")),
             ("Agenda", re.compile(r"\b(?:agenda|agendar|agendamiento|cita|zcal|agendate)\b")),
-            ("Comercial", re.compile(r"\b(?:comercial|ejecutivo de cuenta|asesor comercial)\b")))
+            ("Comercial", re.compile(r"\b(?:comercial(?:es)?|ejecutivos? de cuenta|asesor(?:es)? comercial(?:es)?)\b")))
 ACCION_TECNICA = re.compile(
     r"\b(?:se (?:instalo|reinstalo|configuro|actualizo|desbloqueo|restablecio|verifico|valido|reviso|"
     r"realizo|corrigio|soluciono|probo|oriento|explico|brindo|identifico|determino)|"
@@ -84,6 +87,9 @@ MOTIVOS = (
         r"fuera de servicio|no funciona|no responde|sin servicio)|"
         r"(?:se cayo|se callo|caid[oa]|indisponibilidad|fuera de servicio).{0,60}"
         r"\b(?:sistema|servicio|plataforma|portal|aplicacion)\b")),
+    ("Falla de visualización de consumos", re.compile(
+        r"(?:no (?:podemos|puedo|permite|muestra|aparece\w*|visualiz\w*)|error|falla\w*|problema\w*).{0,65}\bconsumos?\b|"
+        r"\bconsumos?\b.{0,65}(?:no (?:se ven|aparece\w*|carga\w*|se muestra\w*)|error|falla\w*)")),
     ("Consulta o visualización de consumos", re.compile(r"\bconsumos?\b")),
     ("Falla del servicio", re.compile(
         r"\b(?:error\w*|falla\w*|lentitud|lento|interrupcion)\b.{0,60}\b(?:sistema|servicio|plataforma|portal|aplicacion)\b|"
@@ -91,9 +97,10 @@ MOTIVOS = (
     ("Seguridad o suplantación", re.compile(r"\b(?:phishing|suplantacion|fraude)\b")),
     ("Bloqueo o PIN", re.compile(r"\b(?:pin|puk|bloquead\w*|bloqueo|contrasena incorrecta)\b")),
     ("Token no reconocido", re.compile(r"(?:no (?:reconoce|detecta|lee)|no reconocido|no detectado|no aparece).{0,50}(?:token|dispositivo|usb)|(?:token|dispositivo).{0,50}(?:no (?:reconoce|detecta|lee)|no reconocido|no detectado)")),
-    ("Falla de descarga o activación", re.compile(r"(?:error|falla\w*|problema\w*|dificult\w*|no (?:pued\w*|permite|logr\w*)|imposible).{0,65}(?:descarg\w*|activ\w*)|(?:descarg\w*|activ\w*).{0,65}(?:error|falla\w*|no funciona)")),
+    ("Falla de descarga o activación", re.compile(r"(?:error|falla\w*|problema\w*|dificult\w*|no (?:pued\w*|permite|logr\w*)|imposible).{0,65}(?:descarg\w*|(?:re)?activ\w*)|(?:descarg\w*|(?:re)?activ\w*).{0,65}(?:error|falla\w*|no funciona)")),
     ("Falla al firmar", re.compile(r"(?:error|falla\w*|problema\w*|dificult\w*|no (?:pued\w*|permite)).{0,55}(?:firmar|firma)|(?:firma|firmar).{0,55}(?:error|falla|no funciona)")),
     ("Instalación o configuración", re.compile(r"\b(?:instala\w*|reinstala\w*|configura\w*|driver\w*|controlador\w*)\b")),
+    ("Reactivación del servicio", re.compile(r"\breactiva\w*\b")),
     ("Descarga o activación", re.compile(r"\b(?:descarg\w*|activa\w*)\b")),
     ("Uso del token", re.compile(r"(?:uso|usar|utilizar|manejo|ayuda|asesoria).{0,45}(?:token|toquen|tocken)|(?:token|toquen|tocken).{0,45}(?:usar|uso|ayuda|dificultad)")),
 )
@@ -106,22 +113,28 @@ CLASIFICACIONES_LEGADAS = (
 ETIQUETAS_GESTION = {"agenda", "envio agenda / manual de uso", "enviado a otros canales",
                     "9 - redireccionamiento agenda", "soporte uso", "soporte falla",
                     "instalacion o configuracion", "instalacion", "descarga o activacion",
-                    "caida o indisponibilidad", "consulta o visualizacion de consumos", "duplicado", "caso duplicado", "captores"}
+                    "caida o indisponibilidad", "consulta o visualizacion de consumos", "duplicado", "caso duplicado", "captores",
+                    "fallas del servicio", "solicitudes y consultas", "uso o funcionamiento del token", "por revisar"}
 CLASIFICACION_POR_MOTIVO = {
-    "Caída o indisponibilidad": "Caída o indisponibilidad",
-    "Consulta o visualización de consumos": "Consulta o visualización de consumos",
-    "Falla del servicio": "Falla del servicio",
-    "Seguridad o suplantación": "Seguridad o suplantación",
+    "Caída o indisponibilidad": "Fallas del servicio",
+    "Falla de visualización de consumos": "Fallas del servicio",
+    "Consulta o visualización de consumos": "Solicitudes y consultas",
+    "Falla del servicio": "Fallas del servicio",
+    "Seguridad o suplantación": "Fallas del servicio",
     "Bloqueo o PIN": "Uso o funcionamiento del token",
     "Token no reconocido": "Uso o funcionamiento del token",
     "Uso del token": "Uso o funcionamiento del token",
     "Falla de descarga o activación": "Descarga o activación",
     "Descarga o activación": "Descarga o activación",
+    "Reactivación del servicio": "Descarga o activación",
     "Falla al firmar": "Firma digital",
     "Instalación o configuración": "Instalación o configuración",
 }
-CLASIFICACIONES_PRINCIPALES = (ENVIADO_OTROS_CANALES, *dict.fromkeys(CLASIFICACION_POR_MOTIVO.values()),
-                              "Duplicado", "Captores", "Solicitud operativa", "Por revisar")
+CLASIFICACION_POR_LEGADA = {"Duplicado": "Solicitudes y consultas", "Captores": "Solicitudes y consultas",
+                           "Firma digital": "Firma digital", "Solicitud operativa": "Solicitudes y consultas"}
+CLASIFICACIONES_PRINCIPALES = ("Firma digital", "Instalación o configuración", "Descarga o activación",
+                              "Uso o funcionamiento del token", "Fallas del servicio",
+                              "Solicitudes y consultas", ENVIADO_OTROS_CANALES)
 CAUSAS = (
     ("Controlador ausente, incompatible o corrupto", re.compile(r"(?:driver|controlador).{0,65}(?:ausente|incompatible|corrupt\w*|no instalad\w*|desactualizad\w*)|(?:falta|ausencia|incompatibilidad).{0,45}(?:driver|controlador)")),
     ("Certificado vencido o revocado", re.compile(r"certificado.{0,45}(?:vencid\w*|expirad\w*|revocad\w*)")),
@@ -281,17 +294,25 @@ def analizar_caso(row):
     tipo = "Físico y virtual" if fisico and virtual else "Token físico" if fisico else "Token virtual" if virtual else "No identificado"
     motivo = "Sin motivo específico"
     prueba_motivo = ""
-    # El problema reportado pesa antes que los temas de una guía de instalación.
+    # La solicitud inicial no cambia por instrucciones ni por correos posteriores.
+    entrantes = [(p, t) for p, t in temas if "entrante" in normalizar(p.get("tipo"))]
+    entrantes.sort(key=lambda pt: texto(pt[0].get("fecha")))
     primarias = [(p, t) for p, t in temas if p["fuente"] in
-                 {"descripcion", "descripcion_detallada", "sn__description"} or "entrante" in normalizar(p.get("tipo"))]
-    for candidatos in (primarias, temas):
-        for etiqueta, patron in MOTIVOS:
-            hallazgo = next(((p, m) for p, t in candidatos if (m := _coincidencia(patron, t))), None)
-            if hallazgo:
-                motivo, prueba_motivo = etiqueta, _evidencia(*hallazgo)
-                break
-        if prueba_motivo:
+                 {"descripcion", "descripcion_detallada", "sn__description"} and t] + entrantes[:1]
+    candidatos = primarias or temas
+    for etiqueta, patron in MOTIVOS:
+        hallazgo = next(((p, m) for p, t in candidatos if (m := _coincidencia(patron, t))), None)
+        if hallazgo:
+            motivo, prueba_motivo = etiqueta, _evidencia(*hallazgo)
             break
+    texto_principal = " ".join(t for _, t in candidatos)
+    legada = next((etiqueta for etiqueta, patron in CLASIFICACIONES_LEGADAS
+                   if patron.search(texto_principal)), None)
+    if motivo == "Sin motivo específico":
+        motivo = legada or ("Solicitud o consulta" if texto_principal else "Sin solicitud registrada")
+        prueba_motivo = _evidencia(candidatos[0][0]) if candidatos else ""
+    clasificacion_inicial = CLASIFICACION_POR_MOTIVO.get(
+        motivo, CLASIFICACION_POR_LEGADA.get(legada, "Solicitudes y consultas"))
     atenciones = []
     destinos = []
     redirecciones = []
@@ -304,10 +325,12 @@ def analizar_caso(row):
     for parte, contenido in normalizadas:
         if not _es_gestion(parte):
             continue
-        redireccion = REDIRECCION.search(contenido)
-        if redireccion and not re.search(r"\b(?:no se|no fue|sin)\s+(?:redirig|redireccion|remit|deriv|traslad|escal|envi)", contenido):
+        for redireccion in REDIRECCION.finditer(contenido):
+            prefijo = contenido[max(0, redireccion.start() - 25):redireccion.start()]
+            if re.search(r"\b(?:no|no fue|sin)\s*$", prefijo):
+                continue
             # Asociar destino con la frase de redirección, no con cualquier mención del correo.
-            contexto = contenido[max(0, redireccion.start() - 70):redireccion.end() + 180]
+            contexto = contenido[max(0, redireccion.start() - 70):redireccion.end() + 240]
             encontrados = [nombre for nombre, patron in DESTINOS if patron.search(contexto)]
             if encontrados:
                 destinos.extend(encontrados)
@@ -330,37 +353,33 @@ def analizar_caso(row):
                 prueba_causa = _evidencia(parte, hallazgo)
     grupo_causa = causa
     if estado_causa != "Pendiente de validar":
-        grupo_causa = next((nombre for nombre, patron in CAUSAS if patron.search(normalizar(causa))), causa)
+        grupo_causa = next((nombre for nombre, patron in CAUSAS if patron.search(normalizar(causa))),
+                           "Otras causas documentadas")
     if destinos:
         atencion = "Redirigido con atención técnica registrada" if atenciones else REDIRIGIDO_SIN_ATENCION
     else:
         atencion = "Atención técnica registrada" if atenciones else SIN_ATENCION
     # Una clasificación principal por caso; producto y destino son atributos.
-    clasificacion = CLASIFICACION_POR_MOTIVO.get(motivo, "Por revisar")
-    if motivo == "Sin motivo específico":
-        texto_principal = " ".join(t for _, t in primarias) or " ".join(t for _, t in temas)
-        clasificacion = next((etiqueta for etiqueta, patron in CLASIFICACIONES_LEGADAS
-                              if patron.search(texto_principal)), "Por revisar")
+    clasificacion = clasificacion_inicial
     anotacion = normalizar(causa_registrada)
     if anotacion in {"duplicado", "caso duplicado", "captores"}:
-        clasificacion = "Captores" if anotacion == "captores" else "Duplicado"
+        clasificacion = CLASIFICACION_POR_LEGADA["Captores" if anotacion == "captores" else "Duplicado"]
     if atencion == REDIRIGIDO_SIN_ATENCION or normalizar(causa_registrada) in {
             "enviado a otros canales", "envio agenda / manual de uso", "9 - redireccionamiento agenda"}:
         if not atenciones:
             clasificacion = ENVIADO_OTROS_CANALES
     if clasificacion == ENVIADO_OTROS_CANALES:
         tipologia = ENVIADO_OTROS_CANALES
-    elif clasificacion in {"Caída o indisponibilidad", "Falla del servicio", "Seguridad o suplantación"} or motivo in {
+    elif clasificacion == "Fallas del servicio" or motivo in {
             "Falla de descarga o activación", "Falla al firmar", "Token no reconocido", "Bloqueo o PIN"}:
         tipologia = "Incidentes"
-    elif clasificacion in {"Solicitud operativa", "Consulta o visualización de consumos", "Duplicado", "Captores"}:
+    elif clasificacion == "Solicitudes y consultas":
         tipologia = "Solicitudes"
-    elif clasificacion == "Por revisar":
-        tipologia = "Por revisar"
     else:
         tipologia = "Soporte Uso"
     return {COL_TOKEN: tipo, COL_FISICO: fisico, COL_VIRTUAL: virtual,
             COL_CLASIFICACION: clasificacion,
+            COL_CLASIFICACION_INICIAL: clasificacion_inicial, COL_MOTIVO_INICIAL: motivo,
             COL_TIPOLOGIA: tipologia,
             COL_MOTIVO: motivo, COL_CAUSA: causa, COL_ESTADO_CAUSA: estado_causa,
             "Grupo de causa": grupo_causa, COL_ATENCION: atencion,
@@ -406,10 +425,11 @@ def resumen_causas_historial(df):
     columnas = ["Grupo de causa", COL_ESTADO_CAUSA, "Casos", "% casos", "Ejemplos"]
     if df.empty:
         return pd.DataFrame(columns=columnas)
-    base = df.drop_duplicates("numero") if "numero" in df else df
-    grupos = base.groupby(["Grupo de causa", COL_ESTADO_CAUSA], dropna=False)
+    base = df.drop_duplicates("numero", keep="last") if "numero" in df else df
+    grupos = base.groupby("Grupo de causa", dropna=False)
     filas = []
-    for (causa, estado), grupo in grupos:
+    for causa, grupo in grupos:
+        estado = ", ".join(sorted(grupo[COL_ESTADO_CAUSA].dropna().unique()))
         ejemplos = ", ".join(grupo["numero"].astype(str).head(3)) if "numero" in grupo else ""
         filas.append({"Grupo de causa": causa, COL_ESTADO_CAUSA: estado, "Casos": len(grupo),
                       "% casos": round(len(grupo) * 100 / len(base), 2), "Ejemplos": ejemplos})

@@ -124,7 +124,7 @@ class AtencionCausaTest(TestCase):
                 self.assertIn("separe su cita", resultado[COL_EVIDENCIA_ATENCION])
                 self.assertFalse(resultado[COL_FISICO])
                 self.assertFalse(resultado[COL_VIRTUAL])
-                self.assertEqual("Sin motivo específico", resultado[COL_MOTIVO])
+                self.assertEqual("Firma digital", resultado[COL_MOTIVO])
                 self.assertEqual("Sin causa documentada", resultado[COL_CAUSA])
                 self.assertNotIn("token fisico", texto_util_caso(row))
                 focos = app_ui.resumen_focos_destacados_kpi_casos(pd.DataFrame([row])).set_index("Foco")

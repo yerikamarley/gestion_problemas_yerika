@@ -50,7 +50,7 @@ from services.casos_historial import (
     COL_EVIDENCIA_TOKEN, COL_EVIDENCIA_MOTIVO, COL_EVIDENCIA_CAUSA, COL_EVIDENCIA_ATENCION,
     COL_FISICO, COL_VIRTUAL, REDIRIGIDO_SIN_ATENCION, SIN_ATENCION, VERSION_ANALISIS,
     ENVIADO_OTROS_CANALES, enviado_a_otros_canales,
-    COL_CLASIFICACION, resumen_clasificacion_casos,
+    COL_CLASIFICACION, COL_CLASIFICACION_INICIAL, COL_MOTIVO_INICIAL, resumen_clasificacion_casos,
 )
 from services.casos_campos import ampliar_columnas_casos, tabla_casos_portal
 from services.servicenow_worker import CaseSyncWorker
@@ -563,7 +563,7 @@ COL_CAUSA_INCIDENTE_PRINCIPAL = "Causa incidente principal"
 COL_ULTIMA_ATENCION = "Ultima atencion"
 COL_VENCIMIENTO_SLA = "Vencimiento SLA"
 COL_CANAL_AGRUPADO = "Canal agrupado"
-COL_MOTIVO_INFERIDO = "Motivo inferido"
+COL_MOTIVO_INFERIDO = COL_MOTIVO_INICIAL
 COL_CLIENTE_AGENDA = "Cliente agenda"
 COL_CICLO_CLIENTE = "Ciclo cliente"
 COL_CLIENTE_RECURRENTE_AGENDA = "Cliente recurrente agenda"
@@ -615,7 +615,7 @@ SOPORTE_USO = "Soporte Uso"
 ENVIO_AGENDA_MANUAL_USO = "Envio agenda / manual de uso"
 SOLICITUDES_CASOS = "Solicitudes"
 INCIDENTES_CASOS = "Incidentes"
-CASE_TYPOLOGY_CACHE_VERSION = "casos-limpieza-v7"
+CASE_TYPOLOGY_CACHE_VERSION = "casos-limpieza-v8"
 KEY_CLIENT_CASE_YEAR_BASE = 2025
 KEY_CLIENT_CASE_YEAR_FOCUS = 2026
 KEY_CLIENT_CASE_MONTHS_FOCUS = [3, 4, 6]
@@ -836,10 +836,6 @@ CASE_SUPPORT_TYPOLOGY_GUIDE = [
         TEXT_DESCRIPCION: (
             "Caídas, indisponibilidad y fallas reportadas de firma, descarga o funcionamiento del token."
         ),
-    },
-    {
-        TEXT_TIPOLOGIA_SOPORTE: "Por revisar",
-        TEXT_DESCRIPCION: "No hay evidencia suficiente para determinar el tipo de solicitud o problema.",
     },
 ]
 
@@ -1074,56 +1070,9 @@ CASE_TIPIFICATION_GUIDE = [
     },
 ]
 
-AGENDA_CASE_TIPIFICATION = TIPIFICACION_REDIRECCIONAMIENTO_AGENDA
 AGENDA_MOTIVO_TOKEN_FISICO = "Token físico"
 AGENDA_DIRECT_CHANNEL_HINTS = ["calendario"]
 AGENDA_HELP_DESK_CHANNELS = {"web", "telefono", "correo electronico", "en persona", ""}
-AGENDA_REASON_RULES = [
-    (
-        "Activacion o descarga de certificado",
-        [
-            "activacion",
-            "activar",
-            "descarga",
-            "descargar",
-            "certificado",
-            ".cer",
-            "cer ",
-        ],
-    ),
-    (
-        "Instalacion o reinstalacion",
-        [
-            "instalacion",
-            "instalar",
-            "instale",
-            "reinstalacion",
-            "reinstalar",
-            "configuracion",
-            "configurar",
-        ],
-    ),
-    (
-        "Firma o pruebas de uso",
-        [
-            "firma",
-            "firmar",
-            "certifirma",
-            "prueba de firma",
-            "pruebas de firma",
-        ],
-    ),
-    (
-        "Cita o redireccionamiento a agenda",
-        [
-            "agenda",
-            "agendar",
-            "agendamiento",
-            "cita",
-            "meetings.hubspot",
-        ],
-    ),
-]
 
 NOC_TIPIFICATION = "Alertas y Consultas NOC"
 
@@ -4997,10 +4946,10 @@ def resumen_principales_causas_servicios_casos(base, top_n=5):
 def render_principales_causas_servicios_casos(base, mostrar_tabla=True):
     causas, servicios = resumen_principales_causas_servicios_casos(base)
     st.markdown("#### Clasificación principal y servicios")
-    st.caption("Cada caso tiene una sola clasificación principal. Enviado a otros canales incluye agenda, PQRS, ventas y comercial.")
+    st.caption("Cada caso tiene una sola clasificación principal entre siete grupos. Enviado a otros canales incluye agenda, PQRS, ventas y comercial.")
     col_causas, col_servicios = st.columns(2)
     with col_causas:
-        render_ranking_kpi(causas, COL_CLASIFICACION, TEXT_CANTIDAD, "Clasificación principal", top_n=3, conservar_orden=True)
+        render_ranking_kpi(causas, COL_CLASIFICACION, TEXT_CANTIDAD, "Clasificación principal", top_n=7, conservar_orden=True)
         if mostrar_tabla:
             st.table(causas[[COL_CLASIFICACION, TEXT_CANTIDAD]])
     with col_servicios:
@@ -6532,10 +6481,6 @@ def render_kpi_incidentes(df, mes_dashboard=None):
         )
 
 
-def es_tipificacion_agendamiento(valor):
-    return valor_limpio(valor) == AGENDA_CASE_TIPIFICATION
-
-
 def canal_agrupado_agendamiento(canal):
     canal_normalizado = normalizar_texto(canal)
     if any(pista in canal_normalizado for pista in AGENDA_DIRECT_CHANNEL_HINTS):
@@ -6551,13 +6496,7 @@ def texto_analisis_agendamiento(row):
 
 def inferir_motivo_agendamiento(row):
     analisis = row if row.get("_version_analisis_historial") == VERSION_ANALISIS else analizar_caso(row)
-    if analisis[COL_FISICO]:
-        return AGENDA_MOTIVO_TOKEN_FISICO
-    texto = texto_analisis_agendamiento(row)
-    for motivo, palabras in AGENDA_REASON_RULES:
-        if any(palabra in texto for palabra in palabras):
-            return motivo
-    return "Sin detalle suficiente"
+    return analisis[COL_MOTIVO_INICIAL]
 
 
 def cliente_agendamiento(row):
@@ -6603,8 +6542,16 @@ def agregar_columnas_agendamiento_vacias(df):
 
 
 def preparar_fuentes_agendamiento(df_periodo, df_historico):
-    periodo = normalizar_tipificaciones_casos_df(df_periodo).copy()
-    historico = normalizar_tipificaciones_casos_df(df_historico).copy()
+    fuentes = []
+    for datos in (df_periodo, df_historico):
+        datos = normalizar_tipificaciones_casos_df(datos).copy()
+        for columna in (TEXT_NUMERO, TEXT_CREADO, TEXT_CERRADO):
+            if columna not in datos:
+                datos[columna] = ""
+        if TEXT_NUMERO in datos:
+            datos = datos.drop_duplicates(TEXT_NUMERO, keep="last")
+        fuentes.append(agregar_analisis_historial(datos))
+    periodo, historico = fuentes
     if TEXT_CREADO_DT_DASHBOARD not in periodo.columns:
         periodo = preparar_fechas_dashboard(periodo)
     if TEXT_CREADO_DT_DASHBOARD not in historico.columns:
@@ -6641,7 +6588,7 @@ def agregar_historial_agendamiento(agenda, historico):
         Casos_historicos_cliente=(TEXT_NUMERO, "nunique"),
     )
     historico_agenda = historico_validos[
-        historico_validos[TEXT_TIPIFICACION_2].apply(es_tipificacion_agendamiento)
+        mascara_envio_agenda_casos(historico_validos)
     ].copy()
     agendas_historicas = historico_agenda.groupby(TEXT_CLIENTE_NORM_AGENDA)[TEXT_NUMERO].nunique()
     agenda[COL_PRIMERA_ATENCION_CLIENTE] = agenda[TEXT_CLIENTE_NORM_AGENDA].map(
@@ -6664,7 +6611,7 @@ def marcar_reincidencia_agendamiento(agenda, historico):
         return
 
     historico_agenda = historico[
-        historico[TEXT_TIPIFICACION_2].apply(es_tipificacion_agendamiento)
+        mascara_envio_agenda_casos(historico)
     ].copy()
     if historico_agenda.empty:
         return
@@ -6739,7 +6686,7 @@ def preparar_analisis_agendamiento(df_periodo, df_historico, mes_dashboard):
         return agregar_columnas_agendamiento_vacias(df_periodo)
 
     periodo, historico = preparar_fuentes_agendamiento(df_periodo, df_historico)
-    agenda = periodo[periodo[TEXT_TIPIFICACION_2].apply(es_tipificacion_agendamiento)].copy()
+    agenda = periodo[mascara_envio_agenda_casos(periodo)].copy()
     if agenda.empty:
         return agregar_columnas_agendamiento_vacias(agenda)
 
@@ -6765,7 +6712,7 @@ def lectura_ejecutiva_agendamiento(agenda, total_casos_periodo):
     total_agenda = len(agenda)
     mesa = int((agenda[COL_CANAL_AGRUPADO] == "Mesa de ayuda").sum())
     directa = int((agenda[COL_CANAL_AGRUPADO] == "Agenda directa").sum())
-    token_fisico = int((agenda[COL_MOTIVO_INFERIDO] == AGENDA_MOTIVO_TOKEN_FISICO).sum())
+    token_fisico = int(agenda[COL_FISICO].sum())
     reincidentes, porcentaje_reincidencia = metricas_reincidencia_agendamiento(agenda)
     clientes_reincidentes = agenda[agenda[COL_REINCIDENTE_AGENDA] == "Si"][COL_CLIENTE_AGENDA].nunique()
     motivo_principal = valor_mas_frecuente(agenda[COL_MOTIVO_INFERIDO])
@@ -6777,8 +6724,8 @@ def lectura_ejecutiva_agendamiento(agenda, total_casos_periodo):
             {
                 TEXT_PREGUNTA: "Por que siguen entrando por mesa de ayuda?",
                 TEXT_LECTURA: (
-                    "La mayoria no esta entrando por el calendario directo, sino por canales operativos "
-                    "que terminan en mesa de ayuda."
+                    f"{mesa} casos entraron por mesa de ayuda y {directa} por agenda directa. "
+                    "El canal de entrada se conserva separado del destino al que fueron remitidos."
                 ),
                 TEXT_EVIDENCIA: (
                     f"{mesa} de {total_agenda} casos de agendamiento ({porcentaje(mesa, total_agenda)}%) "
@@ -6793,28 +6740,29 @@ def lectura_ejecutiva_agendamiento(agenda, total_casos_periodo):
             {
                 TEXT_PREGUNTA: "Cual es la razon de tantos casos?",
                 TEXT_LECTURA: (
-                    f"El motivo dominante es {motivo_principal}; esta tipologia concentra "
-                    f"{porcentaje(total_agenda, total_casos_periodo)}% de los casos del periodo."
+                    f"El motivo inicial más frecuente es {motivo_principal}. "
+                    f"Las derivaciones a agenda representan {porcentaje(total_agenda, total_casos_periodo)}% "
+                    "de todos los casos del periodo."
                 ),
                 TEXT_EVIDENCIA: f"Producto principal asociado: {producto_principal}.",
                 COL_ACCION_SUGERIDA: (
-                    "Separar en el cierre si fue instalacion, activacion/descarga, token fisico o firma; "
-                    "asi la causa queda accionable y no solo como agendamiento."
+                    "Revisar el motivo inicial de instalación, descarga o firma para orientar al cliente "
+                    "al canal adecuado desde el primer contacto."
                 ),
             },
             {
-                TEXT_PREGUNTA: "Cuanto pesa token fisico/ePass?",
+                TEXT_PREGUNTA: "¿Cuánto pesa token físico?",
                 TEXT_LECTURA: (
-                    "Token fisico/ePass es un motivo operativo relevante porque suele requerir validacion "
-                    "del dispositivo, pruebas o una sesion asistida."
+                    "El seguimiento de token físico usa menciones explícitas. "
+                    "El motivo inicial explica qué necesitaba el cliente."
                 ),
                 TEXT_EVIDENCIA: (
                     f"{token_fisico} de {total_agenda} casos de agendamiento "
-                    f"({porcentaje(token_fisico, total_agenda)}%) fueron inferidos como {AGENDA_MOTIVO_TOKEN_FISICO}."
+                    f"({porcentaje(token_fisico, total_agenda)}%) mencionan explícitamente token físico."
                 ),
                 COL_ACCION_SUGERIDA: (
-                    "Marcar token fisico/ePass de forma explicita en causa o resolucion para separar este motivo "
-                    "de una agenda generica."
+                    "Conservar el producto informado por el cliente y el motivo de la solicitud "
+                    "para distinguir instalaciones, descargas y dificultades de uso."
                 ),
             },
             {
@@ -6944,7 +6892,7 @@ def render_analisis_agendamiento_mesa(df_periodo, df_historico, mes_dashboard):
     st.subheader("Analisis de agendamiento por mesa de ayuda")
     st.caption(
         "Cruce para explicar por que los casos de redireccionamiento a agenda siguen llegando por mesa de ayuda, "
-        "que motivo operativo se repite y cuanto pesa token fisico/ePass."
+        "cuál fue la solicitud inicial y cuánto pesa token físico con mención explícita."
     )
 
     if agenda.empty:
@@ -6953,14 +6901,14 @@ def render_analisis_agendamiento_mesa(df_periodo, df_historico, mes_dashboard):
 
     total_agenda = len(agenda)
     mesa = int((agenda[COL_CANAL_AGRUPADO] == "Mesa de ayuda").sum())
-    token_fisico = int((agenda[COL_MOTIVO_INFERIDO] == AGENDA_MOTIVO_TOKEN_FISICO).sum())
+    token_fisico = int(agenda[COL_FISICO].sum())
     reincidentes, porcentaje_reincidencia = metricas_reincidencia_agendamiento(agenda)
 
     render_tarjetas(
         [
             ("Agendamiento", total_agenda),
             ("Mesa ayuda", f"{mesa} ({porcentaje(mesa, total_agenda)}%)"),
-            ("Token fisico/ePass", f"{token_fisico} ({porcentaje(token_fisico, total_agenda)}%)"),
+            ("Token físico", f"{token_fisico} ({porcentaje(token_fisico, total_agenda)}%)"),
             ("Reincidencia", f"{reincidentes} ({porcentaje_reincidencia}%)"),
         ]
     )
@@ -6977,8 +6925,9 @@ def render_analisis_agendamiento_mesa(df_periodo, df_historico, mes_dashboard):
         )
 
     with tab_motivos:
+        st.caption("Motivo inicial de los casos enviados a agenda. El detalle conserva la solicitud y su evidencia.")
         motivos = (
-            agenda[COL_MOTIVO_INFERIDO]
+            agenda[COL_CLASIFICACION_INICIAL]
             .value_counts()
             .rename_axis("Motivo")
             .reset_index(name=TEXT_CASOS)
@@ -7026,7 +6975,10 @@ def render_analisis_agendamiento_mesa(df_periodo, df_historico, mes_dashboard):
             TEXT_CUENTA,
             TEXT_CANAL,
             COL_CANAL_AGRUPADO,
+            COL_CLASIFICACION_INICIAL,
             COL_MOTIVO_INFERIDO,
+            COL_TOKEN,
+            COL_EVIDENCIA_MOTIVO,
             COL_REINCIDENTE_AGENDA,
             COL_CLIENTE_RECURRENTE_AGENDA,
             COL_AGENDAS_HISTORICAS_CLIENTE,
@@ -7669,13 +7621,13 @@ def render_analisis_historial_casos(df, periodo_label):
                      column_config={"% casos": st.column_config.ProgressColumn("% casos", min_value=0,
                          max_value=100, format="%.2f %%")})
     st.markdown("**Casos y evidencia para revisar**")
-    columnas = ["numero", "creado", "estado", "cuenta", "asignado", COL_CLASIFICACION, TEXT_TIPOLOGIA_SOPORTE, COL_TOKEN, COL_MOTIVO,
+    columnas = ["numero", "creado", "estado", "cuenta", "asignado", COL_CLASIFICACION, TEXT_TIPOLOGIA_SOPORTE, COL_TOKEN, COL_CLASIFICACION_INICIAL, COL_MOTIVO_INICIAL,
                 "Grupo de causa", COL_CAUSA, COL_ESTADO_CAUSA, COL_ATENCION, COL_DESTINO, COL_EVIDENCIA_TOKEN,
                 COL_EVIDENCIA_MOTIVO, COL_EVIDENCIA_CAUSA, COL_EVIDENCIA_ATENCION]
     detalle = base.reindex(columns=columnas).rename(columns={"numero": "Número", "creado": "Creado",
         "estado": "Estado", "cuenta": "Cuenta", "asignado": "Asignado a"})
     visibles = ["Número", "Estado", "Cuenta", COL_CLASIFICACION, TEXT_TIPOLOGIA_SOPORTE,
-                COL_TOKEN, COL_ATENCION, COL_DESTINO, COL_CAUSA]
+                COL_TOKEN, COL_MOTIVO_INICIAL, COL_ATENCION, COL_DESTINO, COL_CAUSA]
     dataframe_liviano(detalle[visibles], height=420)
     st.download_button("Descargar análisis con evidencia", dataframe_csv_bytes(detalle),
                        file_name=f"causas_atencion_{nombre_archivo_seguro(periodo_label)}.csv",
@@ -7740,7 +7692,7 @@ def dashboard_casos():
                 render_evolucion_diaria_casos(df, solo_token=True, inicio=inicio, fin=fin)
         st.caption("Token físico es un seguimiento del producto, con mención explícita; puede formar parte de cualquier clasificación.")
         st.markdown("#### ¿Qué casos recibimos?")
-        st.caption("Una clasificación principal por caso. Si solo se deriva a otro canal, no se vuelve a contar como instalación o descarga.")
+        st.caption("Siete grupos como máximo, con una sola clasificación por caso. Las derivaciones conservan el motivo inicial en el detalle.")
         st.dataframe(resumen_clasificacion_casos(df), use_container_width=True, hide_index=True,
                      column_config={"% casos": st.column_config.ProgressColumn("% casos", min_value=0,
                          max_value=100, format="%.2f %%")})

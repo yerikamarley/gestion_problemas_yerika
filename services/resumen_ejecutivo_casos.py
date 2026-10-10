@@ -74,22 +74,8 @@ def agrupar_causas(base):
 
 
 def causas_para_lamina(causas):
-    """Dos principales y un acumulado con hasta cuatro causas en su etiqueta."""
-    causas = causas.sort_values("Porcentaje", ascending=False, kind="stable").reset_index(drop=True)
-    if len(causas) <= 2:
-        return causas.copy()
-    resto = causas.iloc[2:]
-    etiqueta = "; ".join(
-        f"{row['Causa']} ({int(row['Casos']):,} casos)"
-        for _, row in resto.head(4).iterrows()
-    )
-    if len(resto) > 4:
-        etiqueta += f"; +{len(resto) - 4} más"
-    return pd.concat([causas.head(2), pd.DataFrame([{
-        "Causa": etiqueta,
-        "Casos": int(resto["Casos"].sum()),
-        "Porcentaje": float(resto["Porcentaje"].sum()),
-    }])], ignore_index=True).sort_values("Porcentaje", ascending=False, kind="stable").reset_index(drop=True)
+    """Muestra cada grupo del catálogo sin acumular categorías en una etiqueta."""
+    return causas.sort_values("Porcentaje", ascending=False, kind="stable").reset_index(drop=True).copy()
 
 
 def construir_resumen_ejecutivo(anterior, actual, corte, clasificar_causa):
