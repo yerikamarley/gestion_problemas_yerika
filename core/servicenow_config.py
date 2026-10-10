@@ -12,11 +12,12 @@ from core.settings import PROJECT_ROOT, config_value
 
 _config_lock = RLock()
 _CLAVES = {"SERVICENOW_USER", "SERVICENOW_PASSWORD", "SERVICENOW_SYNC_ACTOR", "SERVICENOW_SYNC_ENABLED"}
+_OPCIONALES = {"SERVICENOW_INSTANCE"}
 
 
 def guardar_conexion_servidor(valores):
     """Escribe .env de forma atómica; nunca retorna ni registra los secretos."""
-    if set(valores) != _CLAVES:
+    if not _CLAVES.issubset(valores) or set(valores) - (_CLAVES | _OPCIONALES):
         raise ValueError("Configuración de conexión inválida.")
     path = PROJECT_ROOT / ".env"
     with _config_lock:
@@ -35,6 +36,8 @@ def guardar_conexion_servidor(valores):
 
 
 def conexion_configurada():
+    if str(config_value("SERVICENOW_AUTH_TYPE", "basic")).strip().lower() == "client_credentials":
+        return all(config_value(k) for k in ("SERVICENOW_INSTANCE", "SERVICENOW_CLIENT_ID", "SERVICENOW_CLIENT_SECRET"))
     return all(config_value(k) for k in ("SERVICENOW_INSTANCE", "SERVICENOW_USER", "SERVICENOW_PASSWORD"))
 
 

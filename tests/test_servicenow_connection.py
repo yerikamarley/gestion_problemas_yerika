@@ -12,7 +12,7 @@ import app_logic
 import app_ui
 from core import servicenow_config
 from services import servicenow
-from services.servicenow import ServiceNowClient, ServiceNowError, ServiceNowMFARequiredError, mapear_documento
+from services.servicenow import ServiceNowClient, ServiceNowError, ServiceNowAuthenticationError, ServiceNowMFARequiredError, mapear_documento
 from services.servicenow_worker import CaseSyncWorker
 from tests.test_servicenow import caso, documento, field, response
 
@@ -25,12 +25,14 @@ class ConnectionPersistenceTest(unittest.TestCase):
             path = Path(directory) / ".env"
             path.write_text("OTHER_SETTING=conservar\n", encoding="utf-8")
             values = {"SERVICENOW_USER": "prueba", "SERVICENOW_PASSWORD": "test-'password",
-                      "SERVICENOW_SYNC_ACTOR": "admin@example.test", "SERVICENOW_SYNC_ENABLED": "true"}
+                      "SERVICENOW_SYNC_ACTOR": "admin@example.test", "SERVICENOW_SYNC_ENABLED": "true",
+                      "SERVICENOW_INSTANCE": "test.service-now.com"}
             servicenow_config.guardar_conexion_servidor(values)
             stored = dotenv_values(path)
             self.assertEqual("conservar", stored["OTHER_SETTING"])
             self.assertEqual(values["SERVICENOW_PASSWORD"], stored["SERVICENOW_PASSWORD"])
             self.assertEqual(values["SERVICENOW_PASSWORD"], os.environ["SERVICENOW_PASSWORD"])
+            self.assertEqual(values["SERVICENOW_INSTANCE"], stored["SERVICENOW_INSTANCE"])
             self.assertFalse(list(Path(directory).glob(".servicenow-*")))
 
     def test_fallo_escritura_no_reemplaza_conexion_anterior(self):
@@ -97,6 +99,18 @@ class ConnectionAuthorizationTest(unittest.TestCase):
         client.return_value.__enter__.return_value.recordar_sesion.assert_called_once()
         conn.close.assert_called_once()
 
+    def test_instancia_indicada_se_normaliza_y_guarda_tras_validar(self):
+        with patch.object(app_logic, "exigir_permiso_actor"), \
+             patch.object(app_logic, "ServiceNowClient") as client, \
+             patch.object(app_logic, "get_conn", return_value=MagicMock()), \
+             patch.object(app_logic, "_bloquear_y_validar_admin"), \
+             patch.object(app_logic, "guardar_conexion_servidor") as save:
+            app_logic.conectar_servicenow("prueba", "test", actor_email="admin",
+                                         instancia="https://test.service-now.com/navpage.do")
+        client.assert_called_once_with(user="prueba", password="test", mfa_code="", instance="test.service-now.com")
+        client.return_value.__enter__.return_value.validar_acceso.assert_called_once()
+        self.assertEqual("test.service-now.com", save.call_args.args[0]["SERVICENOW_INSTANCE"])
+
 
 class MFASessionTest(unittest.TestCase):
     def setUp(self):
@@ -143,7 +157,7 @@ class IncrementalSyncTest(unittest.TestCase):
 
         with patch("services.servicenow.config_value", side_effect=lambda n, d="": settings.get(n, d)), \
              ServiceNowClient() as client, patch.object(client, "_paginas", side_effect=pages), \
-             patch.object(client, "consolidar", side_effect=lambda raw: {"case_id": raw["sys_id"]["value"]}):
+             patch.object(client, "_consolidar_pagina", side_effect=lambda rows: [{"case_id": raw["sys_id"]["value"]} for raw in rows]):
             docs = [d for page in client.listar_casos_actualizados(desde, hasta) for d in page]
         self.assertEqual(["a" * 32, "b" * 32], [d["case_id"] for d in docs])
         self.assertIn("sys_updated_on>=2026-10-10 05:00:00", calls[0][1])
@@ -197,20 +211,21 @@ class IncrementalSyncTest(unittest.TestCase):
 
 
 class AutomaticWorkerTest(unittest.TestCase):
-    def test_mfa_detiene_intentos_hasta_reconexion_admin(self):
-        callback = MagicMock(side_effect=ServiceNowMFARequiredError("renovar"))
-        with patch("services.servicenow_worker.Thread"), \
-             patch("services.servicenow_worker.sincronizacion_habilitada", return_value=True), \
-             patch("services.servicenow_worker.config_value", return_value="admin"):
-            worker = CaseSyncWorker(callback)
-            worker.ejecutar_ciclo()
-            worker.ejecutar_ciclo()
-            self.assertEqual(1, callback.call_count)
-            worker.despertar()
-            callback.side_effect = None
-            worker.ejecutar_ciclo()
-            self.assertEqual(2, callback.call_count)
-            worker.detener()
+    def test_autenticacion_rechazada_detiene_intentos_hasta_reconexion_admin(self):
+        for error in (ServiceNowMFARequiredError, ServiceNowAuthenticationError):
+            with self.subTest(error=error), patch("services.servicenow_worker.Thread"), \
+                 patch("services.servicenow_worker.sincronizacion_habilitada", return_value=True), \
+                 patch("services.servicenow_worker.config_value", return_value="admin"):
+                callback = MagicMock(side_effect=error("renovar"))
+                worker = CaseSyncWorker(callback)
+                worker.ejecutar_ciclo()
+                worker.ejecutar_ciclo()
+                self.assertEqual(1, callback.call_count)
+                worker.despertar()
+                callback.side_effect = None
+                worker.ejecutar_ciclo()
+                self.assertEqual(2, callback.call_count)
+                worker.detener()
 
     def test_sin_conexion_activa_no_llama_servicenow(self):
         callback = MagicMock()
@@ -241,18 +256,17 @@ with patch.object(ui, 'exigir_permiso_actor', PERMISSION), patch.object(ui, 'ren
         self.assertEqual(0, len(app.text_input))
         self.assertIn("Solo un administrador", app.error[0].value)
 
-    def test_admin_ve_conexion_sin_uploader_y_limpia_secretos_al_enviar(self):
+    def test_admin_activa_oauth_sin_pedir_credenciales_personales(self):
         app = self.app()
         self.assertFalse(app.exception)
         self.assertEqual(0, len(app.get("file_uploader")))
-        app.text_input(key="servicenow_login_usuario").set_value("prueba")
-        app.text_input(key="servicenow_login_password").set_value("test-secret")
-        app.text_input(key="servicenow_login_mfa").set_value("123456")
-        with patch.object(app_ui, "conectar_servicenow", return_value={"conectado": True}) as connect, \
+        self.assertFalse(any("Contraseña" in element.label or "Código de verificación" in element.label
+                             for element in app.text_input))
+        with patch.object(app_ui, "conectar_servicenow_oauth", return_value={"conectado": True}) as connect, \
              patch.object(app_ui, "iniciar_sincronizacion_casos") as worker:
             app.button[0].click().run(timeout=15)
         self.assertFalse(app.exception)
-        connect.assert_called_once_with("prueba", "test-secret", actor_email="admin@example.test", codigo_mfa="123456")
+        connect.assert_called_once_with(actor_email="admin@example.test")
         worker.return_value.despertar.assert_called_once()
         self.assertEqual("", app.session_state["servicenow_login_password"])
         self.assertEqual("", app.session_state["servicenow_login_mfa"])

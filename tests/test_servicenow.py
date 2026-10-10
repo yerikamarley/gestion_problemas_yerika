@@ -7,7 +7,8 @@ import requests
 import app_logic
 from repositories.servicenow import ensure_servicenow_schema
 from services.servicenow import (
-    ServiceNowClient, ServiceNowError, limpiar_texto, limites_mes_utc, mapear_documento,
+    ServiceNowClient, ServiceNowError, ServiceNowAuthenticationError,
+    limpiar_texto, limites_mes_utc, mapear_documento, normalizar_instancia,
 )
 
 
@@ -134,10 +135,33 @@ class ServiceNowClientTest(unittest.TestCase):
         self.assertIn("target_table=incident", get.call_args_list[-1].kwargs["params"]["sysparm_query"])
 
     def test_instancia_ausente_o_url_arbitraria_se_rechaza(self):
-        for instance in ("", "https://test.service-now.com", "localhost", "test.service-now.com/path", "user@host"):
+        for instance in ("", "http://test.service-now.com", "localhost", "test.service-now.com/path", "user@host"):
             with patch("services.servicenow.config_value", side_effect=lambda k, d="": instance if k == "SERVICENOW_INSTANCE" else "test"):
                 with self.assertRaises(ServiceNowError):
                     ServiceNowClient()
+
+    def test_enlace_del_portal_se_convierte_en_endpoint_api(self):
+        with patch("services.servicenow.config_value", return_value=""), ServiceNowClient(
+            instance=" https://TEST.service-now.com/navpage.do?sysparm_stack=no ",
+            user="prueba", password="test",
+        ) as client:
+            self.assertEqual("https://test.service-now.com/api/now/table", client._base_url)
+        for invalid in ("https://user:secret@test.service-now.com/navpage.do",
+                        "https://test.service-now.com:8443/navpage.do",
+                        "https://test.service-now.com.evil.test/navpage.do"):
+            with self.subTest(invalid=invalid), self.assertRaises(ServiceNowError):
+                normalizar_instancia(invalid)
+
+    def test_credenciales_rechazadas_requieren_reconexion(self):
+        with patch.object(self.client._session, "get", return_value=response([], status=401)):
+            with self.assertRaisesRegex(ServiceNowAuthenticationError, "HTTP 401"):
+                self.client.validar_acceso()
+
+    def test_permiso_denegado_se_distingue_del_inicio_de_sesion(self):
+        with patch.object(self.client._session, "get", return_value=response([], status=403)):
+            with self.assertRaisesRegex(ServiceNowError, "permisos de lectura") as error:
+                self.client.validar_acceso()
+        self.assertNotIsInstance(error.exception, ServiceNowAuthenticationError)
 
 
 def documento(tipo="casos"):

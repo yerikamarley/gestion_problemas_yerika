@@ -4,12 +4,13 @@ from threading import Event, Thread
 
 from core.servicenow_config import sincronizacion_habilitada
 from core.settings import config_value
-from services.servicenow import ServiceNowMFARequiredError
+from services.servicenow import ServiceNowAuthenticationError
 
 
 class CaseSyncWorker:
-    def __init__(self, sincronizar):
+    def __init__(self, sincronizar, configuracion=None):
         self._sincronizar = sincronizar
+        self._configuracion = configuracion
         self._wake = Event()
         self._stop = Event()
         self._requiere_login = False
@@ -26,13 +27,19 @@ class CaseSyncWorker:
         self._thread.join(timeout=1)
 
     def ejecutar_ciclo(self):
-        if not sincronizacion_habilitada() or self._requiere_login:
+        if self._requiere_login:
             return
-        actor = config_value("SERVICENOW_SYNC_ACTOR")
+        try:
+            habilitada, actor = (self._configuracion() if self._configuracion else
+                                 (sincronizacion_habilitada(), config_value("SERVICENOW_SYNC_ACTOR")))
+        except Exception:
+            return
+        if not habilitada:
+            return
         if actor:
             try:
                 self._sincronizar(actor_email=actor)
-            except ServiceNowMFARequiredError:
+            except ServiceNowAuthenticationError:
                 self._requiere_login = True
             except Exception:
                 # La fachada guarda el estado seguro en BD; el siguiente ciclo reintenta.

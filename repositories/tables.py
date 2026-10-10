@@ -42,10 +42,11 @@ def columnas_existentes(conn, table_name):
     }
 
 
-def columnas_select_seguras(conn, table_name, columns):
+def columnas_select_seguras(conn, table_name, columns, existentes=None):
     if not columns:
         return "*", None, []
-    existentes = columnas_existentes(conn, table_name)
+    if existentes is None:
+        existentes = columnas_existentes(conn, table_name)
     selected_columns = [validar_identificador_sql(column) for column in columns if column in existentes]
     missing_columns = [column for column in columns if column not in existentes]
     if not selected_columns:
@@ -107,14 +108,14 @@ def read_table_filtered(table_name, columns=None, anio=None, mes=None, equals=No
     agregar_condicion_periodo(where, params, anio, mes)
     agregar_condicion_fechas(where, params, fecha_inicio, fecha_fin)
     conn = get_conn()
-    column_sql, requested_columns, missing_columns = columnas_select_seguras(conn, table_name, columns)
+    existentes = columnas_existentes(conn, table_name)
+    column_sql, requested_columns, missing_columns = columnas_select_seguras(conn, table_name, columns, existentes)
     if not column_sql:
         conn.close()
         df = pd.DataFrame(columns=columns or [])
         df.attrs["missing_columns"] = missing_columns
         return df
 
-    existentes = columnas_existentes(conn, table_name)
     for columna, valor in (equals or {}).items():
         if not valor_filtro_activo(valor) or columna not in existentes:
             continue

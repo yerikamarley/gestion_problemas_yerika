@@ -4,7 +4,12 @@ import json
 import hashlib
 from copy import copy
 import re
+import math
+from collections import defaultdict
+from html.parser import HTMLParser
+from time import monotonic
 from threading import RLock
+from urllib.parse import urlsplit
 from datetime import date, datetime, timezone
 from zoneinfo import ZoneInfo
 
@@ -20,13 +25,19 @@ TABLES = {"casos": "sn_customerservice_case", "incidentes": "incident"}
 PAGE_SIZE = 100
 _sesiones_api = {}
 _sesiones_lock = RLock()
+_tokens_oauth = {}
+_tokens_lock = RLock()
 
 
 class ServiceNowError(RuntimeError):
     """Error público sin URLs, credenciales ni cuerpo de respuesta remoto."""
 
 
-class ServiceNowMFARequiredError(ServiceNowError):
+class ServiceNowAuthenticationError(ServiceNowError):
+    """El administrador debe volver a autenticar la conexión API."""
+
+
+class ServiceNowMFARequiredError(ServiceNowAuthenticationError):
     """La API pide al administrador renovar su verificación multifactor."""
 
 
@@ -68,25 +79,94 @@ def limpiar_texto(texto):
     return re.sub(r"\r\n|[\r\n\t]", " --- ", str(texto or ""))
 
 
+class _TextoCorreoHTML(HTMLParser):
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.textos = []
+        self.oculto = 0
+
+    def handle_starttag(self, tag, attrs):
+        if tag in {"script", "style"}:
+            self.oculto += 1
+        elif not self.oculto and tag in {"br", "p", "div", "li", "tr"}:
+            self.textos.append("\n")
+
+    def handle_endtag(self, tag):
+        if tag in {"script", "style"}:
+            self.oculto = max(0, self.oculto - 1)
+        elif not self.oculto and tag in {"p", "div", "li", "tr"}:
+            self.textos.append("\n")
+
+    def handle_data(self, data):
+        if not self.oculto:
+            self.textos.append(data)
+
+
+def texto_correo(row):
+    texto = valor(row.get("body_text"))
+    if texto and str(texto).strip():
+        return limpiar_texto(texto)
+    parser = _TextoCorreoHTML()
+    parser.feed(str(valor(row.get("body")) or ""))
+    return limpiar_texto("".join(parser.textos).strip())
+
+
+def texto_historial(timeline):
+    """Texto analítico calculado al sincronizar, sin HTML ni IDs técnicos."""
+    return " --- ".join(" | ".join(str(r.get(k) or "") for k in
+                                  ("fecha", "tipo", "usuario", "asunto", "contenido"))
+                        for r in timeline if r.get("contenido") or r.get("asunto"))
+
+
+def normalizar_instancia(instance):
+    """Admite el enlace del portal; conserva solo el dominio permitido para la API."""
+    instance = str(instance or "").strip()
+    if not instance:
+        raise ServiceNowError("Falta la dirección de ServiceNow. Complétala en la pantalla de conexión del administrador.")
+    if "://" in instance:
+        try:
+            parsed = urlsplit(instance)
+            if parsed.scheme.lower() != "https" or parsed.username or parsed.password or parsed.port not in (None, 443):
+                raise ValueError
+            instance = parsed.hostname or ""
+        except ValueError:
+            raise ServiceNowError("Introduce un enlace HTTPS de tu instancia de ServiceNow, sin credenciales ni puertos adicionales.") from None
+    instance = instance.lower()
+    if not re.fullmatch(r"[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.service-now\.com", instance):
+        raise ServiceNowError("Introduce el dominio de tu instancia terminado en .service-now.com o su enlace HTTPS.")
+    return instance
+
+
 class ServiceNowClient:
-    def __init__(self, *, user=None, password=None, mfa_code=None):
-        instance = str(config_value("SERVICENOW_INSTANCE")).strip()
+    def __init__(self, *, user=None, password=None, mfa_code=None, instance=None, auth_type=None):
+        instance = normalizar_instancia(config_value("SERVICENOW_INSTANCE") if instance is None else instance)
+        mode = auth_type or ("basic" if user is not None or password is not None
+                             else config_value("SERVICENOW_AUTH_TYPE", "basic"))
+        self._oauth = str(mode).strip().lower() == "client_credentials"
+        if str(mode).strip().lower() not in {"basic", "client_credentials"}:
+            raise ServiceNowError("El método de conexión de ServiceNow no está admitido.")
         user = config_value("SERVICENOW_USER") if user is None else user
         password = config_value("SERVICENOW_PASSWORD") if password is None else password
-        if not instance or not user or not password:
-            raise ServiceNowError("Configura SERVICENOW_INSTANCE, SERVICENOW_USER y SERVICENOW_PASSWORD en el servidor.")
-        if not re.fullmatch(r"[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?\.service-now\.com", instance):
-            raise ServiceNowError("SERVICENOW_INSTANCE debe ser un dominio de instancia de ServiceNow, sin protocolo ni ruta.")
+        self._client_id = config_value("SERVICENOW_CLIENT_ID") if self._oauth else ""
+        self._client_secret = config_value("SERVICENOW_CLIENT_SECRET") if self._oauth else ""
+        if self._oauth and (not self._client_id or not self._client_secret):
+            raise ServiceNowError("Faltan las credenciales de portalgestion en la configuración privada del servidor.")
+        if not self._oauth and (not user or not password):
+            raise ServiceNowError("No hay una cuenta de ServiceNow conectada. Introduce tu usuario y contraseña en Sincronizar Casos.")
         self._base_url = f"https://{instance}/api/now/table"
+        self._token_url = f"https://{instance}/oauth_token.do"
         self._session = requests.Session()
-        self._session.auth = HTTPBasicAuth(user, password)
+        if not self._oauth:
+            self._session.auth = HTTPBasicAuth(user, password)
         self._session.headers.update({"Accept": "application/json"})
-        self._session_key = hashlib.sha256(f"{instance}\0{user}\0{password}".encode()).hexdigest()
+        credenciales = (self._client_id, self._client_secret) if self._oauth else (user, password)
+        self._scope = str(config_value("SERVICENOW_OAUTH_SCOPE", "")) if self._oauth else ""
+        self._session_key = hashlib.sha256(f"{instance}\0{mode}\0{credenciales[0]}\0{credenciales[1]}\0{self._scope}".encode()).hexdigest()
         with _sesiones_lock:
             cookies = _sesiones_api.get(self._session_key)
             if cookies is not None:
                 self._session.cookies.update(copy(cookies))
-        if mfa_code:
+        if mfa_code and not self._oauth:
             if not re.fullmatch(r"\d{6,10}", mfa_code):
                 self._session.close()
                 raise ValueError("El código de verificación debe tener entre 6 y 10 dígitos.")
@@ -110,10 +190,57 @@ class ServiceNowClient:
 
     def recordar_sesion(self):
         """Solo las cookies de sesión API viven en RAM; el código MFA no se almacena."""
+        if self._oauth:
+            return
         with _sesiones_lock:
             _sesiones_api.clear()
             _sesiones_api[self._session_key] = copy(self._session.cookies)
         self._session.headers.pop("X-MFA_TOKEN", None)
+
+    def _obtener_token(self, rechazado=None):
+        # Un solo POST por renovación, compartido por los clientes del proceso.
+        with _tokens_lock:
+            actual = _tokens_oauth.get(self._session_key)
+            if actual and actual[1] > monotonic() and actual[0] != rechazado:
+                return actual[0]
+            _tokens_oauth.pop(self._session_key, None)
+            datos = {"grant_type": "client_credentials", "client_id": self._client_id,
+                     "client_secret": self._client_secret}
+            if self._scope:
+                datos["scope"] = self._scope
+            inicio = monotonic()
+            try:
+                response = self._session.post(self._token_url, data=datos, timeout=(10, 30), allow_redirects=False)
+                if response.status_code in {400, 401, 403}:
+                    raise ServiceNowAuthenticationError(
+                        "ServiceNow rechazó las credenciales de la integración. Revisa el ID, el secreto, "
+                        "el usuario de aplicación OAuth y que las credenciales de cliente estén habilitadas."
+                    )
+                if response.status_code != 200:
+                    raise ServiceNowError(f"No se pudo obtener autorización de ServiceNow (HTTP {response.status_code}).")
+                payload = response.json()
+                token = payload.get("access_token")
+                duracion = float(payload.get("expires_in", 0))
+                if (not isinstance(token, str) or not re.fullmatch(r"[A-Za-z0-9._~+/-]+=*", token)
+                        or not math.isfinite(duracion) or duracion <= 0
+                        or str(payload.get("token_type", "Bearer")).lower() != "bearer"):
+                    raise ValueError
+            except (requests.RequestException, ValueError, TypeError, AttributeError):
+                raise ServiceNowError("No se pudo obtener una autorización válida de ServiceNow.") from None
+            if len(_tokens_oauth) >= 16:
+                _tokens_oauth.clear()
+            _tokens_oauth[self._session_key] = (token, inicio + duracion - min(60, duracion * 0.1))
+            return token
+
+    def _consultar_api(self, url, **kwargs):
+        if not self._oauth:
+            return self._session.get(url, **kwargs)
+        token = self._obtener_token()
+        response = self._session.get(url, headers={"Authorization": f"Bearer {token}"}, **kwargs)
+        if response.status_code == 401:
+            token = self._obtener_token(rechazado=token)
+            response = self._session.get(url, headers={"Authorization": f"Bearer {token}"}, **kwargs)
+        return response
 
     def _paginas(self, tabla, query):
         offset = 0
@@ -123,7 +250,7 @@ class ServiceNowClient:
         seen = set()
         while True:
             try:
-                response = self._session.get(
+                response = self._consultar_api(
                     f"{self._base_url}/{tabla}",
                     params={"sysparm_query": query + "^ORDERBYsys_id",
                             "sysparm_display_value": "all", "sysparm_exclude_reference_link": "true",
@@ -134,6 +261,19 @@ class ServiceNowClient:
                     if response.status_code == 401 and response.headers.get("X-MFA_TOKEN") == "invalid":
                         raise ServiceNowMFARequiredError(
                             "ServiceNow requiere un código de verificación vigente. Un administrador debe reconectar."
+                        )
+                    if response.status_code == 401:
+                        if self._oauth:
+                            raise ServiceNowAuthenticationError(
+                                "ServiceNow no aceptó la autorización de la integración tras renovarla. Revisa su configuración de acceso API."
+                            )
+                        raise ServiceNowAuthenticationError(
+                            "ServiceNow rechazó el inicio de sesión por API (HTTP 401). Comprueba tu usuario y contraseña de ServiceNow. "
+                            "Si accedes con inicio de sesión corporativo o biometría, puede requerirse otra autorización para la API."
+                        )
+                    if response.status_code == 403:
+                        raise ServiceNowError(
+                            f"ServiceNow no permite consultar {tabla} por API (HTTP 403). Revisa los permisos de lectura y la política de acceso API."
                         )
                     raise ServiceNowError(f"ServiceNow rechazó la consulta de {tabla} (HTTP {response.status_code}).")
                 result = response.json().get("result")
@@ -160,14 +300,18 @@ class ServiceNowClient:
             if (total is not None and offset >= total) or (total is None and not result):
                 break
 
-    def consolidar(self, raw, tipo="casos"):
+    def consolidar(self, raw, tipo="casos", relacionados=None):
         tabla = validar_tipo(tipo)
         sys_id = valor(raw.get("sys_id"))
         if not isinstance(sys_id, str) or not re.fullmatch(r"[0-9a-fA-F]{32}", sys_id):
             raise ServiceNowError("ServiceNow devolvió un sys_id inválido.")
         validar_numero(valor(raw.get("number")), tipo)
+        def paginas(tabla_fuente, query):
+            if relacionados is not None:
+                return [relacionados.get(tabla_fuente, [])]
+            return self._paginas(tabla_fuente, query)
         slas = []
-        for page in self._paginas("task_sla", f"task={sys_id}"):
+        for page in paginas("task_sla", f"task={sys_id}"):
             for row in page:
                 sla = {key: valor(row.get(key), legible=key in {"sla", "stage"})
                        for key in ("sla", "stage", "start_time", "planned_end_time", "has_breached")}
@@ -175,22 +319,46 @@ class ServiceNowClient:
                 sla["sys_id"] = valor(row.get("sys_id"))
                 slas.append(sla)
         timeline = []
-        for page in self._paginas("sys_journal_field", f"element_id={sys_id}"):
+        for page in paginas("sys_journal_field", f"element_id={sys_id}"):
             for row in page:
                 timeline.append({"id": valor(row.get("sys_id")), "fecha": valor(row.get("sys_created_on")), "origen": "Journal",
                                  "tipo": "Nota de Trabajo" if valor(row.get("element")) == "work_notes" else "Comentario",
                                  "usuario": valor(row.get("sys_created_by")),
                                  "contenido": limpiar_texto(valor(row.get("value")))})
-        for page in self._paginas("sys_email", f"target_table={tabla}^instance={sys_id}"):
+        for page in paginas("sys_email", f"target_table={tabla}^instance={sys_id}"):
             for row in page:
                 timeline.append({"id": valor(row.get("sys_id")), "fecha": valor(row.get("sys_created_on")), "origen": "Email",
-                                 "tipo": "Correo Entrante" if valor(row.get("type")) == "received" else "Correo Saliente",
-                                 "usuario": valor(row.get("origemail")) or valor(row.get("sys_created_by")),
-                                 "contenido": limpiar_texto(valor(row.get("body_text")) or "Sin texto")})
-        timeline.sort(key=lambda row: str(row["fecha"] or ""))
+                                 "tipo": {"received": "Correo Entrante", "received-ignored": "Correo Entrante (omitido)",
+                                          "sent": "Correo Saliente", "send-ready": "Correo Pendiente", "send-failed": "Correo Fallido"}
+                                          .get(valor(row.get("type")), "Correo"),
+                                 "usuario": valor(row.get("origemail")) or valor(row.get("sender")) or valor(row.get("sys_created_by")),
+                                 "asunto": limpiar_texto(valor(row.get("subject"))),
+                                 "destinatarios": valor(row.get("recipients")),
+                                 "contenido": texto_correo(row)})
+        timeline.sort(key=lambda row: (str(row["fecha"] or ""), str(row["id"] or "")))
         return {"case_id": sys_id, "tabla": tabla,
                 "campos_caso": {key: valor(field, legible=True) for key, field in raw.items()},
-                "campos_raw": raw, "slas": slas, "traza_unificada": timeline}
+                "campos_raw": raw, "slas": slas, "traza_unificada": timeline,
+                "historial_conversacion": timeline}
+
+    def _consolidar_pagina(self, rows, tipo="casos"):
+        tabla = validar_tipo(tipo)
+        ids = [valor(row.get("sys_id")) for row in rows]
+        if any(not isinstance(s, str) or not re.fullmatch(r"[0-9a-fA-F]{32}", s) for s in ids):
+            raise ServiceNowError("ServiceNow devolvió un sys_id inválido.")
+        grupos = {s: defaultdict(list) for s in ids}
+        lista = ",".join(ids)
+        for fuente, referencia, query in (
+            ("task_sla", "task", f"taskIN{lista}"),
+            ("sys_journal_field", "element_id", f"element_idIN{lista}"),
+            ("sys_email", "instance", f"target_table={tabla}^instanceIN{lista}"),
+        ):
+            for page in self._paginas(fuente, query):
+                for row in page:
+                    referencia_id = valor(row.get(referencia))
+                    if referencia_id in grupos:
+                        grupos[referencia_id][fuente].append(row)
+        return [self.consolidar(row, tipo, relacionados=grupos[valor(row["sys_id"])]) for row in rows]
 
     def obtener(self, numero, tipo="casos"):
         tabla = validar_tipo(tipo)
@@ -203,7 +371,7 @@ class ServiceNowClient:
         tabla = validar_tipo(tipo)
         inicio, fin = limites_mes_utc(mes)
         for page in self._paginas(tabla, f"sys_created_on>={inicio}^sys_created_on<{fin}"):
-            yield [self.consolidar(row, tipo) for row in page]
+            yield self._consolidar_pagina(page, tipo)
 
     def listar_casos_actualizados(self, desde, hasta):
         """Incluye actividad nueva de casos antiguos aunque el caso no cambie."""
@@ -213,7 +381,7 @@ class ServiceNowClient:
         rango = f"sys_updated_on>={inicio}^sys_updated_on<{fin}"
         vistos = set()
         for page in self._paginas(TABLES["casos"], rango):
-            documentos = [self.consolidar(row) for row in page]
+            documentos = self._consolidar_pagina(page)
             vistos.update(doc["case_id"] for doc in documentos)
             yield documentos
         relacionados = set()
@@ -230,7 +398,7 @@ class ServiceNowClient:
         for offset in range(0, len(pendientes), PAGE_SIZE):
             ids = ",".join(pendientes[offset:offset + PAGE_SIZE])
             for page in self._paginas(TABLES["casos"], f"sys_idIN{ids}"):
-                yield [self.consolidar(row) for row in page]
+                yield self._consolidar_pagina(page)
 
 
 def obtener_traza_caso_servicenow(numero_caso):
@@ -292,12 +460,12 @@ def mapear_documento(documento, tipo="casos"):
             except ValueError:
                 raise ServiceNowError(f"Fecha inválida en el campo {field}.") from None
         mapped[column] = content or ""
-    timeline = documento["traza_unificada"]
-    traza = " --- ".join(f"{r['fecha']} | {r['tipo']} | {r['usuario']} | {r['contenido']}" for r in timeline)
+    timeline = documento.get("historial_conversacion", documento.get("traza_unificada", []))
+    traza = texto_historial(timeline)
     notas = " --- ".join(r["contenido"] for r in timeline if r["tipo"] == "Nota de Trabajo")
     # No vaciar las notas históricas de Excel cuando la API no entrega actividad.
     if traza:
-        mapped["observaciones_trabajo"] = traza
+        mapped["historial_conversacion" if tipo == "casos" else "observaciones_trabajo"] = traza
     if notas:
         mapped["notas_trabajo" if tipo == "casos" else "lista_notas_trabajo"] = notas
     if tipo == "incidentes" and traza:

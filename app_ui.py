@@ -72,8 +72,9 @@ from app_logic import (
     es_error_db_transitorio,
     guardar_casos,
     sincronizar_servicenow,
-    consultar_traza_servicenow,
-    conectar_servicenow,
+    consultar_historial_conversacion,
+    conectar_servicenow_oauth,
+    configuracion_sincronizacion_casos,
     sincronizar_casos_automaticamente,
     estado_servicenow,
     exigir_permiso_actor,
@@ -296,9 +297,18 @@ def limpiar_cache_datos():
     st.cache_data.clear()
 
 
+def limpiar_cache_casos():
+    for nombre, funcion in list(globals().items()):
+        if nombre.startswith("cargar_casos") and hasattr(funcion, "clear"):
+            funcion.clear()
+    cargar_meses_disponibles_cache.clear()
+    cargar_ultimo_mes_disponible_cache.clear()
+    cargar_meses_disponibles_multi_cache.clear()
+
+
 @st.cache_resource
 def iniciar_sincronizacion_casos():
-    return CaseSyncWorker(sincronizar_casos_automaticamente)
+    return CaseSyncWorker(sincronizar_casos_automaticamente, configuracion_sincronizacion_casos)
 
 
 def dataframe_liviano(df, limite=DATAFRAME_DISPLAY_LIMIT, height=None):
@@ -576,7 +586,7 @@ SOPORTE_USO = "Soporte Uso"
 ENVIO_AGENDA_MANUAL_USO = "Envio agenda / manual de uso"
 SOLICITUDES_CASOS = "Solicitudes"
 INCIDENTES_CASOS = "Incidentes"
-CASE_TYPOLOGY_CACHE_VERSION = "casos-tipologia-agenda-directa-v2"
+CASE_TYPOLOGY_CACHE_VERSION = "casos-historial-conversacion-v3"
 KEY_CLIENT_CASE_YEAR_BASE = 2025
 KEY_CLIENT_CASE_YEAR_FOCUS = 2026
 KEY_CLIENT_CASE_MONTHS_FOCUS = [3, 4, 6]
@@ -687,6 +697,7 @@ CASE_TIPIFICATION_RENAMES = {
 }
 
 CASE_FIELDS_SEGUIMIENTO_RPOST = [
+    "historial_conversacion",
     TEXT_DESCRIPCION_2,
     TEXT_CAUSA,
     TEXT_CODIGO_RESOLUCION,
@@ -717,6 +728,7 @@ INCIDENT_FIELDS_SEGUIMIENTO_RPOST = [
 ]
 
 CASE_FIELDS_BUSQUEDA_GLOBAL = [
+    "historial_conversacion",
     "notas_trabajo",
     "nombre_proveedor",
     "numero_caso_externo",
@@ -2951,6 +2963,7 @@ def tabla_resumen_tipificaciones_casos(df):
 
 def texto_caso_para_causa_comun(row):
     campos = [
+        "historial_conversacion",
         TEXT_DESCRIPCION_2,
         TEXT_CAUSA,
         TEXT_CODIGO_RESOLUCION,
@@ -2964,6 +2977,7 @@ def texto_caso_para_causa_comun(row):
 
 def texto_caso_para_tipologia_soporte(row):
     campos = [
+        "historial_conversacion",
         "notas_trabajo",
         TEXT_DESCRIPCION_2,
         TEXT_CAUSA,
@@ -6691,6 +6705,7 @@ def canal_agrupado_agendamiento(canal):
 
 def texto_analisis_agendamiento(row):
     campos = [
+        "historial_conversacion",
         TEXT_DESCRIPCION_2,
         TEXT_CAUSA,
         TEXT_CODIGO_RESOLUCION,
@@ -11430,12 +11445,10 @@ def vista_cargar_casos():
         return
     st.markdown("#### Conectar ServiceNow")
     st.caption("La conexión alimenta la base compartida. Los demás roles consultan los datos almacenados.")
-    with st.form("conexion_servicenow_admin", clear_on_submit=True):
-        st.text_input("Usuario de ServiceNow", key="servicenow_login_usuario")
-        st.text_input("Contraseña de ServiceNow", type="password", key="servicenow_login_password")
-        st.text_input("Código de verificación (si la API lo solicita)", type="password", key="servicenow_login_mfa")
-        st.form_submit_button("Conectar y activar actualización automática", type="primary",
-                              on_click=procesar_conexion_servicenow_formulario)
+    st.caption("La integración usa las credenciales privadas del servidor. "
+               "Valida el acceso para activar la actualización automática y el historial de la conversación.")
+    st.button("Validar conexión y activar actualización automática", type="primary",
+              on_click=procesar_conexion_servicenow_formulario)
     resultado = st.session_state.get("servicenow_conexion_resultado")
     if resultado:
         (st.success if resultado["ok"] else st.error)(resultado["mensaje"])
@@ -11447,12 +11460,7 @@ def vista_cargar_casos():
 
 def procesar_conexion_servicenow_formulario():
     try:
-        conectar_servicenow(
-            st.session_state.get("servicenow_login_usuario", ""),
-            st.session_state.get("servicenow_login_password", ""),
-            actor_email=st.session_state.get("user"),
-            codigo_mfa=st.session_state.get("servicenow_login_mfa", ""),
-        )
+        conectar_servicenow_oauth(actor_email=st.session_state.get("user"))
         iniciar_sincronizacion_casos().despertar()
         resultado = {"ok": True, "mensaje": "Conexión validada. La actualización automática de casos está activa."}
     except (ServiceNowError, ValueError, AutorizacionError) as error:
@@ -11479,17 +11487,18 @@ def render_estado_actualizacion_casos():
     if ultima:
         fecha = pd.Timestamp(ultima).tz_convert(ZONA_PLATAFORMA)
         st.caption(f"Última actualización de casos: {fecha:%d/%m/%Y %H:%M:%S}")
-        marcador = fecha.isoformat()
+        cambio = estado.get("ultima_datos")
+        marcador = pd.Timestamp(cambio).isoformat() if cambio else None
         anterior = st.session_state.get("servicenow_ultima_visible")
-        if anterior != marcador:
+        if marcador and anterior != marcador:
             st.session_state["servicenow_ultima_visible"] = marcador
-            limpiar_cache_datos()
+            limpiar_cache_casos()
             if anterior:
                 st.rerun()
     elif not estado["conectado"]:
         st.caption("Los datos guardados están disponibles. La conexión a ServiceNow está pendiente del administrador.")
     if estado.get("estado") == "requiere_autenticacion":
-        st.warning("La actualización está pendiente de que un administrador renueve la conexión a ServiceNow.")
+        st.warning("Un administrador debe revisar la autorización de la integración y validar la conexión.")
     elif estado.get("estado") == "error":
         st.warning("La última actualización no se completó. Se conservan los datos almacenados.")
 
@@ -11539,23 +11548,33 @@ def vista_sincronizar_servicenow(tipo):
 
 
 def render_consulta_traza_servicenow(tipo):
-    with st.expander("Consultar campos, SLAs y actividades sincronizadas"):
+    with st.expander("Historial de la conversación"):
+        st.caption("Mensajes, correos y notas en orden cronológico. El análisis utiliza este historial guardado en nuestra base.")
         with st.form(f"servicenow_traza_{tipo}"):
             numero = st.text_input("Número del registro")
-            consultar = st.form_submit_button("Consultar traza")
+            consultar = st.form_submit_button("Consultar historial")
         if consultar:
             try:
-                documento = consultar_traza_servicenow(
+                historial = consultar_historial_conversacion(
                     numero.strip().upper(), actor_email=st.session_state.get("user"), tipo=tipo
                 )
-                if documento:
-                    st.json(documento)
+                if historial:
+                    df_historial = pd.DataFrame(historial)
+                    df_historial["fecha"] = pd.to_datetime(df_historial["fecha"], errors="coerce", utc=True).dt.tz_convert(
+                        ZONA_PLATAFORMA).dt.strftime("%d/%m/%Y %H:%M:%S")
+                    columnas = [c for c in ("fecha", "tipo", "usuario", "asunto", "destinatarios", "contenido") if c in df_historial]
+                    st.dataframe(df_historial[columnas].rename(columns={
+                        "fecha": "Fecha", "tipo": "Actividad", "usuario": "Autor",
+                        "asunto": "Asunto", "destinatarios": "Destinatarios", "contenido": "Mensaje",
+                    }), hide_index=True, use_container_width=True, column_config={
+                        "Mensaje": st.column_config.TextColumn("Mensaje", width="large"),
+                    })
                 else:
-                    st.info("Este registro todavía no tiene una traza sincronizada.")
+                    st.info("Este registro todavía no tiene un historial de conversación sincronizado.")
             except (ValueError, AutorizacionError) as error:
                 st.error(str(error))
             except Exception:
-                st.error("No se pudo consultar la traza en la base de datos.")
+                st.error("No se pudo consultar el historial de la conversación.")
 
 def selector_fechas_casos():
     hoy = pd.Timestamp.now(tz=ZONA_PLATAFORMA).date()
@@ -11657,7 +11676,7 @@ def vista_casos():
             key="texto_global_casos",
             help=(
                 "Busca en número, cuenta, contacto, creador, descripción, causa, producto, "
-                "tipificación, resolución, notas y observaciones. No distingue mayúsculas ni tildes."
+                "tipificación, resolución, notas, observaciones e historial de la conversación. No distingue mayúsculas ni tildes."
             ),
         )
 

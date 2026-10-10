@@ -1,77 +1,124 @@
-# Conexión y actualización de casos
+# ServiceNow: OAuth, casos e historial de la conversación
 
-La pantalla **Sincronizar Casos** sustituye la carga manual de Excel. No se
-eliminan casos ni meses anteriores: el backend inserta registros nuevos y
-actualiza los existentes en PostgreSQL/Supabase. Los filtros siguen consultando
-la base compartida y abren por defecto en **Hoy**.
+La pantalla **Sincronizar Casos** utiliza la API y sustituye la carga manual de
+Excel para casos. Los registros nuevos se insertan y los existentes se
+actualizan en PostgreSQL/Supabase, sin borrar los meses anteriores. Los
+usuarios del portal consultan esa base compartida y no necesitan una cuenta
+en ServiceNow. Los filtros existentes se conservan; la vista de casos abre
+por defecto en **Hoy**, con fechas de Colombia.
 
-## Conectar como administrador
+## Configuración de ServiceNow
 
-1. Iniciar sesión en la aplicación con un administrador local activo.
-2. Abrir **Sincronizar Casos → Conectar ServiceNow**.
-3. Introducir usuario y contraseña de ServiceNow. Si la API exige MFA, introducir
-   también el código de verificación vigente.
-4. Seleccionar **Conectar y activar actualización automática**.
+La integración entrante debe usar **OAuth — Concesión de credenciales de
+cliente**, estar activa y tener un **Usuario de aplicación OAuth** con lectura
+de `sn_customerservice_case`, `task_sla`, `sys_journal_field` y `sys_email`,
+incluidos los campos de notas y los cuerpos de correo. Para incidentes se
+requiere también lectura de `incident`. La propiedad
+`glide.oauth.inbound.client.credential.grant_type.enabled` debe estar habilitada.
+Véanse las guías oficiales de [credenciales de cliente](https://www.servicenow.com/docs/r/platform-security/authentication/configure-an-oauth-client-credential-grant.html)
+y [usuario de aplicación OAuth](https://www.servicenow.com/docs/r/platform-security/authentication/add-oauth-application-user.html).
 
-El dominio de la instancia se configura exclusivamente en el servidor mediante
-`SERVICENOW_INSTANCE`, sin protocolo ni ruta. `.env.example` contiene las claves.
-La base usa la conexión `SUPABASE_DATABASE_URL` ya existente. El usuario remoto
-necesita lectura de casos, `task_sla`, `sys_journal_field` y `sys_email`, incluidos
-los campos necesarios. Una respuesta HTTP 200 no garantiza que las ACLs permitan
-ver todas las filas; esto debe confirmarse con el administrador de ServiceNow.
+Este flujo obtiene el token con el ID y el secreto de la integración. No usa
+una URL de redireccionamiento, el código de autorización de otra integración
+ni el inicio de sesión personal con biometría/MFA. El usuario de aplicación
+define los permisos efectivos de lectura; una respuesta HTTP 200 puede seguir
+ocultando registros o campos por las ACLs de ServiceNow. Para comprobar la
+integridad, contrastar un caso conocido, sus correos y sus notas con lo visible
+en ServiceNow bajo esos permisos.
 
-La aplicación valida las cuatro fuentes antes de guardar la conexión. Revalida
-el rol Admin local antes de consultar y otra vez antes de guardar. Las
-credenciales se guardan mediante reemplazo atómico del `.env` privado del
-servidor, conservando las otras variables. No se guardan en el JSON analítico,
-en la base compartida ni en resultados públicos. La contraseña y el código se
-vacían en el formulario después del envío. Los otros roles no necesitan
-iniciar sesión ni tener una cuenta en ServiceNow.
+## Secretos del servidor y activación
 
-## Verificación multifactor
+En Streamlit Community Cloud, abrir **App settings → Secrets**, conservar las
+claves existentes de la aplicación y añadir estas claves de nivel raíz:
 
-Las páginas web `validate_multifactor_auth_code.do` y `navpage.do` no son
-endpoints REST. La política de acceso web puede diferir de la política API.
-El cliente usa HTTP Basic y admite `X-MFA_TOKEN` si la API lo exige. El código
-no se almacena; las cookies de sesión API se conservan solo en RAM del servidor.
-Cuando ServiceNow solicita renovar MFA, el trabajador deja de intentar hasta
-que un Admin reconecte. Reiniciar el proceso puede requerir un código nuevo.
+```toml
+SERVICENOW_INSTANCE = "certicamara.service-now.com"
+SERVICENOW_AUTH_TYPE = "client_credentials"
+SERVICENOW_CLIENT_ID = "ID_DE_LA_INTEGRACION"
+SERVICENOW_CLIENT_SECRET = "SECRETO_DE_LA_INTEGRACION"
+SERVICENOW_SYNC_INTERVAL_SECONDS = "120"
+```
 
-Si la instancia no permite reutilizar sesiones API o exige MFA en cada llamada,
-para operar sin intervención se necesita una integración OAuth autorizada en
-ServiceNow. El formulario no configura OAuth ni inicia sesión mediante las
-páginas web. Véase [autenticación REST oficial](https://www.servicenow.com/docs/r/api-reference/rest-api-explorer/c_RESTAPI.html).
+El secreto corresponde a **Secreto de cliente** de la integración de
+credenciales de cliente. No se publica en Git ni se introduce en un formulario
+para otros roles. La conexión a la base continúa usando
+`SUPABASE_DATABASE_URL`. Para ejecución local, `.env.example` documenta las
+claves; completar únicamente el `.env` privado. Las variables de entorno
+tienen prioridad sobre los secretos de Streamlit.
 
-## Actualización automática
+Después de desplegar estos cambios, iniciar sesión como Admin del portal,
+abrir **Sincronizar Casos** y pulsar **Validar conexión y activar actualización
+automática**. La aplicación solicita un token y valida las cuatro fuentes.
+Revalida el rol Admin antes de guardar la activación en
+`servicenow_sync_state`. Allí se guarda el administrador local responsable,
+sin credenciales ni tokens. La activación sobrevive al reinicio del servidor.
 
-La conexión activa `SERVICENOW_SYNC_ENABLED=true` y asocia la ingesta al Admin
-que la configuró mediante `SERVICENOW_SYNC_ACTOR`. El servidor Streamlit ejecuta
-un ciclo cada 120 segundos, configurable mediante
-`SERVICENOW_SYNC_INTERVAL_SECONDS` (mínimo 30). Sigue funcionando al cerrar la
-sesión del administrador, mientras el proceso servidor siga activo.
+Los tokens se reutilizan únicamente en RAM hasta poco antes de expirar. El
+servidor solicita otro token automáticamente y, ante HTTP 401, renueva y
+reintenta una sola vez. Si vuelve a fallar la autenticación, el trabajador
+espera a que un Admin revise y valide la integración. HTTP 403 indica que se
+deben revisar los permisos de la fuente. Los errores públicos omiten los
+secretos y los cuerpos de respuesta remotos.
 
-La primera ejecución busca cambios desde el inicio del día en Colombia. Las
-siguientes parten de la última ejecución correcta guardada en
-`servicenow_sync_state`, con dos minutos de solapamiento. Se consultan cambios
-de casos, SLAs, notas y correos; también se actualizan casos antiguos que
-reciben actividad reciente, aunque no cambie la fecha del caso.
+## Historial de la conversación y análisis
 
-El cursor avanza solo al terminar todas las fuentes y páginas. Si falla una
-consulta, se conservan las páginas ya guardadas y se reintenta desde el cursor
-anterior. Cada página guarda conjuntamente las filas analíticas y su JSON. Un
-bloqueo PostgreSQL impide ejecutar dos ciclos automáticos simultáneos.
+Los correos y las entradas de `sys_journal_field` forman el **Historial de la
+conversación**, ordenado por fecha e ID remoto. Incluye notas de trabajo,
+comentarios, autor, asunto, destinatarios y mensaje. Cuando el correo solo
+tiene cuerpo HTML, se extrae texto legible y se omiten estilos y scripts.
 
-Los snapshots conservan valores brutos y legibles, SLAs y actividades ordenadas.
-Cada actividad conserva su ID remoto. Si la API no devuelve actividades, no se
-vacían las columnas de notas históricas de Excel. El contenido remoto de meses
-anteriores se puede completar desde la opción **Mes** mediante la API.
+El historial estructurado se guarda una sola vez en el JSON de
+`servicenow_records`. La columna adicional `cases.historial_conversacion`
+guarda su texto analítico, calculado durante la sincronización. La interfaz
+consulta únicamente el historial del registro solicitado mediante el índice
+existente `(tabla, numero)`, sin descargar el snapshot completo ni llamar a
+ServiceNow al abrir la conversación. El endpoint de snapshots mantiene el
+alias anterior `traza_unificada` para compatibilidad.
 
-Las tablas nuevas habilitan RLS sin políticas públicas. La conexión PostgreSQL
-del backend debe ser su propietario o tener `BYPASSRLS`. La vista de casos
-comprueba la última actualización cada 30 segundos y refresca los datos cuando
-cambia, manteniendo los filtros elegidos.
+El historial participa en la tipificación, la tipología de soporte, las causas
+comunes, el análisis de agendamiento y la búsqueda de casos. Se añade a la
+evidencia disponible de descripciones y observaciones; las columnas históricas
+de Excel se conservan. Una actualización sin conversación no vacía el
+historial previamente guardado ni elimina esa evidencia de la clasificación.
 
-## Ejecución
+Al arrancar se añade la columna de texto y el estado de activación mediante
+migraciones aditivas. No se crea una tabla adicional por cada fuente de la API.
+Las tablas auxiliares tienen RLS habilitada sin políticas públicas: la conexión
+PostgreSQL del backend debe ser su propietario o tener `BYPASSRLS`.
+
+## Sincronización y rendimiento
+
+El trabajador actualiza cada 120 segundos, configurable con mínimo de 30.
+La primera ejecución parte del comienzo del día en Colombia; las siguientes
+parten de la última ejecución correcta guardada, con dos minutos de
+solapamiento. También busca cambios en SLAs, notas y correos para actualizar
+casos antiguos que reciben actividad reciente.
+
+Cada página guarda la fila analítica y el snapshot en una misma transacción.
+El cursor solo avanza cuando terminan todas las fuentes y páginas. Si una
+consulta falla, se conservan las páginas confirmadas y se reintenta desde el
+cursor anterior. Un bloqueo PostgreSQL evita ciclos simultáneos.
+
+Las fuentes relacionadas se consultan por lotes de hasta 100 casos. En la
+prueba con una página de casos y como máximo una página de cada fuente,
+consolidar 100 casos requiere 4 consultas GET en lugar de 301. Si las fuentes
+relacionadas tienen más páginas, se consultan todas. La autenticación tiene
+sus propias llamadas POST, reutilizadas mientras el token sea válido.
+
+Las vistas leen la base local con filtros y caché. El estado se comprueba cada
+30 segundos; un ciclo sin registros no vacía la caché. Cuando hay datos nuevos,
+se invalidan las cargas de casos para mostrar los cambios. Se elimina además
+una consulta redundante de metadatos por lectura filtrada. Estas mejoras se
+verifican con pruebas; los tiempos reales dependen del volumen, los índices,
+la latencia y las ACLs de la instancia.
+
+La actualización continúa al cerrar sesión el Admin mientras el servidor
+permanezca activo. Si el alojamiento suspende o reinicia la aplicación, el
+trabajador también se detiene y retoma el cursor al volver a arrancar. Para
+sincronización continua con el portal suspendido, ejecutar la tarea en un
+servidor o programador externo disponible permanentemente.
+
+## Ejecución y carga de históricos
 
 ```powershell
 .\.venv\Scripts\Activate.ps1
@@ -79,17 +126,17 @@ python -m pip install -r requirements.txt
 streamlit run app.py
 ```
 
-El arranque crea las tablas auxiliares sin eliminar datos. Para completar un
-histórico o ejecutar un ciclo incremental desde una tarea de servidor:
+Desde la pantalla Admin se puede completar un **Mes** mediante la API. Para
+una tarea de servidor, indicar un administrador local activo autorizado:
 
 ```powershell
-python -m sync_servicenow --mes 2026-09
-python -m sync_servicenow
+python -m sync_servicenow --actor admin@empresa.com --mes 2026-09
+python -m sync_servicenow --actor admin@empresa.com
 ```
 
-Sin `--mes` ni `--numero`, casos usa el cursor incremental; incidentes conserva
-el comportamiento mensual anterior. Una tarea ejecutada en otro proceso no
-comparte las cookies MFA en RAM y necesita acceso API aceptado por la instancia.
-Los endpoints de `backend.py` siguen disponibles para clientes autorizados,
-autenticando usuarios locales de la aplicación y manteniendo los secretos
-remotos exclusivamente en el servidor.
+Sin `--mes` ni `--numero`, casos usa el cursor incremental. El proceso de la
+tarea necesita las mismas credenciales OAuth y conexión PostgreSQL privadas.
+Los endpoints de `backend.py` siguen autenticando usuarios locales del portal.
+La compatibilidad interna con HTTP Basic y las funciones de importación Excel
+anteriores se mantienen; el formulario de casos usa únicamente la integración
+OAuth del servidor.

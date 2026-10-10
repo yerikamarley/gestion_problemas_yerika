@@ -7,12 +7,13 @@ from math import ceil
 import pandas as pd
 from services.casos_sla import guardar_fecha_plataforma
 from services.servicenow import (
-    ServiceNowClient, ServiceNowError, ServiceNowMFARequiredError,
-    mapear_documento, validar_tipo, validar_numero, limites_mes_utc,
+    ServiceNowClient, ServiceNowError, ServiceNowAuthenticationError,
+    mapear_documento, validar_tipo, validar_numero, limites_mes_utc, normalizar_instancia,
 )
 from repositories.servicenow import (
     ensure_servicenow_schema, guardar_documento, leer_documento,
     leer_estado_sincronizacion, guardar_estado_sincronizacion,
+    activar_sincronizacion_casos, leer_activacion_casos, leer_historial_conversacion,
 )
 from core.servicenow_config import guardar_conexion_servidor, conexion_configurada, sincronizacion_habilitada
 
@@ -1214,6 +1215,7 @@ def load_casos_anios(years):
         "cases",
         years,
         columns=[
+            "historial_conversacion",
             "numero",
             "estado",
             "creado",
@@ -1724,6 +1726,7 @@ def init_db():
         },
     )
     ensure_table_columns(conn, "cases", {columna: "TEXT" for columna in CASE_ALIASES})
+    ensure_table_columns(conn, "cases", {"historial_conversacion": "TEXT"})
     ensure_indexes(conn)
     ensure_servicenow_schema(conn)
     db_execute(
@@ -1832,6 +1835,7 @@ def textos_para_tipificacion_caso(row):
     notas_resolucion = normalizar_texto(valor_fila(row, "notas_resolucion"))
     observaciones_adicionales = normalizar_texto(valor_fila(row, "observaciones_adicionales"))
     observaciones_trabajo = " ".join([
+        normalizar_texto(valor_fila(row, "historial_conversacion")),
         normalizar_texto(valor_fila(row, "observaciones_trabajo")),
         normalizar_texto(valor_fila(row, "notas_trabajo")),
     ])
@@ -1978,6 +1982,7 @@ CASE_DB_COLUMNS = [
     "producto_adicional",
     "caso_referencia",
 ]
+CASE_READ_COLUMNS = [*CASE_DB_COLUMNS, "historial_conversacion"]
 
 
 def _guardar_casos_preparados(
@@ -2109,15 +2114,21 @@ def _guardar_pagina_servicenow(documentos, tipo, actor_email):
         existentes = numeros_existentes(
             conn, tabla_local, [d["campos_caso"]["number"] for d in documentos]
         )
+        previos = {}
+        if tipo == "casos" and existentes:
+            filas = db_execute(conn, f"SELECT {', '.join(CASE_READ_COLUMNS)} FROM cases "
+                               f"WHERE numero IN ({db_placeholders(len(existentes))})", tuple(sorted(existentes))).fetchall()
+            previos = {fila[0]: dict(zip(CASE_READ_COLUMNS, fila)) for fila in filas}
         for documento in documentos:
             row = mapear_documento(documento, tipo)
-            permitidas = CASE_DB_COLUMNS if tipo == "casos" else INCIDENT_DB_COLUMNS
+            permitidas = CASE_READ_COLUMNS if tipo == "casos" else INCIDENT_DB_COLUMNS
             desconocidas = set(row) - set(permitidas)
             if desconocidas:
                 raise ValueError("El mapa de campos contiene columnas locales no admitidas.")
             if tipo == "casos":
-                row["tipificacion"] = tipificar_caso(row)
-                row["tiempo_respuesta"] = tiempo(row.get("creado", ""), row.get("cerrado", ""))
+                evidencia = {**previos.get(row["numero"], {}), **row}
+                row["tipificacion"] = tipificar_caso(evidencia)
+                row["tiempo_respuesta"] = tiempo(evidencia.get("creado", ""), evidencia.get("cerrado", ""))
             else:
                 row.update(clasificacion_incidente_detallada(row))
                 if row.get("creado") and row.get("cerrado"):
@@ -2180,20 +2191,69 @@ def consultar_traza_servicenow(numero, *, actor_email, tipo="casos"):
         conn.close()
 
 
-def conectar_servicenow(usuario, password, *, actor_email, codigo_mfa=""):
-    """Conecta la cuenta del Admin al servidor y habilita la ingesta compartida."""
+def consultar_historial_conversacion(numero, *, actor_email, tipo="casos"):
+    from core.permissions import VIEW_CASOS, VIEW_INCIDENTES
+    tabla = validar_tipo(tipo)
+    validar_numero(numero, tipo)
+    exigir_permiso_actor(actor_email, VIEW_CASOS if tipo == "casos" else VIEW_INCIDENTES)
+    conn = get_conn()
+    try:
+        return leer_historial_conversacion(conn, tabla, numero)
+    finally:
+        conn.close()
+
+
+def conectar_servicenow_oauth(*, actor_email):
+    """Solo Admin valida las credenciales del servidor y activa la base compartida."""
     exigir_permiso_actor(actor_email, ACTION_WRITE_CASES)
-    if not usuario or not password or any(c in usuario + password for c in "\r\n\0"):
-        raise ValueError("Introduce tu usuario y contraseña de ServiceNow.")
-    with ServiceNowClient(user=usuario.strip(), password=password, mfa_code=codigo_mfa.strip()) as client:
+    if str(config_value("SERVICENOW_AUTH_TYPE", "basic")).strip().lower() != "client_credentials":
+        raise ServiceNowError("Configura SERVICENOW_AUTH_TYPE como client_credentials en los secretos del servidor.")
+    with ServiceNowClient(auth_type="client_credentials") as client:
         client.validar_acceso()
         conn = get_conn()
         try:
             _bloquear_y_validar_admin(conn, actor_email)
-            guardar_conexion_servidor({
+            activar_sincronizacion_casos(conn, normalizar_email(actor_email))
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+    return {"conectado": True, "automatica": True}
+
+
+def configuracion_sincronizacion_casos():
+    conn = get_conn()
+    try:
+        habilitada, actor = leer_activacion_casos(conn)
+        if habilitada and actor:
+            return True, actor
+        return sincronizacion_habilitada(), config_value("SERVICENOW_SYNC_ACTOR")
+    finally:
+        conn.close()
+
+
+def conectar_servicenow(usuario, password, *, actor_email, codigo_mfa="", instancia=None):
+    """Conecta la cuenta del Admin al servidor y habilita la ingesta compartida."""
+    exigir_permiso_actor(actor_email, ACTION_WRITE_CASES)
+    if not usuario or not password or any(c in usuario + password for c in "\r\n\0"):
+        raise ValueError("Introduce tu usuario y contraseña de ServiceNow.")
+    opciones = {"user": usuario.strip(), "password": password, "mfa_code": codigo_mfa.strip()}
+    if instancia:
+        opciones["instance"] = normalizar_instancia(instancia)
+    with ServiceNowClient(**opciones) as client:
+        client.validar_acceso()
+        conn = get_conn()
+        try:
+            _bloquear_y_validar_admin(conn, actor_email)
+            configuracion = {
                 "SERVICENOW_USER": usuario.strip(), "SERVICENOW_PASSWORD": password,
                 "SERVICENOW_SYNC_ACTOR": normalizar_email(actor_email), "SERVICENOW_SYNC_ENABLED": "true",
-            })
+            }
+            if "instance" in opciones:
+                configuracion["SERVICENOW_INSTANCE"] = opciones["instance"]
+            guardar_conexion_servidor(configuracion)
             client.recordar_sesion()
             conn.commit()
         except AutorizacionError:
@@ -2218,9 +2278,10 @@ def estado_servicenow(*, actor_email):
     conn = get_conn()
     try:
         estado = leer_estado_sincronizacion(conn) or {"estado": "pendiente", "ultima_correcta": None}
+        habilitada, _ = leer_activacion_casos(conn)
     finally:
         conn.close()
-    return {**estado, "conectado": bool(conexion_configurada()), "automatica": sincronizacion_habilitada()}
+    return {**estado, "conectado": bool(conexion_configurada()), "automatica": habilitada or sincronizacion_habilitada()}
 
 
 def sincronizar_casos_automaticamente(*, actor_email):
@@ -2258,7 +2319,7 @@ def sincronizar_casos_automaticamente(*, actor_email):
         if bloqueo:
             mensaje = str(error) if isinstance(error, (ServiceNowError, AutorizacionError)) else "No se pudo completar la actualización automática."
             guardar_estado_sincronizacion(
-                control, estado="requiere_autenticacion" if isinstance(error, ServiceNowMFARequiredError) else "error",
+                control, estado="requiere_autenticacion" if isinstance(error, ServiceNowAuthenticationError) else "error",
                 intento=intento, mensaje=mensaje, registros=cargados,
             )
             control.commit()
@@ -2292,7 +2353,7 @@ def load_casos_filtrados(anio=None, mes=None, cliente=None, estado=None, servici
     exigir_contexto_lectura()
     df = read_table_filtered(
         "cases",
-        columns=CASE_DB_COLUMNS,
+        columns=CASE_READ_COLUMNS,
         anio=anio,
         mes=mes,
         fecha_inicio=fecha_inicio,
