@@ -100,6 +100,46 @@ class OAuthClientTest(unittest.TestCase):
                 client._obtener_token()
             self.assertFalse(servicenow._tokens_oauth)
 
+    def test_rechazo_identifica_causa_sin_exponer_descripcion_remota(self):
+        for codigo, descripcion, esperado in (
+            ("invalid_client", "secret-test token-test", "ID o el secreto de cliente"),
+            ("unsupported_grant_type", "secret-test", "glide.oauth.inbound.client.credential.grant_type.enabled"),
+            ("unauthorized_client", "secret-test", "Credenciales del cliente"),
+            ("invalid_scope", "token-test", "SERVICENOW_OAUTH_SCOPE"),
+            ("server_error", "access_denied", "usuario de aplicación OAuth de portalgestion"),
+            ("access_denied", "secret-test", "usuario de aplicación OAuth de portalgestion"),
+            ("invalid_request", "secret-test", "parámetro rechazado"),
+            ("invalid_grant", "secret-test", "concesión OAuth"),
+            ("secret-test", "token-test", "registro OAuth"),
+            ({"message": "secret-test"}, "token-test", "registro OAuth"),
+        ):
+            with self.subTest(codigo=codigo), ServiceNowClient() as client:
+                rejected = self.token(status=401)
+                rejected.json.return_value = {"error": codigo, "error_description": descripcion}
+                with patch.object(client._session, "post", return_value=rejected), \
+                     self.assertRaises(ServiceNowAuthenticationError) as error:
+                    client.validar_acceso()
+                message = str(error.exception)
+                self.assertIn(esperado, message)
+                self.assertIn("HTTP 401", message)
+                self.assertNotIn("secret-test", message)
+                self.assertNotIn("token-test", message)
+                self.assertFalse(servicenow._tokens_oauth)
+
+    def test_rechazo_no_json_conserva_diagnostico_http_seguro(self):
+        for payload in (ValueError("secret-test"), ["secret-test"], None):
+            with self.subTest(payload=payload), ServiceNowClient() as client:
+                rejected = self.token(status=403)
+                if isinstance(payload, Exception):
+                    rejected.json.side_effect = payload
+                else:
+                    rejected.json.return_value = payload
+                with patch.object(client._session, "post", return_value=rejected), \
+                     self.assertRaises(ServiceNowAuthenticationError) as error:
+                    client.validar_acceso()
+                self.assertIn("HTTP 403", str(error.exception))
+                self.assertNotIn("secret-test", str(error.exception))
+
     def test_secreto_rotado_no_reutiliza_el_token_anterior(self):
         with patch("requests.sessions.Session.post", side_effect=[self.token("first"), self.token("second")]) as post:
             with ServiceNowClient() as client:

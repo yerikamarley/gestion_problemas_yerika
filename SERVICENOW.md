@@ -60,6 +60,17 @@ espera a que un Admin revise y valide la integración. HTTP 403 indica que se
 deben revisar los permisos de la fuente. Los errores públicos omiten los
 secretos y los cuerpos de respuesta remotos.
 
+Si ServiceNow rechaza el token, el mensaje muestra el estado HTTP y únicamente
+los códigos OAuth conocidos. `invalid_client` orienta a comprobar el ID y el
+secreto de la misma integración; `unsupported_grant_type`, a comprobar la
+propiedad que habilita credenciales de cliente; `invalid_scope`, al alcance
+solicitado. `server_error` con `access_denied` orienta a revisar el usuario de
+aplicación y la habilitación de la concesión. El texto libre de
+`error_description` nunca se muestra. Para precisar la causa en la instancia,
+reintentar desde el portal y revisar **System Logs → All**, filtrando la fuente
+por OAuth y ordenando por fecha descendente. Véase la sección de
+[diagnóstico del SDK oficial](https://servicenow.github.io/sdk/config/ci-integration#troubleshooting).
+
 ## Historial de la conversación y análisis
 
 Los correos y las entradas de `sys_journal_field` forman el **Historial de la

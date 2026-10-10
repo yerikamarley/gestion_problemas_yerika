@@ -118,6 +118,40 @@ def texto_historial(timeline):
                         for r in timeline if r.get("contenido") or r.get("asunto"))
 
 
+def mensaje_rechazo_oauth(response):
+    """Traduce solo códigos conocidos; nunca muestra el texto remoto del error."""
+    try:
+        payload = response.json()
+        codigo = payload.get("error") if isinstance(payload, dict) else None
+        denegado = isinstance(payload, dict) and payload.get("error_description") == "access_denied"
+    except (ValueError, TypeError):
+        codigo, denegado = None, False
+    mensajes = {
+        "invalid_client": "ServiceNow no reconoce el ID o el secreto de cliente. "
+                          "Comprueba que ambos pertenecen a portalgestion y vuelve a copiarlos en los secretos del servidor.",
+        "unauthorized_client": "ServiceNow no autoriza esta integración para usar credenciales de cliente. "
+                               "Revisa que portalgestion esté activa y use la concesión Credenciales del cliente.",
+        "unsupported_grant_type": "ServiceNow no admite la concesión client_credentials en esta instancia. "
+                                  "Revisa que glide.oauth.inbound.client.credential.grant_type.enabled tenga el valor true.",
+        "invalid_scope": "ServiceNow rechazó el alcance OAuth solicitado. "
+                         "Revisa SERVICENOW_OAUTH_SCOPE y los alcances autorizados de portalgestion.",
+        "invalid_grant": "ServiceNow rechazó la concesión OAuth. "
+                         "Revisa el usuario de aplicación OAuth y la configuración de credenciales de cliente.",
+        "invalid_request": "ServiceNow considera inválida la solicitud del token OAuth. "
+                           "Consulta el registro OAuth de ServiceNow para identificar el parámetro rechazado.",
+        "access_denied": "ServiceNow denegó la autorización OAuth. Revisa el usuario de aplicación OAuth de portalgestion, "
+                         "que esté activo y que glide.oauth.inbound.client.credential.grant_type.enabled sea true. "
+                         "El registro OAuth de ServiceNow permite identificar el motivo concreto.",
+    }
+    if codigo == "server_error" and denegado:
+        codigo = "access_denied"
+    if isinstance(codigo, str) and codigo in mensajes:
+        return f"{mensajes[codigo]} (HTTP {response.status_code}; OAuth: {codigo})."
+    return (f"ServiceNow rechazó la solicitud del token OAuth (HTTP {response.status_code}). "
+            "Revisa el ID, el secreto, el usuario de aplicación OAuth y que las credenciales de cliente estén habilitadas. "
+            "Consulta el registro OAuth de ServiceNow para identificar el motivo concreto.")
+
+
 def normalizar_instancia(instance):
     """Admite el enlace del portal; conserva solo el dominio permitido para la API."""
     instance = str(instance or "").strip()
@@ -212,10 +246,7 @@ class ServiceNowClient:
             try:
                 response = self._session.post(self._token_url, data=datos, timeout=(10, 30), allow_redirects=False)
                 if response.status_code in {400, 401, 403}:
-                    raise ServiceNowAuthenticationError(
-                        "ServiceNow rechazó las credenciales de la integración. Revisa el ID, el secreto, "
-                        "el usuario de aplicación OAuth y que las credenciales de cliente estén habilitadas."
-                    )
+                    raise ServiceNowAuthenticationError(mensaje_rechazo_oauth(response))
                 if response.status_code != 200:
                     raise ServiceNowError(f"No se pudo obtener autorización de ServiceNow (HTTP {response.status_code}).")
                 payload = response.json()
