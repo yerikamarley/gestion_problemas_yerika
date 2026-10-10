@@ -145,7 +145,7 @@ class SincronizacionManualTest(unittest.TestCase):
             conn_estado.commit.assert_called_once()
             conn_estado.close.assert_called_once()
 
-    def test_si_otra_sincronizacion_esta_activa_no_espera_ni_consulta_api(self):
+    def test_si_otra_consulta_manual_ya_espera_no_duplica_solicitud_ni_consulta_api(self):
         conn = MagicMock()
         with patch.object(app_logic, "exigir_permiso_actor"), \
              patch.object(app_logic, "get_conn", return_value=conn), \
@@ -249,8 +249,8 @@ with patch.object(ui, "sincronizar_servicenow", return_value={"ocupado": True, "
         app.button(key="servicenow_sync_casos_ejecutar").click().run()
         self.assertFalse(app.exception)
         self.assertEqual(1, app.session_state["progreso"][0])
-        self.assertIn("otra sincronización", app.session_state["progreso"][1])
-        self.assertIn("Espera a que termine", app.info[0].value)
+        self.assertIn("otra consulta manual", app.session_state["progreso"][1])
+        self.assertIn("otro período", app.info[0].value)
 
     def test_navegar_no_repite_preparacion_de_tablas_e_indices(self):
         from streamlit.testing.v1 import AppTest

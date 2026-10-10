@@ -3,7 +3,7 @@ import unicodedata
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 from math import ceil
-from time import monotonic
+from time import monotonic, sleep
 
 import pandas as pd
 from services.casos_sla import guardar_fecha_plataforma
@@ -2156,8 +2156,47 @@ def _tomar_bloqueo_sincronizacion(control):
     # Un bloqueo de transacción mantiene el backend asignado en el pooler 6543.
     # La nueva clave evita depender de bloqueos de sesión de versiones anteriores.
     db_execute(control, "SET LOCAL idle_in_transaction_session_timeout = '5min'")
+    db_execute(control, "SET LOCAL statement_timeout = '15s'")
     return bool(db_execute(control, "SELECT pg_try_advisory_xact_lock(hashtext(?))",
                            ("servicenow:casos:ingesta:v2",)).fetchone()[0])
+
+
+class _TurnoManualSolicitado(Exception):
+    """Interrumpe la ingesta automática entre consultas, sin avanzar su cursor."""
+
+
+def _hay_solicitud_manual(control):
+    # La solicitud existe mientras su transacción está viva; no quedan banderas
+    # persistentes tras un error, desconexión o reinicio del servidor.
+    return bool(db_execute(control, """SELECT EXISTS (
+        SELECT 1 FROM pg_locks WHERE locktype = 'advisory' AND granted
+        AND database = (SELECT oid FROM pg_database WHERE datname = current_database())
+        AND classid = 0 AND objsubid = 1
+        AND objid::bigint = (hashtext(?)::bigint & 4294967295))""",
+        ("servicenow:casos:solicitud_manual:v1",)).fetchone()[0])
+
+
+def _esperar_turno_manual(control, progress_callback):
+    if _tomar_bloqueo_sincronizacion(control):
+        return True
+    solicitud = bool(db_execute(control,
+        "SELECT pg_try_advisory_xact_lock(hashtext(?)::bigint & 4294967295)",
+        ("servicenow:casos:solicitud_manual:v1",)).fetchone()[0])
+    if not solicitud:
+        return False
+    inicio = monotonic()
+    while True:
+        if _tomar_bloqueo_sincronizacion(control):
+            return True
+        espera = monotonic() - inicio
+        if espera >= 90:
+            raise ServiceNowError(
+                "No se pudo iniciar tu consulta en 90 segundos porque otra sincronización sigue activa. "
+                "Se conservan los datos guardados. Revisa el registro del servidor y vuelve a intentarlo."
+            )
+        emitir_progreso(progress_callback, 0,
+                        f"Tu consulta tiene prioridad. Esperando que la consulta actual libere el turno ({int(espera)} s)...")
+        sleep(1)
 
 
 def _crear_pulso_sincronizacion(control):
@@ -2225,7 +2264,7 @@ def sincronizar_servicenow(*, actor_email, tipo="casos", mes=None, numero=None,
     intento = datetime.now(timezone.utc)
     try:
         if control is not None:
-            bloqueo = _tomar_bloqueo_sincronizacion(control)
+            bloqueo = _esperar_turno_manual(control, progress_callback)
             if not bloqueo:
                 return {"ocupado": True, "cargados": 0, "actualizados": 0}
             pulsar = _crear_pulso_sincronizacion(control)
@@ -2384,6 +2423,8 @@ def sincronizar_casos_automaticamente(*, actor_email):
         bloqueo = _tomar_bloqueo_sincronizacion(control)
         if not bloqueo:
             return {"ocupado": True, "cargados": 0}
+        if _hay_solicitud_manual(control):
+            return {"cedida": True, "cargados": 0, "actualizados": 0}
         estado = _consultar_estado_ingesta()
         ultima = estado.get("ultima_correcta")
         if ultima:
@@ -2392,15 +2433,29 @@ def sincronizar_casos_automaticamente(*, actor_email):
             desde = intento.astimezone(ZoneInfo("America/Bogota")).replace(hour=0, minute=0, second=0).astimezone(timezone.utc)
         _registrar_estado_ingesta(automatica=True, estado="sincronizando", intento=intento)
         pulsar = _crear_pulso_sincronizacion(control)
-        with ServiceNowClient(progress_callback=lambda *_: pulsar()) as client:
+
+        def comprobar_turno(*_):
+            pulsar()
+            if _hay_solicitud_manual(control):
+                raise _TurnoManualSolicitado
+
+        with ServiceNowClient(progress_callback=comprobar_turno) as client:
             for documentos in client.listar_casos_actualizados(desde, intento):
+                comprobar_turno()
                 nuevos, existentes = ejecutar_con_reintentos_db(
                     lambda: _guardar_pagina_servicenow(documentos, "casos", actor_email)
                 )
                 cargados += nuevos
                 actualizados += existentes
+        comprobar_turno()
         _registrar_estado_ingesta(automatica=True, estado="correcto", intento=intento, correcta=intento, registros=cargados)
         return {"cargados": cargados, "actualizados": actualizados}
+    except _TurnoManualSolicitado:
+        _registrar_estado_ingesta(
+            automatica=True, estado="pendiente", intento=intento, registros=cargados,
+            mensaje="La actualización automática cedió el turno a la consulta manual. Se conservan los casos guardados.",
+        )
+        return {"cedida": True, "cargados": cargados, "actualizados": actualizados}
     except Exception as error:
         if bloqueo:
             mensaje = str(error) if isinstance(error, (ServiceNowError, AutorizacionError)) else "No se pudo completar la actualización automática."

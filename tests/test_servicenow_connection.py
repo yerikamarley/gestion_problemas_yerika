@@ -175,6 +175,7 @@ class IncrementalSyncTest(unittest.TestCase):
                 with patch.object(app_logic, "exigir_permiso_actor"), \
                      patch.object(app_logic, "get_conn", side_effect=[control, lector, *estados]), \
                      patch.object(app_logic, "db_execute", return_value=MagicMock(fetchone=lambda: (True,))), \
+                     patch.object(app_logic, "_hay_solicitud_manual", return_value=False), \
                      patch.object(app_logic, "leer_estado_sincronizacion", return_value={"ultima_correcta": ultima}), \
                      patch.object(app_logic, "guardar_estado_sincronizacion") as state, \
                      patch.object(app_logic, "datetime", wraps=datetime) as clock, \

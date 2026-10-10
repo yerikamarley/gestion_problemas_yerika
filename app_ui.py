@@ -11565,8 +11565,8 @@ def vista_sincronizar_servicenow(tipo):
         st.error("No se pudo completar la sincronización. Revisa la conexión y configuración del servidor.")
         return
     if result.get("ocupado"):
-        progreso(1, "Ya hay otra sincronización en curso.")
-        st.info("Ya hay una sincronización de casos en curso. Espera a que termine antes de iniciar otra.")
+        progreso(1, "Ya hay otra consulta manual en curso.")
+        st.info("Ya hay otra consulta manual de casos iniciada. Deja que termine antes de solicitar otro período.")
         return
     if result["cargados"]:
         limpiar_cache_datos()
