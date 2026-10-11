@@ -41,6 +41,22 @@ Las respuestas «se atiende a través de nuestro canal de ventas» y «será
 atendido directamente por nuestros comerciales» identifican una derivación,
 sin interpretar promesas de acompañamiento como trabajo técnico realizado.
 
+Los ejemplos del documento «Situaciones que se consideran envío a otros
+canales» también cubren «lo manejamos exclusivamente a través del canal de
+agendamiento», «programa tu cita», «es necesario agendar» y «canal de peticiones».
+Peticiones/PQR/PQRF se consolidan en PQRS. Servicio al cliente y entidad
+bancaria son destinos adicionales dentro de Enviado a otros canales.
+La instrucción para descargar certificados en el portal de Certitítulo se
+considera Autogestión, incluso si el caso queda cerrado; entregar el enlace
+no prueba una intervención técnica. Se conserva el estado y la causa original.
+Una verificación de estado para orientar al canal no equivale a instalar,
+configurar o resolver una falla. El trabajo técnico realizado sí conserva la
+clasificación del problema y se muestra como redirección con atención.
+En observaciones sin autor estructurado se acepta el encabezado fechado
+del comentario cuando identifica a un integrante del equipo de soporte.
+Las menciones sueltas, mensajes del cliente, acuses y textos citados no
+constituyen una derivación. «Es una instalación» sin destino tampoco basta.
+
 En **Operación → Agenda** se seleccionan los casos por la derivación registrada
 en la conversación, con el mismo criterio para el histórico y la reincidencia.
 Los motivos se agrupan por su clasificación inicial; instalación, descarga,

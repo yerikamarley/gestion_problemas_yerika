@@ -28,12 +28,15 @@ REDIRIGIDO_SIN_ATENCION = "Redirigido sin atención técnica registrada"
 ENVIADO_OTROS_CANALES = "Enviado a otros canales"
 SIN_ATENCION = "Sin evidencia suficiente de atención"
 SIN_CAUSA = "Sin causa documentada"
-VERSION_ANALISIS = "historial-causas-detalle-v6"
+VERSION_ANALISIS = "historial-canales-documentados-v7"
 
 HEADER_EVENTO = re.compile(
     r"(?:^| --- )(?P<fecha>\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2})\s*\|\s*"
     r"(?P<tipo>Nota de Trabajo|Comentario|Correo[^|]*|Nota[^|]*)\s*\|\s*"
     r"(?P<usuario>[^|]*)\|\s*(?P<asunto>[^|]*)\|\s*", re.I)
+HEADER_OBSERVACION = re.compile(
+    r"\s*(?P<fecha>\d{1,2}/\d{1,2}/\d{4}\s+\d{1,2}:\d{2}(?::\d{2})?\s*(?:AM|PM)?)\s*-\s*"
+    r"(?P<autor>[^()\n]{1,100})\s*\(", re.I)
 PIE = re.compile(r"conoce nuestros canales oficiales|aviso de confidencialidad|"
                  r"darse de baja|preferencias de notificaci[oó]n|"
                  r"(?:^| --- |\n)(?:de:|from:|el .{0,100}escribi[oó]:|on .{0,100}wrote:)", re.I)
@@ -50,16 +53,22 @@ VIRTUAL = re.compile(r"\b(?:certi\s?token|(?:token|toquen|tocken)\s+(?:virtual|m
 REDIRECCION = re.compile(r"\b(?:se (?:redirig\w*|redireccion\w*|remit\w*|deriv\w*|traslad\w*|escal\w*|envi\w*)|"
                          r"caso (?:redirig\w*|redireccion\w*|remit\w*|deriv\w*|traslad\w*|escal\w*)|"
                          r"(?:redirig\w*|redireccion\w*|remitim\w*|derivam\w*|trasladam\w*|escalam\w*|enviam\w*)|"
-                         r"(?:debe|debes|favor|por favor)\s+(?:contactar|comunicarse|comunicarte|agendar|radicar)|"
+                         r"(?:debe|debes|favor|por favor)\s+(?:contactar|comunicarse|comunicarte|agendar|radicar(?:la|lo)?|escalar)|"
                          r"(?:contacte|contacta|comuniquese|comunicate|agende|agenda tu cita|radique)|"
-                         r"(?:separe|reserve|programe)\s+(?:su|tu|una)\s+cita|"
+                         r"(?:separe|reserve|programe|programa)\s+(?:su|tu|una)\s+cita|"
+                         r"(?:lo manejamos|se maneja|se gestionan?)\s+exclusivamente\s+a traves de|"
+                         r"es necesario agendar|solicitamos(?: amablemente)?\s+(?:comunicarse|agendar|realizar el agendamiento)|"
+                         r"pueden descargar(?: cualquiera de los)?\s+certificados|"
                          r"(?:se atiende|se atienden|sera atendid[oa])\s+(?:a traves de|por|directamente por)|"
                          r"envio (?:del? |un )?(?:enlace|link)|"
                          r"(?:corresponde|competencia)\s+(?:a|del|de la)|canal correcto|fuera del alcance)\b")
-DESTINOS = (("PQRS", re.compile(r"\b(?:pqrs|pqrf|pqr|quejas y reclamos)\b")),
-            ("Canal de ventas", re.compile(r"\b(?:canal de ventas|ventas)\b")),
+DESTINOS = (("PQRS", re.compile(r"\b(?:pqrs|pqrf|pqr|quejas y reclamos|canal (?:de )?peticiones)\b")),
+            ("Canal de ventas", re.compile(r"\b(?:canal de ventas|ventas|ventadigital\.certicamara\.com)\b")),
             ("Agenda", re.compile(r"\b(?:agenda|agendar|agendamiento|cita|zcal|agendate)\b")),
-            ("Comercial", re.compile(r"\b(?:comercial(?:es)?|ejecutivos? de cuenta|asesor(?:es)? comercial(?:es)?)\b")))
+            ("Comercial", re.compile(r"\b(?:comercial(?:es)?|ejecutivos? de cuenta|asesor(?:es)? comercial(?:es)?)\b")),
+            ("Servicio al cliente", re.compile(r"\b(?:linea de )?servicio al cliente\b")),
+            ("Entidad bancaria", re.compile(r"\bentidad bancaria\b")),
+            ("Autogestión", re.compile(r"\bcertititulo-certificados\.web\.app\b")))
 ACCION_TECNICA = re.compile(
     r"\b(?:se (?:instalo|reinstalo|configuro|actualizo|desbloqueo|restablecio|verifico|valido|reviso|"
     r"realizo|corrigio|soluciono|probo|oriento|explico|brindo|identifico|determino)|"
@@ -197,7 +206,14 @@ def fragmentos_caso(row):
                            ("notas_trabajo", True), ("codigo_resolucion", True)):
         contenido = limpiar_mensaje(row.get(campo))
         if contenido:
-            partes.append({"contenido": contenido, "fuente": campo, "tipo": "Campo del caso", "interno": interno})
+            parte = {"contenido": contenido, "fuente": campo, "tipo": "Campo del caso", "interno": interno}
+            # Conservar el autor del comentario permite identificar gestión de
+            # soporte y mostrarlo en la evidencia, aunque no venga estructurado.
+            if campo in {"observaciones_adicionales", "observaciones_trabajo"}:
+                encabezado = HEADER_OBSERVACION.match(contenido)
+                if encabezado:
+                    parte.update(usuario=encabezado.group("autor").strip(), fecha=encabezado.group("fecha").strip())
+            partes.append(parte)
     historial = row.get("_historial_eventos", row.get("historial_conversacion", []))
     for evento in eventos_historial(historial):
         # El acuse genérico no prueba atención ni un producto afectado.
