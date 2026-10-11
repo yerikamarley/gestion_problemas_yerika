@@ -28,7 +28,7 @@ REDIRIGIDO_SIN_ATENCION = "Redirigido sin atención técnica registrada"
 ENVIADO_OTROS_CANALES = "Enviado a otros canales"
 SIN_ATENCION = "Sin evidencia suficiente de atención"
 SIN_CAUSA = "Sin causa documentada"
-VERSION_ANALISIS = "historial-limpieza-v5"
+VERSION_ANALISIS = "historial-causas-detalle-v6"
 
 HEADER_EVENTO = re.compile(
     r"(?:^| --- )(?P<fecha>\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2})\s*\|\s*"
@@ -141,6 +141,17 @@ CAUSAS = (
     ("PIN bloqueado por intentos fallidos", re.compile(r"(?:pin|token).{0,65}bloquead\w*.{0,65}intent\w*|intent\w*.{0,65}(?:bloqueo|bloquead\w*)")),
     ("Incompatibilidad de software", re.compile(r"(?:java|autofirma|adobe|navegador|version).{0,65}(?:incompatible|desactualizad\w*)|incompatibilidad.{0,45}(?:java|autofirma|adobe|navegador|version)")),
     ("Permisos o restricciones del equipo", re.compile(r"(?:falta|ausencia|restriccion|bloqueo).{0,50}(?:permiso|administrador|antivirus|firewall)|(?:antivirus|firewall).{0,45}bloque")),
+    ("Certificado ausente o no disponible", re.compile(r"(?:certificado|llave privada).{0,65}(?:ausente|eliminad\w*|no (?:aparece|disponible|encontrad\w*|cargad\w*))|(?:no (?:se )?(?:encuentra|aparece)|falta).{0,45}(?:certificado|llave privada)")),
+    ("Enlace o proceso de descarga inválido", re.compile(r"(?:enlace|link|descarga|activacion).{0,65}(?:vencid\w*|expirad\w*|invalid\w*|incomplet\w*|fallid\w*|rechazad\w*|bloquead\w*)|(?:error|fall\w*|no (?:permite|puede|se puede|logra)).{0,55}(?:descarg\w*|activ\w*)")),
+    ("Instalación o configuración incorrecta", re.compile(r"(?:instalacion|configuracion).{0,65}(?:incorrect\w*|incomplet\w*|fallid\w*|faltante|errone\w*)|(?:no (?:esta|se encuentra) instalad\w*|mal configurad\w*|falta de configuracion)")),
+    ("Dispositivo no reconocido o defectuoso", re.compile(r"(?:token|dispositivo|usb).{0,65}(?:no (?:reconoc\w*|detect\w*|funciona)|no reconocido|defectuos\w*|danad\w*|averiad\w*)|(?:no (?:reconoc\w*|detect\w*)).{0,45}(?:token|dispositivo)")),
+    ("Acceso o autenticación rechazados", re.compile(r"(?:credencial\w*|usuario|contrasena|otp|autenticacion|acceso).{0,65}(?:invalid\w*|incorrect\w*|rechazad\w*|bloquead\w*|expirad\w*|no autorizado)|(?:error|fall\w*).{0,45}(?:autenticacion|otp|inicio de sesion)")),
+    ("Caída o indisponibilidad del servicio", re.compile(r"\b(?:caida|indisponibilidad|fuera de servicio|interrupcion del servicio)\b|(?:servicio|plataforma|portal|sistema).{0,65}(?:caido|caida|no disponible|sin disponibilidad)")),
+    ("Lentitud o tiempo de espera del servicio", re.compile(r"\b(?:timeout|time out|tiempo de espera agotado|lentitud|latencia elevada|saturacion|sobrecarga)\b")),
+    ("Consumos o reportes no disponibles", re.compile(r"(?:consumos?|reportes?|informes?).{0,65}(?:no (?:aparece\w*|carga\w*|disponible|se ve\w*|se muestra\w*|se genera\w*)|error|fall\w*|inconsisten\w*)|(?:no (?:podemos|puede|puedo|permite) (?:ver|visualizar|consultar)|error|fall\w*).{0,50}(?:consumos?|reportes?)")),
+    ("Correo o acuse no entregado", re.compile(r"(?:correo|acuse|evidencia de entrega).{0,65}(?:no (?:llega|recib\w*|generad\w*|se genera)|rechazad\w*|rebot\w*|spam|bloquead\w*)|(?:no (?:recib\w*|llega)|falta de).{0,45}(?:correo|acuse)|\b(?:buzon lleno|correo rebotado)\b")),
+    ("Error de firma o validación documental", re.compile(r"(?:firma|documento|pdf|pfx|p12).{0,65}(?:invalid\w*|corrupt\w*|rechazad\w*|no valid\w*)|(?:error|fall\w*).{0,45}(?:firmar|firma|validacion del documento)")),
+    ("Datos o documentos inconsistentes", re.compile(r"(?:datos|documentos?|plantilla|contrato).{0,65}(?:incorrect\w*|inconsisten\w*|incomplet\w*|faltante)|(?:inconsistencia|error en).{0,45}(?:datos|documentos?|plantilla|contrato)")),
 )
 
 
@@ -422,7 +433,7 @@ def analizar_evidencias_completas(df, registros):
 
 
 def resumen_causas_historial(df):
-    columnas = ["Grupo de causa", COL_ESTADO_CAUSA, "Casos", "% casos", "Ejemplos"]
+    columnas = ["Grupo de causa", COL_ESTADO_CAUSA, "Casos", "% casos", "Detalle documentado", "Ejemplos"]
     if df.empty:
         return pd.DataFrame(columns=columnas)
     base = df.drop_duplicates("numero", keep="last") if "numero" in df else df
@@ -431,9 +442,34 @@ def resumen_causas_historial(df):
     for causa, grupo in grupos:
         estado = ", ".join(sorted(grupo[COL_ESTADO_CAUSA].dropna().unique()))
         ejemplos = ", ".join(grupo["numero"].astype(str).head(3)) if "numero" in grupo else ""
+        detalles = grupo[COL_CAUSA].map(texto).value_counts().head(2) if COL_CAUSA in grupo else pd.Series(dtype=int)
+        detalle = " | ".join(f"{valor} ({cantidad})" for valor, cantidad in detalles.items())
         filas.append({"Grupo de causa": causa, COL_ESTADO_CAUSA: estado, "Casos": len(grupo),
-                      "% casos": round(len(grupo) * 100 / len(base), 2), "Ejemplos": ejemplos})
+                      "% casos": round(len(grupo) * 100 / len(base), 2), "Detalle documentado": detalle, "Ejemplos": ejemplos})
     return pd.DataFrame(filas, columns=columnas).sort_values(["Casos", "Grupo de causa"], ascending=[False, True])
+
+
+def detalle_causas_documentadas(df, solo_sin_grupo=False):
+    """Explicaciones exactas con evidencia; ninguna desaparece en «Otras»."""
+    columnas = ["Causa documentada", "Grupo de causa", "Casos", "% documentados", "Ejemplos", "Evidencia"]
+    base = df.drop_duplicates("numero", keep="last") if "numero" in df else df
+    base = base[base[COL_ESTADO_CAUSA].ne("Pendiente de validar")].copy() if COL_ESTADO_CAUSA in base else base.iloc[0:0]
+    total = len(base)
+    if base.empty:
+        return pd.DataFrame(columns=columnas)
+    if solo_sin_grupo:
+        base = base[base["Grupo de causa"].eq("Otras causas documentadas")]
+    if base.empty:
+        return pd.DataFrame(columns=columnas)
+    base["_causa_clave"] = base[COL_CAUSA].map(normalizar)
+    filas = []
+    for _, grupo in base.groupby("_causa_clave", sort=False):
+        fila = grupo.iloc[0]
+        filas.append({"Causa documentada": fila[COL_CAUSA], "Grupo de causa": fila["Grupo de causa"], "Casos": len(grupo),
+                      "% documentados": round(100 * len(grupo) / total, 2),
+                      "Ejemplos": ", ".join(grupo["numero"].astype(str).head(3)) if "numero" in grupo else "",
+                      "Evidencia": texto(fila.get(COL_EVIDENCIA_CAUSA))})
+    return pd.DataFrame(filas, columns=columnas).sort_values(["Casos", "Causa documentada"], ascending=[False, True])
 
 
 def resumen_clasificacion_casos(df):

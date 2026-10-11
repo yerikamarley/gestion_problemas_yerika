@@ -57,6 +57,11 @@ with patch.object(ui, "selector_periodo_sql", return_value=(2026, 9, "Septiembre
         self.assertFalse(app.exception)
         self.assertEqual(0, len(app.get("plotly_chart")))
         self.assertTrue(any(button.key == "revisar_evidencias_casos" for button in app.button))
+        app.radio(key="vista_dashboard_soporte").set_value("Operación").run()
+        self.assertFalse(app.exception)
+        self.assertEqual(0, len(app.get("plotly_chart")))
+        self.assertTrue(any("Principales causas" in tabla.value.columns for tabla in app.dataframe))
+        self.assertTrue(any(ui.TEXT_SCORE in tabla.value.columns for tabla in app.dataframe))
 
 
 if __name__ == "__main__":

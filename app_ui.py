@@ -46,6 +46,7 @@ from services.casos_sla import (
 from services.servicenow import ServiceNowError
 from services.casos_historial import (
     analizar_caso, agregar_analisis_historial, analizar_evidencias_completas, texto_util_caso, resumen_causas_historial,
+    detalle_causas_documentadas,
     COL_TOKEN, COL_MOTIVO, COL_CAUSA, COL_ESTADO_CAUSA, COL_ATENCION, COL_DESTINO,
     COL_EVIDENCIA_TOKEN, COL_EVIDENCIA_MOTIVO, COL_EVIDENCIA_CAUSA, COL_EVIDENCIA_ATENCION,
     COL_FISICO, COL_VIRTUAL, REDIRIGIDO_SIN_ATENCION, SIN_ATENCION, VERSION_ANALISIS,
@@ -2193,6 +2194,47 @@ def resumen_carga_agentes(df, columna_agente):
     )
 
 
+def resumen_agentes_soporte(df, ahora=None):
+    columnas = [TEXT_RESPONSABLE, TEXT_SCORE, "Total asignado", TEXT_CERRADOS, TEXT_ABIERTOS,
+                "Vencidos abiertos", "Cerrados evaluables", "Sin evaluación SLA", "Cumplimiento SLA (%)"]
+    if df.empty:
+        return pd.DataFrame(columns=columnas)
+    base = df.drop_duplicates(TEXT_NUMERO, keep="last") if TEXT_NUMERO in df else df.copy()
+    base = agregar_sla_casos(base, ahora=ahora)
+    base[TEXT_RESPONSABLE] = base.get(TEXT_ASIGNADO, pd.Series("", index=base.index)).apply(valor_limpio).replace("", "Sin agente")
+    filas = []
+    for agente, grupo in base.groupby(TEXT_RESPONSABLE, sort=True):
+        cerrados = int(mascara_cerrados(grupo).sum())
+        cumple = int(grupo[COL_ESTADO_SLA].eq("Cumple").sum())
+        evaluados = cumple + int(grupo[COL_ESTADO_SLA].eq("No cumple").sum())
+        cumplimiento = round(100 * cumple / evaluados, 2) if evaluados else None
+        filas.append({TEXT_RESPONSABLE: agente, TEXT_SCORE: cumplimiento, "Total asignado": len(grupo),
+                      TEXT_CERRADOS: cerrados, TEXT_ABIERTOS: len(grupo) - cerrados,
+                      "Vencidos abiertos": int(grupo[COL_ESTADO_SLA].eq("Vencido").sum()),
+                      "Cerrados evaluables": evaluados, "Sin evaluación SLA": cerrados - evaluados,
+                      "Cumplimiento SLA (%)": cumplimiento})
+    return pd.DataFrame(filas, columns=columnas).sort_values(
+        ["Vencidos abiertos", TEXT_ABIERTOS, TEXT_RESPONSABLE], ascending=[False, False, True])
+
+
+def render_agentes_soporte(df):
+    st.subheader("Carga y cumplimiento por agente")
+    resumen = resumen_agentes_soporte(df)
+    if resumen.empty:
+        st.info("No hay casos para calcular el seguimiento por agente.")
+        return
+    evaluados = int(resumen["Cerrados evaluables"].sum())
+    base = df.drop_duplicates(TEXT_NUMERO, keep="last") if TEXT_NUMERO in df else df
+    sla = resumen_sla_casos(base)
+    st.metric("Cumplimiento total SLA", formato_porcentaje_presentacion(sla["porcentaje"]))
+    st.caption(f"{sla['cumple']} cumplen de {evaluados} cerrados evaluables. "
+               "Score = cumplimiento SLA de 0 a 100. Vencidos son casos abiertos fuera de plazo; "
+               "los cerrados sin fechas válidas se muestran sin evaluación y no aumentan el score.")
+    st.dataframe(resumen, use_container_width=True, hide_index=True,
+                 column_config={TEXT_SCORE: st.column_config.NumberColumn(TEXT_SCORE, format="%.2f"),
+                                "Cumplimiento SLA (%)": st.column_config.NumberColumn("Cumplimiento SLA (%)", format="%.2f %%")})
+
+
 def render_carga_agentes(df, columna_agente, titulo, etiqueta_registro):
     st.subheader(titulo)
     resumen = resumen_carga_agentes(df, columna_agente)
@@ -4024,6 +4066,40 @@ def render_tabla_productos_soporte(resumen):
         "</table></div>"
     )
     st.markdown(tabla, unsafe_allow_html=True)
+
+
+def resumen_productos_causas_soporte(df):
+    columnas = ["Producto", "Casos", "Con causa documentada", "Sin causa documentada", "Principales causas", "Principales motivos iniciales"]
+    if df.empty:
+        return pd.DataFrame(columns=columnas)
+    base = agregar_analisis_historial(df.drop_duplicates(TEXT_NUMERO, keep="last") if TEXT_NUMERO in df else df)
+    base["Producto"] = base.get(TEXT_PRODUCTO, pd.Series("", index=base.index)).apply(producto_visible_caso)
+    filas = []
+    for producto, grupo in base.groupby("Producto", sort=True):
+        documentadas = grupo[grupo[COL_ESTADO_CAUSA].ne("Pendiente de validar")]
+        causas = detalle_causas_documentadas(documentadas)
+        principales = "; ".join(f"{fila['Causa documentada']} ({int(fila['Casos'])})" for _, fila in causas.head(3).iterrows())
+        motivos = grupo[COL_MOTIVO_INICIAL].value_counts().head(3)
+        filas.append({"Producto": producto, "Casos": len(grupo), "Con causa documentada": len(documentadas),
+                      "Sin causa documentada": len(grupo) - len(documentadas),
+                      "Principales causas": principales or "Sin causa documentada",
+                      "Principales motivos iniciales": "; ".join(f"{motivo} ({cantidad})" for motivo, cantidad in motivos.items())})
+    return pd.DataFrame(filas, columns=columnas).sort_values(["Casos", "Producto"], ascending=[False, True])
+
+
+def render_productos_causas_soporte(df, periodo_label):
+    st.subheader("Casos por producto y principales causas")
+    resumen = resumen_productos_causas_soporte(df)
+    if resumen.empty:
+        st.info("No hay casos para el análisis por producto.")
+        return
+    st.caption("Todos los productos, con casos únicos. Las tres principales causas conservan la explicación registrada; "
+               "los motivos iniciales describen las solicitudes y se muestran por separado.")
+    dataframe_paginado(resumen, "productos_causas_soporte", height=380,
+                      reset_token=(periodo_label, len(resumen)))
+    st.download_button("Descargar casos y causas por producto", dataframe_csv_bytes(resumen),
+                       file_name=f"productos_causas_{nombre_archivo_seguro(periodo_label)}.csv", mime="text/csv",
+                       key="descarga_productos_causas_soporte")
 
 
 def render_distribucion_productos_soporte(df, periodo_label):
@@ -7624,9 +7700,18 @@ def render_analisis_historial_casos(df, periodo_label):
         documentadas = base[base[COL_ESTADO_CAUSA].ne("Pendiente de validar")]
         st.caption(f"{len(documentadas)} de {len(base)} casos tienen una explicación registrada. "
                    "Los porcentajes de esta tabla usan solo esos casos. Una redirección no es una causa técnica.")
-        st.dataframe(resumen_causas_historial(documentadas), use_container_width=True, hide_index=True,
-                     column_config={"% casos": st.column_config.ProgressColumn("% casos", min_value=0,
-                         max_value=100, format="%.2f %%")})
+        vista_causas = st.radio("Mostrar causas", ["Explicaciones registradas", "Grupos de causa"],
+                               horizontal=True, key="detalle_causas_soporte_vista")
+        if vista_causas == "Explicaciones registradas":
+            causas = detalle_causas_documentadas(documentadas)
+            causas["Grupo de causa"] = causas["Grupo de causa"].replace("Otras causas documentadas", "Sin agrupación técnica")
+            dataframe_paginado(causas, "causas_documentadas_soporte", height=380,
+                              reset_token=(identificador, token, atencion, destino, clasificacion, len(causas)))
+            render_descarga_dataframe(causas, "descarga_causas_documentadas_soporte", "causas_documentadas", periodo_label)
+        else:
+            st.dataframe(resumen_causas_historial(documentadas), use_container_width=True, hide_index=True,
+                         column_config={"% casos": st.column_config.ProgressColumn("% casos", min_value=0,
+                             max_value=100, format="%.2f %%")})
     st.markdown("**Casos y evidencia para revisar**")
     columnas = ["numero", "creado", "estado", "cuenta", "asignado", COL_CLASIFICACION, TEXT_TIPOLOGIA_SOPORTE, COL_TOKEN, COL_CLASIFICACION_INICIAL, COL_MOTIVO_INICIAL,
                 "Grupo de causa", COL_CAUSA, COL_ESTADO_CAUSA, COL_ATENCION, COL_DESTINO, COL_EVIDENCIA_TOKEN,
@@ -7708,10 +7793,10 @@ def dashboard_casos():
     elif vista_dashboard == "Detalle y evidencia":
         render_analisis_historial_casos(casos_periodo, periodo_label)
     else:
-        with st.expander("Distribución por producto y cliente"):
-            render_distribucion_productos_soporte(df, periodo_label)
+        with st.expander("Productos y principales causas"):
+            render_productos_causas_soporte(df, periodo_label)
         with st.expander("Carga por agente"):
-            render_carga_agentes(df, TEXT_ASIGNADO, "Carga por agente - casos", TEXT_CASOS)
+            render_agentes_soporte(df)
         with st.expander("Análisis de agendamiento con histórico"):
             st.caption("Este bloque consulta más datos y se carga solo cuando lo solicitas.")
             if st.button("Calcular análisis de agendamiento", key="calcular_agendamiento_dashboard_casos"):

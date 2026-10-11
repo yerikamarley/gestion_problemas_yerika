@@ -58,10 +58,28 @@ atributo separado y no reemplaza el motivo de la solicitud.
 - La causa raíz requiere una explicación registrada en el campo de causa o
   en la atención. Una instalación, un producto, una redirección o un síntoma
   no confirman una causa técnica. Las causas documentadas se consultan aparte.
-  Se agrupan en cinco familias técnicas (controladores, certificados vencidos,
-  bloqueo por intentos, incompatibilidad de software y restricciones del equipo)
-  más Otras causas documentadas. La explicación exacta se conserva por caso;
-  el mismo grupo no se repite por tener distintos estados de documentación.
+  En Detalle y evidencia se muestran primero las explicaciones registradas,
+  con cantidad de casos, ejemplos y evidencia. Se unen textos equivalentes
+  que solo difieren en mayúsculas, acentos o espacios. La vista de grupos es
+  opcional y conserva ejemplos de las explicaciones. Las familias técnicas
+  incluyen controladores, certificados, descarga, configuración, dispositivo,
+  autenticación, disponibilidad, lentitud, consumos, correo y documentos.
+  Las explicaciones que no encajan se muestran como Sin agrupación técnica,
+  conservando su texto y evidencia; no desaparecen en un único renglón de Otras.
+  Estos grupos de detalle no amplían las siete clasificaciones del KPI.
+
+En **Operación → Carga por agente**, la tabla sustituye la gráfica y muestra
+total asignado, abiertos, cerrados y vencidos abiertos. El score de 0 a 100
+es el cumplimiento SLA: cerrados que cumplen / cerrados evaluables × 100.
+Los cierres sin fechas válidas se muestran sin evaluación; un agente sin
+casos evaluables no tiene score. El cumplimiento total usa todos los casos
+evaluables del período, no un promedio de porcentajes por agente.
+
+En **Operación → Productos y principales causas**, se muestra una tabla
+de todos los productos, sin agrupar los de menor volumen como Otros.
+Cada producto incluye casos únicos, casos con y sin causa documentada,
+las tres explicaciones documentadas más frecuentes y los principales motivos
+iniciales en una columna separada. La tabla se puede descargar como CSV.
 
 Se excluyen acuses automáticos, pies de canales, catálogos genéricos de
 productos en respuestas de derivación y mensajes citados. Se conserva la traza
