@@ -2526,6 +2526,16 @@ def load_casos():
     return aplicar_tipificaciones_casos(read_table("cases"))
 
 
+def load_seguimiento_proveedores():
+    exigir_contexto_lectura()
+    from repositories.proveedores import leer_candidatos_proveedores
+    from services.proveedores import registros_proveedores
+
+    casos = leer_candidatos_proveedores("cases", CASE_READ_COLUMNS)
+    incidentes = leer_candidatos_proveedores("incidents", INCIDENT_DB_COLUMNS)
+    return registros_proveedores(casos, incidentes)
+
+
 def load_campos_casos(numeros):
     exigir_contexto_lectura()
     if not numeros:

@@ -1,0 +1,481 @@
+{
+  "fuente": "ANS_Consolidado_Proveedores.xlsx",
+  "hoja": "Consolidado ANS Proveedores",
+  "zona": "America/Bogota",
+  "calendario_festivos": "https://www.funcionpublica.gov.co/eva/gestornormativo/norma.php?i=4954",
+  "proveedores": {
+    "Software Colombia": {
+      "aliases": [
+        "Software Colombia",
+        "software-colombia",
+        "softwarecolombia"
+      ],
+      "servicios": "Servicios transaccionales de Pagaré Electrónico y eLogic Workflow (Flujo de firma digital/electrónica PDF).",
+      "disponibilidad_objetivo": 99.9,
+      "procesamiento": "• Latencia <= 3 seg\n• RTO: 01:30 h\n• RPO: 00:15 h",
+      "horario": "24/7 para Soporte Nivel 2 (vía Jira Service Desk y Línea 318 897 7909)",
+      "deducciones_resumen": "Gestionado vía SLA contractual (sin porcentaje de descuento explicitado en tabla directa).",
+      "fila_general": 6,
+      "prioridades": {
+        "1": {
+          "fila": 14,
+          "objetivos": {
+            "atencion": 5,
+            "diagnostico": 15,
+            "mitigacion": 60,
+            "seguimiento": 60,
+            "solucion": 120
+          },
+          "texto": {
+            "atencion": "00:05 hh:mm",
+            "diagnostico": "00:15 hh:mm",
+            "mitigacion": "01:00 hh:mm",
+            "seguimiento": "01:00 hh:mm",
+            "solucion": "02:00 hh:mm"
+          }
+        },
+        "2": {
+          "fila": 15,
+          "objetivos": {
+            "atencion": 5,
+            "diagnostico": 30,
+            "mitigacion": 120,
+            "seguimiento": 120,
+            "solucion": 240
+          },
+          "texto": {
+            "atencion": "00:05 hh:mm",
+            "diagnostico": "00:30 hh:mm",
+            "mitigacion": "02:00 hh:mm",
+            "seguimiento": "02:00 hh:mm",
+            "solucion": "04:00 hh:mm"
+          }
+        },
+        "3": {
+          "fila": 16,
+          "objetivos": {
+            "atencion": 10,
+            "diagnostico": 120,
+            "mitigacion": 240,
+            "seguimiento": 480,
+            "solucion": 480
+          },
+          "texto": {
+            "atencion": "00:10 hh:mm",
+            "diagnostico": "02:00 hh:mm",
+            "mitigacion": "04:00 hh:mm",
+            "seguimiento": "08:00 hh:mm",
+            "solucion": "08:00 hh:mm"
+          }
+        },
+        "4": {
+          "fila": 17,
+          "objetivos": {
+            "atencion": 10,
+            "diagnostico": 480,
+            "mitigacion": 960,
+            "seguimiento": 1440,
+            "solucion": 600
+          },
+          "texto": {
+            "atencion": "00:10 hh:mm",
+            "diagnostico": "08:00 hh:mm",
+            "mitigacion": "16:00 hh:mm",
+            "seguimiento": "24:00 hh:mm",
+            "solucion": "10:00 hh:mm"
+          }
+        }
+      }
+    },
+    "Grafólogos Forenses": {
+      "aliases": [
+        "Grafólogos Forenses",
+        "Grafologos Forenses"
+      ],
+      "servicios": "Peritaje forense de grafología y dactiloscopia, verificación y certificación experta de firma y huella.",
+      "disponibilidad_objetivo": 99.9,
+      "procesamiento": "• Respuesta Back Office <= 180s\n• Entrega certificado PDF <= 3 días hábiles\n• FAR < 0.1% / FRR < 0.1%",
+      "horario": "Lunes a Domingo (inc. festivos): 8:00 a.m. a 10:00 p.m. (Mesa P1/P2: 7x24)",
+      "deducciones_resumen": "• 20% factura si indisponibilidad > 0.1%\n• 100% costo transacción si t > 180s (>=2 casos)\n• Hasta 80% factura por FAR >= 0.5%",
+      "fila_general": 7,
+      "prioridades": {
+        "1": {
+          "fila": 18,
+          "objetivos": {
+            "atencion": null,
+            "diagnostico": 15,
+            "mitigacion": null,
+            "seguimiento": null,
+            "solucion": 240
+          },
+          "texto": {
+            "atencion": "N/A",
+            "diagnostico": "15 min",
+            "mitigacion": "N/A",
+            "seguimiento": "N/A",
+            "solucion": "4 horas"
+          }
+        },
+        "2": {
+          "fila": 19,
+          "objetivos": {
+            "atencion": null,
+            "diagnostico": 30,
+            "mitigacion": null,
+            "seguimiento": null,
+            "solucion": 480
+          },
+          "texto": {
+            "atencion": "N/A",
+            "diagnostico": "30 min",
+            "mitigacion": "N/A",
+            "seguimiento": "N/A",
+            "solucion": "8 horas"
+          }
+        },
+        "3": {
+          "fila": 20,
+          "objetivos": {
+            "atencion": null,
+            "diagnostico": 240,
+            "mitigacion": null,
+            "seguimiento": null,
+            "solucion": {
+              "dias_habiles": 3
+            }
+          },
+          "texto": {
+            "atencion": "N/A",
+            "diagnostico": "4 horas",
+            "mitigacion": "N/A",
+            "seguimiento": "N/A",
+            "solucion": "3 días hábiles"
+          }
+        },
+        "4": {
+          "fila": 20,
+          "objetivos": {
+            "atencion": null,
+            "diagnostico": 240,
+            "mitigacion": null,
+            "seguimiento": null,
+            "solucion": {
+              "dias_habiles": 3
+            }
+          },
+          "texto": {
+            "atencion": "N/A",
+            "diagnostico": "4 horas",
+            "mitigacion": "N/A",
+            "seguimiento": "N/A",
+            "solucion": "3 días hábiles"
+          }
+        }
+      }
+    },
+    "RPost / eSoluciona": {
+      "aliases": [
+        "RPost",
+        "R Post",
+        "eSoluciona",
+        "e Soluciona"
+      ],
+      "servicios": "Correo electrónico certificado, prueba digital, evidencia de entrega/contenido y firma digital.",
+      "disponibilidad_objetivo": 99.8,
+      "procesamiento": "• Generación evidencia <= 6 horas\n• Reporte eventos críticos de seguridad <= 2 horas",
+      "horario": "Lunes a Viernes: 7:00 a.m. - 6:00 p.m.\nSábados: 8:00 a.m. - 1:00 p.m.",
+      "deducciones_resumen": "• 5% a 30% por indisponibilidad\n• 0% a 10% por casos fuera de SLA (>3%)\n• 2.5% a 10% por acuses no generados",
+      "fila_general": 8,
+      "prioridades": {
+        "1": {
+          "fila": 21,
+          "objetivos": {
+            "atencion": 30,
+            "diagnostico": null,
+            "mitigacion": null,
+            "seguimiento": null,
+            "solucion": 60
+          },
+          "texto": {
+            "atencion": "30 min",
+            "diagnostico": "N/A",
+            "mitigacion": "N/A",
+            "seguimiento": "N/A",
+            "solucion": "1 hora"
+          }
+        },
+        "2": {
+          "fila": 22,
+          "objetivos": {
+            "atencion": 45,
+            "diagnostico": null,
+            "mitigacion": null,
+            "seguimiento": null,
+            "solucion": 120
+          },
+          "texto": {
+            "atencion": "45 min",
+            "diagnostico": "N/A",
+            "mitigacion": "N/A",
+            "seguimiento": "N/A",
+            "solucion": "2 horas"
+          }
+        },
+        "3": {
+          "fila": 23,
+          "objetivos": {
+            "atencion": 60,
+            "diagnostico": null,
+            "mitigacion": null,
+            "seguimiento": null,
+            "solucion": 120
+          },
+          "texto": {
+            "atencion": "1 hora",
+            "diagnostico": "N/A",
+            "mitigacion": "N/A",
+            "seguimiento": "N/A",
+            "solucion": "2 horas"
+          }
+        },
+        "4": {
+          "fila": 24,
+          "objetivos": {
+            "atencion": 120,
+            "diagnostico": null,
+            "mitigacion": null,
+            "seguimiento": null,
+            "solucion": 240
+          },
+          "texto": {
+            "atencion": "2 horas",
+            "diagnostico": "N/A",
+            "mitigacion": "N/A",
+            "seguimiento": "N/A",
+            "solucion": "4 horas"
+          }
+        }
+      }
+    },
+    "AutenTIC": {
+      "aliases": [
+        "AutenTIC",
+        "Autentic"
+      ],
+      "servicios": "Ensamble, publicación y repositorio de documentos en venta asistida y gestor documental.",
+      "disponibilidad_objetivo": 99.96,
+      "procesamiento": "• Ensamble documento <= 5 min\n• Publicación App <= 5 min\n• Entrega gestor Claro <= 1 día",
+      "horario": "Lunes a Sábado: 6:00 a.m. - 10:00 p.m.\nDomingos/Festivos: 8:00 a.m. - 7:00 p.m.\n(Nivel Crítico: 24 horas)",
+      "deducciones_resumen": "• 1% a 5% según rango de indisponibilidad\n• 1% factura por inconsistencias o fallas en SLA\n• $9.000 + IPC por no reenvío",
+      "fila_general": 9,
+      "prioridades": {
+        "1": {
+          "fila": 25,
+          "objetivos": {
+            "atencion": 60,
+            "diagnostico": null,
+            "mitigacion": 120,
+            "seguimiento": null,
+            "solucion": 180
+          },
+          "texto": {
+            "atencion": "1 hora",
+            "diagnostico": "N/A",
+            "mitigacion": "2 horas",
+            "seguimiento": "N/A",
+            "solucion": "3 horas"
+          }
+        },
+        "2": {
+          "fila": 26,
+          "objetivos": {
+            "atencion": 120,
+            "diagnostico": null,
+            "mitigacion": 240,
+            "seguimiento": null,
+            "solucion": 360
+          },
+          "texto": {
+            "atencion": "2 horas",
+            "diagnostico": "N/A",
+            "mitigacion": "4 horas",
+            "seguimiento": "N/A",
+            "solucion": "6 horas"
+          }
+        },
+        "3": {
+          "fila": 27,
+          "objetivos": {
+            "atencion": 240,
+            "diagnostico": null,
+            "mitigacion": 480,
+            "seguimiento": null,
+            "solucion": 720
+          },
+          "texto": {
+            "atencion": "4 horas",
+            "diagnostico": "N/A",
+            "mitigacion": "8 horas",
+            "seguimiento": "N/A",
+            "solucion": "12 horas"
+          }
+        },
+        "4": {
+          "fila": 28,
+          "objetivos": {
+            "atencion": 720,
+            "diagnostico": null,
+            "mitigacion": 1080,
+            "seguimiento": null,
+            "solucion": 1440
+          },
+          "texto": {
+            "atencion": "12 horas",
+            "diagnostico": "N/A",
+            "mitigacion": "18 horas",
+            "seguimiento": "N/A",
+            "solucion": "24 horas"
+          }
+        }
+      }
+    }
+  },
+  "deducciones": [
+    {
+      "fila": 33,
+      "proveedor": "Grafólogos Forenses",
+      "regla": "Indisponibilidad de plataforma",
+      "condicion": "Indisponibilidad mensual > 0.1%",
+      "deduccion": "20% del valor a facturar en el mes",
+      "observaciones": "Factura mensual del servicio"
+    },
+    {
+      "fila": 34,
+      "proveedor": "Grafólogos Forenses",
+      "regla": "Lentitud Back Office (>180s)",
+      "condicion": ">= 2 transacciones que superen 180s en el mes",
+      "deduccion": "100% de descuento del costo de cada transacción incumplida",
+      "observaciones": "Costo transaccional individual"
+    },
+    {
+      "fila": 35,
+      "proveedor": "Grafólogos Forenses",
+      "regla": "Falsa Aceptación (FAR)",
+      "condicion": "Tasa FAR >= 0.5% (Fraude comprobado)",
+      "deduccion": "Costo transacción + afectación económica (hasta 80% factura)",
+      "observaciones": "Factura mensual del servicio"
+    },
+    {
+      "fila": 36,
+      "proveedor": "Grafólogos Forenses",
+      "regla": "Falso Rechazo (FRR)",
+      "condicion": "Tasa FRR > 0.1%",
+      "deduccion": "100% del costo de cada transacción incumplida",
+      "observaciones": "Costo transaccional individual"
+    },
+    {
+      "fila": 37,
+      "proveedor": "Grafólogos Forenses",
+      "regla": "Incumplimiento informes",
+      "condicion": "Mora > 2 días / > 1 semana",
+      "deduccion": "1% a 2% facturación o $40.000 COP diarios por informe",
+      "observaciones": "Facturación mensual / diaria"
+    },
+    {
+      "fila": 38,
+      "proveedor": "Grafólogos Forenses",
+      "regla": "Fuga de información",
+      "condicion": "Cualquier falla en seguridad de la información",
+      "deduccion": "20% del valor TOTAL del contrato",
+      "observaciones": "Valor total del contrato"
+    },
+    {
+      "fila": 39,
+      "proveedor": "Rpost / eSoluciona",
+      "regla": "Indisponibilidad del servicio",
+      "condicion": "Disponibilidad < 99.8% mensual",
+      "deduccion": "5% a 30% de penalización",
+      "observaciones": "Facturación del mes"
+    },
+    {
+      "fila": 40,
+      "proveedor": "Rpost / eSoluciona",
+      "regla": "SLA Incidentes escalados",
+      "condicion": "> 3% de casos fuera del SLA",
+      "deduccion": "0% a 10% de compensación según volumen",
+      "observaciones": "Facturación mensual de soporte"
+    },
+    {
+      "fila": 41,
+      "proveedor": "Rpost / eSoluciona",
+      "regla": "Acuses de recibo no generados",
+      "condicion": "51 a >250 acuses no generados",
+      "deduccion": "2.5% (51-100), 5% (101-250), 10% (>250)",
+      "observaciones": "Facturación mensual"
+    },
+    {
+      "fila": 42,
+      "proveedor": "Rpost / eSoluciona",
+      "regla": "Atraso en Preventa",
+      "condicion": "Superar tiempos de entrega en propuestas",
+      "deduccion": "2% (General), 3% (Alta), 5% (Crítica)",
+      "observaciones": "Facturación de servicios/propuesta"
+    },
+    {
+      "fila": 43,
+      "proveedor": "Rpost / eSoluciona",
+      "regla": "Personalizaciones / Desarrollos",
+      "condicion": "Incumplimiento del plan de trabajo",
+      "deduccion": "10% de penalización sobre valor facturado por desarrollo",
+      "observaciones": "Valor facturado por horas de desarrollo"
+    },
+    {
+      "fila": 44,
+      "proveedor": "Proveedor AutenTIC",
+      "regla": "Disponibilidad App Venta Asistida",
+      "condicion": "< 99.96% hasta < 85%",
+      "deduccion": "1% (<99.96%), 2% (<98%), 3% (<96%), 5% (<92%)",
+      "observaciones": "Factura mensual del servicio"
+    },
+    {
+      "fila": 45,
+      "proveedor": "Proveedor AutenTIC",
+      "regla": "Inconsistencias en plantillas",
+      "condicion": "> 1% de inconsistencias en documentos",
+      "deduccion": "1% del valor de la factura del mes",
+      "observaciones": "Factura mensual"
+    },
+    {
+      "fila": 46,
+      "proveedor": "Proveedor AutenTIC",
+      "regla": "Demora tiempo de ensamble",
+      "condicion": "> 5 minutos por documento",
+      "deduccion": "100% del costo de transacción por cada documento excedido",
+      "observaciones": "Costo por transacción"
+    },
+    {
+      "fila": 47,
+      "proveedor": "Proveedor AutenTIC",
+      "regla": "Entrega gestor Claro",
+      "condicion": "> 1 día en subir contrato",
+      "deduccion": "3% del valor de la factura del mes",
+      "observaciones": "Factura mensual"
+    },
+    {
+      "fila": 48,
+      "proveedor": "Proveedor AutenTIC",
+      "regla": "Reenvío de contratos fallidos",
+      "condicion": "> 2 días hábiles tras reporte",
+      "deduccion": "$9.000 COP (primer año) + IPC vigente por registro",
+      "observaciones": "Por cada registro no reenviado"
+    },
+    {
+      "fila": 49,
+      "proveedor": "Proveedor AutenTIC",
+      "regla": "Atención de incidencias / Informes",
+      "condicion": "< 98% de casos o informes a tiempo",
+      "deduccion": "1% de la facturación mensual",
+      "observaciones": "Facturación mensual"
+    }
+  ]
+}

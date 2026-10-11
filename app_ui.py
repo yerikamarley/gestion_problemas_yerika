@@ -97,6 +97,7 @@ from app_logic import (
     load_casos,
     load_casos_anios,
     load_casos_filtrados,
+    load_seguimiento_proveedores,
     load_campos_casos,
     load_evidencia_casos,
     load_incidentes,
@@ -136,6 +137,7 @@ from core.permissions import (
     VIEW_KPI_INCIDENTES,
     VIEW_REINCIDENCIAS_PROBLEMAS,
     VIEW_SEGUIMIENTO_AUTENTIC,
+    VIEW_SEGUIMIENTO_PROVEEDORES,
     VIEW_SEGUIMIENTO_INCIDENTES,
     VIEW_SEGUIMIENTO_RPOST,
     obtener_vistas_permitidas,
@@ -441,6 +443,11 @@ def cargar_evidencia_casos_cache(numeros, actor_email, vista):
 @st.cache_data(ttl=CACHE_TTL_SEGUNDOS, show_spinner=False)
 def cargar_casos_cache():
     return load_casos()
+
+
+@st.cache_data(ttl=CACHE_TTL_SEGUNDOS, show_spinner=False, max_entries=4)
+def cargar_casos_proveedores_cache(actor_email, vista):
+    return load_seguimiento_proveedores()
 
 
 @st.cache_data(ttl=CACHE_TTL_SEGUNDOS, show_spinner=False)
@@ -9961,6 +9968,14 @@ def render_resumen_disponibilidad_rpost(resumen):
     )
 
 
+def dashboard_seguimiento_proveedores():
+    from components.seguimiento_proveedores import render_seguimiento_proveedores
+    from core.auth_context import obtener_contexto_autorizacion
+
+    actor_email, vista = obtener_contexto_autorizacion()
+    render_seguimiento_proveedores(lambda: cargar_casos_proveedores_cache(actor_email, vista))
+
+
 def dashboard_seguimiento_rpost():
     st.subheader(MENU_SEGUIMIENTO_RPOST)
     anio, mes, periodo_label = selector_periodo_multi_sql(
@@ -12224,8 +12239,7 @@ VIEW_CATALOG = (
     (VIEW_DASHBOARD_INCIDENTES, "Dashboard Incidentes", CATEGORY_INCIDENTS, 30, dashboard_incidentes),
     (VIEW_KPI_INCIDENTES, MENU_KPI_INCIDENTES, CATEGORY_INCIDENTS, 40, dashboard_kpi_incidentes),
     (VIEW_REINCIDENCIAS_PROBLEMAS, MENU_REINCIDENCIAS_PROBLEMAS, CATEGORY_INCIDENTS, 60, dashboard_reincidencias_problemas),
-    (VIEW_SEGUIMIENTO_RPOST, MENU_SEGUIMIENTO_RPOST, CATEGORY_INCIDENTS, 70, dashboard_seguimiento_rpost),
-    (VIEW_SEGUIMIENTO_AUTENTIC, MENU_SEGUIMIENTO_AUTENTIC, CATEGORY_INCIDENTS, 80, dashboard_seguimiento_autentic),
+    (VIEW_SEGUIMIENTO_PROVEEDORES, "Seguimiento de proveedores", CATEGORY_INCIDENTS, 70, dashboard_seguimiento_proveedores),
     (VIEW_SEGUIMIENTO_INCIDENTES, MENU_SEGUIMIENTO_INCIDENTES_ADMIN, CATEGORY_INCIDENTS, 90, vista_seguimiento_incidentes),
     (VIEW_KPI_CLIENTES_CLAVE, MENU_KPI_CLIENTES_CLAVE, CATEGORY_KEY_CLIENTS, 10, dashboard_kpi_clientes_clave),
     (VIEW_CLIENTES_CLAVE, "Clientes Clave", CATEGORY_KEY_CLIENTS, 20, dashboard_clientes_clave),
@@ -12243,6 +12257,8 @@ def categorias_permitidas(rol):
 
 
 def resolver_vista_permitida(rol, vista_solicitada):
+    if vista_solicitada in {VIEW_SEGUIMIENTO_RPOST, VIEW_SEGUIMIENTO_AUTENTIC}:
+        vista_solicitada = VIEW_SEGUIMIENTO_PROVEEDORES
     catalogo = catalogo_permitido(rol)
     ids = {item[0] for item in catalogo}
     if vista_solicitada in ids:

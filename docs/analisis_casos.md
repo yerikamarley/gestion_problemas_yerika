@@ -10,10 +10,9 @@ reactivación); Uso o funcionamiento del token; Fallas del servicio;
 Solicitudes y consultas; Enviado a otros canales. No se acumulan varios grupos
 en una sola etiqueta. Los detalles se conservan por caso.
 
-La lámina del KPI muestra una sola frase breve por grupo (máximo 78 caracteres):
-la causa registrada más frecuente o, sin diagnóstico, el motivo inicial más
-frecuente. Para derivaciones muestra el motivo y el destino principal. La
-explicación completa se conserva en el detalle y al pasar el cursor. Las
+La lámina del KPI muestra solo los títulos de los grupos, sus cantidades y
+barras. Las explicaciones de motivos, causas y destinos se conservan en el
+detalle del reporte y en soporte. Las
 familias técnicas agrupan explicaciones equivalentes; otras explicaciones
 conservan el texto registrado. Se indica cuántos casos del grupo tienen causa
 documentada y, si no hay diagnóstico, se señala sin inventarlo. En las

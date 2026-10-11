@@ -32,7 +32,7 @@ class PermissionsTest(unittest.TestCase):
         )
 
     def test_define_vistas_unicas(self):
-        self.assertEqual(18, len(VISTAS))
+        self.assertEqual(17, len(VISTAS))
         self.assertEqual(len(VISTAS), len(set(VISTAS)))
 
     def test_normaliza_roles_sin_inventar_un_default(self):
@@ -53,7 +53,7 @@ class PermissionsTest(unittest.TestCase):
 
     def test_cantidad_de_vistas_por_rol_definitivo(self):
         esperadas = {
-            ROLE_ADMIN: 18,
+            ROLE_ADMIN: 17,
             ROLE_SOPORTE: 7,
             ROLE_EXPERIENCIA: 7,
             ROLE_GERENCIAS: 4,
@@ -82,7 +82,7 @@ class PermissionsTest(unittest.TestCase):
 
     def test_viewer_conserva_temporalmente_el_acceso_actual(self):
         vistas = obtener_permisos_rol(ROLE_VIEWER_LEGACY)
-        self.assertEqual(12, len(vistas))
+        self.assertEqual(11, len(vistas))
         self.assertNotIn(VIEW_REINCIDENCIAS_PROBLEMAS, vistas)
         self.assertNotIn(VIEW_DASHBOARD_INCIDENTES, vistas)
         self.assertNotIn(VIEW_ADMINISTRAR_USUARIOS, vistas)
