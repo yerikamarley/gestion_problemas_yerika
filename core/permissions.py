@@ -40,7 +40,7 @@ NOMBRES_ROLES = MappingProxyType(
     }
 )
 
-# Identificadores estables de las 17 vistas. No dependen del texto del menú.
+# Identificadores estables de las vistas. No dependen del texto del menú.
 VIEW_CARGAR_CASOS = "cargar_casos"
 VIEW_CASOS = "casos"
 VIEW_DASHBOARD_CASOS_SOPORTE = "dashboard_casos_soporte"
@@ -57,7 +57,6 @@ VIEW_SEGUIMIENTO_RPOST = "seguimiento_rpost"
 VIEW_SEGUIMIENTO_AUTENTIC = "seguimiento_autentic"
 VIEW_SEGUIMIENTO_PROVEEDORES = "seguimiento_proveedores"
 VIEW_SEGUIMIENTO_INCIDENTES = "seguimiento_incidentes"
-VIEW_KPI_CLIENTES_CLAVE = "kpi_clientes_clave"
 VIEW_CLIENTES_CLAVE = "clientes_clave"
 VIEW_ADMINISTRAR_USUARIOS = "administrar_usuarios"
 
@@ -76,7 +75,6 @@ VISTAS = (
     VIEW_REINCIDENCIAS_PROBLEMAS,
     VIEW_SEGUIMIENTO_PROVEEDORES,
     VIEW_SEGUIMIENTO_INCIDENTES,
-    VIEW_KPI_CLIENTES_CLAVE,
     VIEW_CLIENTES_CLAVE,
     VIEW_ADMINISTRAR_USUARIOS,
 )
@@ -99,7 +97,6 @@ _PERMISOS_EXPERIENCIA = frozenset(
         VIEW_INCIDENTES,
         VIEW_PROBLEMAS,
         VIEW_KPI_INCIDENTES,
-        VIEW_KPI_CLIENTES_CLAVE,
         VIEW_CLIENTES_CLAVE,
     }
 )
@@ -107,7 +104,6 @@ _PERMISOS_GERENCIAS = frozenset(
     {
         VIEW_KPI_CASOS_CLIENTE_EXTERNO,
         VIEW_KPI_INCIDENTES,
-        VIEW_KPI_CLIENTES_CLAVE,
         VIEW_CLIENTES_CLAVE,
     }
 )
@@ -126,7 +122,6 @@ _PERMISOS_VIEWER_LEGACY = frozenset(
         VIEW_KPI_INCIDENTES,
         VIEW_SEGUIMIENTO_PROVEEDORES,
         VIEW_SEGUIMIENTO_INCIDENTES,
-        VIEW_KPI_CLIENTES_CLAVE,
         VIEW_CLIENTES_CLAVE,
     }
 )

@@ -54,6 +54,7 @@ from services.casos_historial import (
     COL_CLASIFICACION, COL_CLASIFICACION_INICIAL, COL_MOTIVO_INICIAL, resumen_clasificacion_casos,
 )
 from services.casos_campos import ampliar_columnas_casos, tabla_casos_portal
+from services.clientes_experiencia import seguimiento_clientes
 from services.servicenow_worker import CaseSyncWorker
 from services.resumen_ejecutivo_casos import periodos_corte, construir_resumen_ejecutivo, agrupar_causas, causas_para_lamina
 from components.resumen_ejecutivo_casos import lamina_resumen_casos
@@ -129,7 +130,6 @@ from core.permissions import (
     VIEW_INCIDENTES,
     VIEW_PROBLEMAS,
     VIEW_KPI_CASOS_CLIENTE_EXTERNO,
-    VIEW_KPI_CLIENTES_CLAVE,
     VIEW_KPI_INCIDENTES,
     VIEW_REINCIDENCIAS_PROBLEMAS,
     VIEW_SEGUIMIENTO_AUTENTIC,
@@ -602,7 +602,6 @@ COL_REINCIDENTE_AGENDA = "Reincidente agenda"
 COL_CASOS_REINCIDENTES_AGENDA = "Casos reincidentes agenda"
 COL_REINCIDENCIA_AGENDAMIENTO = "Reincidencia agendamiento %"
 MENU_CLIENTES_CLAVE = "Clientes clave"
-MENU_KPI_CLIENTES_CLAVE = "KPI Clientes Clave"
 MENU_DASHBOARD_CASOS_SOPORTE = "Dashboard Casos Soporte"
 MENU_CONTROL_DIARIO_SOPORTE = "Control diario de Soporte"
 MENU_KPI_CASOS_CLIENTE_EXTERNO = "KPI Casos Cliente Externo"
@@ -10777,558 +10776,143 @@ def metricas_dashboard_clientes(casos, incidentes, resumen_actividad):
     }
 
 
-def render_kpis_clientes_clave(metricas, mes_dashboard):
-    render_tarjetas(
-        [
-            ("Clientes activos", metricas["clientes_activos"]),
-            (TEXT_ATENCIONES, metricas[TEXT_TOTAL_CASOS] + metricas[TEXT_TOTAL_INCIDENTES]),
-            (TEXT_ABIERTOS, metricas["abiertos"]),
-            ("SLA según vencimiento", formato_porcentaje_presentacion(metricas["sla_casos"])),
-            ("ANS incidentes", f"{metricas['sla_incidentes']}%"),
-        ]
-    )
-    st.caption(
-        f"{TEXT_PERIODO}{mes_dashboard} | Casos: {metricas[TEXT_TOTAL_CASOS]} | "
-        f"Incidentes: {metricas[TEXT_TOTAL_INCIDENTES]} | "
-        f"Clientes en seguimiento: {metricas['clientes_seguimiento']}"
-    )
+def render_graficas_experiencia(analisis):
+    import textwrap
 
-
-def render_clientes_sin_actividad(resumen):
-    clientes_sin_actividad = resumen[resumen[COL_TOTAL_ATENCIONES] == 0][TEXT_CLIENTE].tolist()
-    if clientes_sin_actividad:
-        st.caption("Sin actividad en el periodo: " + ", ".join(clientes_sin_actividad))
-
-
-def render_grafico_atenciones_cliente(resumen_actividad, color_estado=True):
-    grafico = resumen_actividad.sort_values(by=COL_TOTAL_ATENCIONES, ascending=True)
-    if not color_estado:
-        render_ranking_kpi(grafico, TEXT_CLIENTE, COL_TOTAL_ATENCIONES, "Atenciones por cliente clave")
+    clientes = analisis["clientes"]
+    activos = clientes[clientes["Pendientes"] > 0].head(10)
+    if activos.empty:
         return
-
-    parametros_color = (
-        {
-            "color": TEXT_NIVEL,
-            "color_discrete_map": {
-                "Verde": UI_PALETTE[TEXT_LAVENDER],
-                TEXT_AMARILLO: UI_PALETTE[TEXT_YELLOW],
-                "Rojo": UI_PALETTE[TEXT_PRIMARY],
-            },
-        }
-        if color_estado
-        else {"color_discrete_sequence": [UI_PALETTE["mustard"]]}
-    )
-    fig = px.bar(
-        grafico,
-        x=COL_TOTAL_ATENCIONES,
-        y=TEXT_CLIENTE,
-        orientation="h",
-        text=COL_TOTAL_ATENCIONES,
-        **parametros_color,
-    )
-    fig.update_traces(textposition=TEXT_OUTSIDE)
-    fig = aplicar_estilo_figura(fig, "Atenciones por cliente clave")
-    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
-
-
-def actividad_diaria_clientes(casos, incidentes):
-    actividad = []
-    if not casos.empty:
-        casos_dia = casos[[TEXT_CREADO_DT]].dropna().copy()
-        casos_dia[TEXT_FECHA] = casos_dia[TEXT_CREADO_DT].dt.date
-        casos_dia["Tipo"] = TEXT_CASOS
-        actividad.append(casos_dia.groupby([TEXT_FECHA, "Tipo"]).size().reset_index(name=TEXT_CANTIDAD))
-    if not incidentes.empty:
-        incidentes_dia = incidentes[[TEXT_CREADO_DT]].dropna().copy()
-        incidentes_dia[TEXT_FECHA] = incidentes_dia[TEXT_CREADO_DT].dt.date
-        incidentes_dia["Tipo"] = TEXT_INCIDENTES
-        actividad.append(incidentes_dia.groupby([TEXT_FECHA, "Tipo"]).size().reset_index(name=TEXT_CANTIDAD))
-    return pd.concat(actividad, ignore_index=True) if actividad else pd.DataFrame()
-
-
-def render_grafico_actividad_clientes(casos, incidentes):
-    actividad_dia = actividad_diaria_clientes(casos, incidentes)
-    if actividad_dia.empty:
-        st.info("No hay fechas validas para graficar actividad.")
-        return
-    fig = px.bar(
-        actividad_dia,
-        x=TEXT_FECHA,
-        y=TEXT_CANTIDAD,
-        color="Tipo",
-        barmode="group",
-        color_discrete_sequence=[UI_PALETTE[TEXT_PRIMARY], UI_PALETTE[TEXT_PURPLE]],
-    )
-    st.plotly_chart(aplicar_estilo_figura(fig, "Actividad por dia"), use_container_width=True)
+    alto = max(360, 80 + 42 * len(activos))
+    col_clientes, col_motivos = st.columns(2)
+    with col_clientes, st.container(border=True):
+        st.markdown("#### Clientes con pendientes")
+        st.caption("Primero los clientes con vencidos. Casos e incidentes abiertos.")
+        barras = activos[["Cliente", "Casos abiertos", "Casos vencidos", "Incidentes abiertos"]].copy()
+        barras["Casos en seguimiento"] = barras["Casos abiertos"] - barras["Casos vencidos"]
+        barras = barras.melt(id_vars="Cliente", value_vars=["Casos vencidos", "Casos en seguimiento", "Incidentes abiertos"],
+                             var_name="Atención", value_name="Pendientes")
+        fig = px.bar(barras, x="Pendientes", y="Cliente", color="Atención", orientation="h",
+                     category_orders={"Cliente": activos["Cliente"].tolist()},
+                     color_discrete_map={"Casos vencidos": UI_PALETTE[TEXT_PRIMARY],
+                                         "Casos en seguimiento": UI_PALETTE[TEXT_PURPLE],
+                                         "Incidentes abiertos": UI_PALETTE["blue"]})
+        aplicar_estilo_figura(fig)
+        fig.update_layout(height=alto, barmode="stack", font_size=13,
+                          legend={"orientation": "h", "y": -0.25, "font": {"size": 12}},
+                          margin={"l": 0, "r": 16, "t": 12, "b": 60})
+        fig.update_xaxes(title=None, dtick=1 if activos["Pendientes"].max() < 10 else None)
+        fig.update_yaxes(title=None, tickfont_size=12, tickmode="array",
+                         tickvals=activos["Cliente"].tolist(),
+                         ticktext=["<br>".join(textwrap.wrap(nombre, 27)) for nombre in activos["Cliente"]])
+        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+        restantes = clientes[clientes["Pendientes"] > 0].iloc[10:]
+        if not restantes.empty:
+            st.caption(f"Otros {len(restantes)} clientes tienen {int(restantes['Pendientes'].sum())} pendientes; aparecen en la tabla.")
+    with col_motivos, st.container(border=True):
+        st.markdown("#### ¿Por qué nos contactan?")
+        st.caption("Solicitud inicial de los casos abiertos, incluso cuando se redirigen a otro canal.")
+        motivos = analisis["motivos"]
+        if motivos.empty:
+            st.info("Los pendientes de esta selección son incidentes; no hay casos abiertos.")
+        else:
+            fig = px.bar(motivos, x="Casos abiertos", y="Motivo de contacto", orientation="h",
+                         text="Casos abiertos", color_discrete_sequence=[UI_PALETTE[TEXT_PURPLE]],
+                         category_orders={"Motivo de contacto": motivos["Motivo de contacto"].tolist()})
+            aplicar_estilo_figura(fig)
+            fig.update_traces(textposition=TEXT_OUTSIDE, cliponaxis=False)
+            fig.update_layout(height=alto, showlegend=False, margin={"l": 0, "r": 35, "t": 12, "b": 60})
+            fig.update_xaxes(title=None, rangemode="tozero")
+            fig.update_yaxes(title=None, tickfont_size=12, tickmode="array",
+                             tickvals=motivos["Motivo de contacto"].tolist(),
+                             ticktext=["<br>".join(textwrap.wrap(motivo, 27)) for motivo in motivos["Motivo de contacto"]])
+            st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
 
-def render_grafico_productos_clientes(casos):
-    if casos.empty:
-        st.info("No hay casos asociados a clientes clave.")
-        return
-    productos = casos[TEXT_PRODUCTO].replace("", pd.NA).fillna("Sin producto").value_counts().reset_index()
-    productos.columns = ["Producto", TEXT_CANTIDAD]
-    productos = productos.head(10).sort_values(by=TEXT_CANTIDAD, ascending=True)
-    fig = px.bar(
-        productos,
-        x=TEXT_CANTIDAD,
-        y="Producto",
-        orientation="h",
-        text=TEXT_CANTIDAD,
-        color_discrete_sequence=[UI_PALETTE[TEXT_YELLOW]],
-    )
-    fig.update_traces(textposition=TEXT_OUTSIDE)
-    st.plotly_chart(aplicar_estilo_figura(fig, "Productos con mas casos"), use_container_width=True)
-
-
-def render_grafico_causas_clientes(incidentes):
-    if incidentes.empty:
-        st.info("No hay incidentes asociados a clientes clave.")
-        return
-    causas = (
-        incidentes[TEXT_CAUSA_RAIZ_AUTO]
-        .replace("", pd.NA)
-        .fillna("Sin inferencia")
-        .value_counts()
-        .reset_index()
-    )
-    causas.columns = ["Causa incidente", TEXT_CANTIDAD]
-    causas = causas.head(10).sort_values(by=TEXT_CANTIDAD, ascending=True)
-    fig = px.bar(
-        causas,
-        x=TEXT_CANTIDAD,
-        y="Causa incidente",
-        orientation="h",
-        text=TEXT_CANTIDAD,
-        color_discrete_sequence=[UI_PALETTE[TEXT_PURPLE]],
-    )
-    fig.update_traces(textposition=TEXT_OUTSIDE)
-    st.plotly_chart(aplicar_estilo_figura(fig, "Causas en incidentes"), use_container_width=True)
-
-
-def render_graficas_clientes_clave(casos, incidentes, resumen_actividad):
-    st.divider()
-    graf_col1, graf_col2 = st.columns(2)
-    with graf_col1:
-        render_grafico_atenciones_cliente(resumen_actividad)
-    with graf_col2:
-        render_grafico_actividad_clientes(casos, incidentes)
-
-    graf_col3, graf_col4 = st.columns(2)
-    with graf_col3:
-        render_grafico_productos_clientes(casos)
-    with graf_col4:
-        render_grafico_causas_clientes(incidentes)
-
-
-def columnas_resumen_clientes():
-    return [
-        TEXT_CLIENTE,
-        TEXT_NIVEL,
-        COL_ESTADO_ATENCION,
-        TEXT_SCORE,
-        TEXT_CASOS,
-        TEXT_INCIDENTES,
-        COL_TOTAL_ATENCIONES,
-        TEXT_ABIERTOS,
-        COL_SLA_CASOS_PCT,
-        COL_SLA_INCIDENTES_PCT,
-        COL_ALERTAS_INCIDENTES,
-        COL_CASOS_SIN_CAUSA,
-        COL_PRODUCTO_PRINCIPAL,
-        COL_CAUSA_INCIDENTE_PRINCIPAL,
-        COL_ULTIMA_ATENCION,
-    ]
-
-
-def render_tab_resumen_clientes(resumen):
-    st.dataframe(
-        resumen[columnas_resumen_clientes()].sort_values(by=[COL_TOTAL_ATENCIONES, TEXT_SCORE], ascending=[False, True]),
-        use_container_width=True,
-        hide_index=True,
-    )
-
-
-def render_tab_abiertos_clientes(casos, incidentes):
-    abiertos_detalle = tabla_atenciones_abiertas_clientes(casos, incidentes)
-    if abiertos_detalle.empty:
-        st.success("No hay casos ni incidentes abiertos para los clientes seleccionados.")
-    else:
-        st.caption("Detalle de atenciones abiertas. El campo Tipo indica si corresponde a caso o incidente.")
-        dataframe_liviano(abiertos_detalle)
-
-
-def render_tab_casos_clientes(casos):
-    if casos.empty:
-        st.info("No hay casos asociados a los clientes seleccionados.")
-        return
-    columnas_casos = [
-        TEXT_CLIENTE_CLAVE,
-        TEXT_NUMERO,
-        TEXT_CUENTA,
-        TEXT_ESTADO,
-        TEXT_PRIORIDAD,
-        TEXT_PRODUCTO,
-        TEXT_TIPIFICACION_2,
-        TEXT_TIEMPO_RESPUESTA,
-        TEXT_CREADO,
-        TEXT_CERRADO,
-        TEXT_CAUSA,
-        TEXT_CODIGO_RESOLUCION,
-        TEXT_FUENTE_CLIENTE,
-    ]
-    columnas_casos = [col for col in columnas_casos if col in casos.columns]
-    dataframe_liviano(casos.sort_values(by=TEXT_CREADO_DT, ascending=False)[columnas_casos])
-
-
-def render_tab_incidentes_clientes(incidentes):
-    if incidentes.empty:
-        st.info("No hay incidentes asociados a los clientes seleccionados.")
-        return
-    columnas_incidentes = [
-        TEXT_CLIENTE_CLAVE,
-        TEXT_NUMERO,
-        TEXT_EMPRESA,
-        TEXT_SOLICITANTE,
-        TEXT_ESTADO,
-        TEXT_PRIORIDAD,
-        TEXT_SERVICIO_NEGOCIO,
-        TEXT_TIPIFICACION_AUTO,
-        TEXT_ES_ALERTA_AUTO,
-        TEXT_CAUSA_RAIZ_AUTO,
-        TEXT_DURACION_HORAS,
-        TEXT_CREADO,
-        TEXT_CERRADO,
-        TEXT_BREVE_DESCRIPCION,
-        TEXT_FUENTE_CLIENTE,
-    ]
-    columnas_incidentes = [col for col in columnas_incidentes if col in incidentes.columns]
-    dataframe_liviano(incidentes.sort_values(by=TEXT_CREADO_DT, ascending=False)[columnas_incidentes])
-
-
-def clientes_en_seguimiento(resumen_actividad):
-    return resumen_actividad[
-        resumen_actividad[TEXT_NIVEL].isin([TEXT_AMARILLO, "Rojo"])
-        & (resumen_actividad[TEXT_ABIERTOS] > 0)
-    ].copy()
-
-
-def render_tab_seguimiento_clientes(resumen_actividad):
-    seguimiento = clientes_en_seguimiento(resumen_actividad)
-    if seguimiento.empty:
-        st.success("Los clientes clave con actividad estan en nivel estable para el periodo seleccionado.")
-        return
-    seguimiento = seguimiento.sort_values(by=[TEXT_NIVEL, TEXT_SCORE, TEXT_ABIERTOS], ascending=[False, True, False])
-    st.dataframe(
-        seguimiento[
-            [
-                TEXT_CLIENTE,
-                TEXT_NIVEL,
-                COL_ESTADO_ATENCION,
-                TEXT_SCORE,
-                TEXT_ABIERTOS,
-                COL_ALERTAS_INCIDENTES,
-                PRIORIDAD_ALTA,
-                COL_CASOS_SIN_CAUSA,
-                COL_PRODUCTO_PRINCIPAL,
-                COL_CAUSA_INCIDENTE_PRINCIPAL,
-            ]
-        ],
-        use_container_width=True,
-        hide_index=True,
-    )
-    for _, row in seguimiento.iterrows():
-        st.warning(
-            f"**{row[TEXT_CLIENTE]}** | {row[COL_ESTADO_ATENCION]} | "
-            f"Abiertos: {row[TEXT_ABIERTOS]} | Alertas: {row[COL_ALERTAS_INCIDENTES]} | "
-            f"Casos sin causa: {row[COL_CASOS_SIN_CAUSA]}"
+def tabla_pendientes_experiencia(pendientes):
+    tabla = pendientes.copy()
+    for columna in ["Creado", "Vencimiento"]:
+        tabla[columna] = tabla[columna].map(
+            lambda fecha: fecha.strftime("%d/%m/%Y %H:%M") if pd.notna(fecha) else "Sin fecha"
         )
+    return tabla
 
 
-def render_tabs_clientes_clave(resumen, casos, incidentes, resumen_actividad):
-    st.divider()
-    tab_resumen, tab_abiertos, tab_casos, tab_incidentes, tab_seguimiento = st.tabs(
-        [TEXT_RESUMEN, TEXT_ABIERTOS, TEXT_CASOS, TEXT_INCIDENTES, "Seguimiento"]
-    )
-    with tab_resumen:
-        render_tab_resumen_clientes(resumen)
-    with tab_abiertos:
-        render_tab_abiertos_clientes(casos, incidentes)
-    with tab_casos:
-        render_tab_casos_clientes(casos)
-    with tab_incidentes:
-        render_tab_incidentes_clientes(incidentes)
-    with tab_seguimiento:
-        render_tab_seguimiento_clientes(resumen_actividad)
-
-
-def render_tarjetas_kpi_clientes_clave(metricas):
-    render_tarjetas(
-        [
-            ("Clientes activos", metricas["clientes_activos"]),
-            (TEXT_ATENCIONES, metricas[TEXT_TOTAL_CASOS] + metricas[TEXT_TOTAL_INCIDENTES]),
-            (TEXT_ABIERTOS, metricas["abiertos"]),
-            ("En seguimiento", metricas["clientes_seguimiento"]),
-            ("SLA según vencimiento", formato_porcentaje_presentacion(metricas["sla_casos"])),
-            ("SLA incidentes", f"{metricas['sla_incidentes']}%"),
-        ]
-    )
-
-
-def fila_cliente_prioritario(resumen_actividad):
-    if resumen_actividad.empty:
-        return None
-    seguimiento = clientes_en_seguimiento(resumen_actividad)
-    base = seguimiento if not seguimiento.empty else resumen_actividad
-    return base.sort_values(
-        by=[TEXT_SCORE, TEXT_ABIERTOS, COL_TOTAL_ATENCIONES],
-        ascending=[True, False, False],
-    ).iloc[0]
-
-
-def lineas_lectura_kpi_clientes_clave(metricas, resumen_actividad):
-    mayor_actividad = resumen_actividad.sort_values(by=COL_TOTAL_ATENCIONES, ascending=False).iloc[0]
-    prioritario = fila_cliente_prioritario(resumen_actividad)
-    score_promedio = round(resumen_actividad[TEXT_SCORE].mean(), 2)
-
-    cliente_top = html.escape(str(mayor_actividad[TEXT_CLIENTE]))
-    cliente_prioritario = html.escape(str(prioritario[TEXT_CLIENTE]))
-    return [
-        (
-            "Cliente con mas actividad: "
-            f"<strong>{cliente_top}</strong> ({int(mayor_actividad[COL_TOTAL_ATENCIONES])} atenciones)."
-        ),
-        (
-            "Cliente a priorizar: "
-            f"<strong>{cliente_prioritario}</strong> "
-            f"(score {prioritario[TEXT_SCORE]}, abiertos {int(prioritario[TEXT_ABIERTOS])})."
-        ),
-        (
-            f'<div class="slide-note-muted">Score promedio: {score_promedio} | '
-            f"Clientes en seguimiento: {metricas['clientes_seguimiento']}.</div>"
-        ),
-    ]
-
-
-def render_lectura_kpi_clientes_clave(metricas, resumen_actividad):
-    if resumen_actividad.empty:
-        st.info("No hay clientes clave con actividad para generar lectura KPI.")
+def render_seguimiento_experiencia(casos, incidentes, periodo_label):
+    analisis = seguimiento_clientes(casos, incidentes)
+    pendientes = analisis["pendientes"]
+    casos = analisis["casos"]
+    incidentes = analisis["incidentes"]
+    clientes = analisis["clientes"]
+    vencidos = pendientes["Estado SLA"].eq("Vencido")
+    render_tarjetas([
+        ("Casos abiertos", int(pendientes["Tipo"].eq("Caso").sum())),
+        ("Incidentes abiertos", int(pendientes["Tipo"].eq("Incidente").sum())),
+        ("Abiertos vencidos", int(vencidos.sum())),
+        ("Clientes con pendientes", int(clientes["Pendientes"].gt(0).sum())),
+    ])
+    st.caption(f"{TEXT_PERIODO}{periodo_label} · Registros creados en este período: "
+               f"{len(casos)} casos y {len(incidentes)} incidentes. Fechas en hora de Colombia.")
+    vista = st.radio("Seguimiento", ["Pendientes", "Histórico del período"], horizontal=True,
+                     key="clientes_clave_seguimiento")
+    if vista == "Pendientes":
+        if pendientes.empty:
+            st.success("No hay casos ni incidentes abiertos en esta selección.")
+            return
+        if vencidos.any():
+            afectados = pendientes.loc[vencidos, "Cliente"].nunique()
+            st.warning(f"{int(vencidos.sum())} abiertos vencidos afectan a {afectados} clientes. Se muestran primero para seguimiento.")
+        sin_fecha = pendientes["Estado SLA"].isin(["Sin fecha de vencimiento", "Fechas inconsistentes"])
+        if sin_fecha.any():
+            st.caption(f"{int(sin_fecha.sum())} pendientes no tienen un vencimiento evaluable; se conservan en seguimiento.")
+        render_graficas_experiencia(analisis)
+        st.markdown("#### Seguimiento por cliente")
+        clientes_abiertos = clientes[clientes["Pendientes"] > 0]
+        columnas = ["Cliente", "Casos abiertos", "Incidentes abiertos", "Casos vencidos",
+                    "Incidentes vencidos", "Mayor antigüedad (días)"]
+        st.dataframe(clientes_abiertos[columnas], use_container_width=True, hide_index=True)
+        st.markdown("#### Casos e incidentes por atender")
+        st.caption("Orden: vencidos, prioridad y mayor antigüedad. Los cerrados están en el histórico.")
+        filtro = st.radio("Mostrar pendientes", ["Todos los abiertos", "Vencidos", "Sin asignar"],
+                          horizontal=True, key="clientes_clave_filtro_pendientes")
+        visibles = pendientes.loc[vencidos] if filtro == "Vencidos" else (
+            pendientes[pendientes["Responsable"].eq("Sin asignar")] if filtro == "Sin asignar" else pendientes
+        )
+        if visibles.empty:
+            st.info("No hay pendientes con este filtro.")
+        else:
+            tabla = tabla_pendientes_experiencia(visibles)
+            dataframe_liviano(tabla)
+            render_descarga_dataframe(tabla, "clientes_clave_descarga_pendientes", "clientes_clave_pendientes", periodo_label)
         return
 
-    lineas = lineas_lectura_kpi_clientes_clave(metricas, resumen_actividad)
-    contenido = f"""
-    <div class="executive-note">
-        <div class="executive-note-title">Lectura</div>
-        <div class="executive-note-line">{lineas[0]}</div>
-        <div class="executive-note-line">{lineas[1]}</div>
-        <div class="executive-note-conclusion">{lineas[2]}</div>
-    </div>
-    """
-    st.markdown(contenido, unsafe_allow_html=True)
-
-
-def render_detalle_kpi_clientes_clave(resumen):
-    columnas = [
-        TEXT_CLIENTE,
-        TEXT_NIVEL,
-        TEXT_SCORE,
-        COL_TOTAL_ATENCIONES,
-        TEXT_ABIERTOS,
-        COL_SLA_CASOS_PCT,
-        COL_SLA_INCIDENTES_PCT,
-    ]
-    with st.expander("Ver resumen por cliente"):
-        st.dataframe(
-            resumen[columnas].sort_values(by=[COL_TOTAL_ATENCIONES, TEXT_SCORE], ascending=[False, True]),
-            use_container_width=True,
-            hide_index=True,
-        )
-
-
-def render_slide_kpi_clientes_clave(metricas, resumen_actividad, mes_dashboard, clientes_seleccionados):
-    tarjetas = [
-        ("Clientes activos", metricas["clientes_activos"]),
-        (TEXT_ATENCIONES, metricas[TEXT_TOTAL_CASOS] + metricas[TEXT_TOTAL_INCIDENTES]),
-        (TEXT_ABIERTOS, metricas["abiertos"]),
-        ("En seguimiento", metricas["clientes_seguimiento"]),
-        ("SLA según vencimiento", formato_porcentaje_presentacion(metricas["sla_casos"])),
-        ("SLA incidentes", f"{metricas['sla_incidentes']}%"),
-    ]
-    caption = (
-        f"Clientes seleccionados: {len(clientes_seleccionados)} | "
-        f"Casos: {metricas[TEXT_TOTAL_CASOS]} | Incidentes: {metricas[TEXT_TOTAL_INCIDENTES]}"
-    )
-    lineas = lineas_lectura_kpi_clientes_clave(metricas, resumen_actividad)
-    izquierda = slide_ranking_html(
-        resumen_actividad,
-        TEXT_CLIENTE,
-        COL_TOTAL_ATENCIONES,
-        "Atenciones por cliente clave",
-        top_n=6,
-        limite=58,
-    )
-    derecha = slide_note_html("Lectura", lineas)
-    render_slide_frame_kpi(MENU_KPI_CLIENTES_CLAVE, mes_dashboard, tarjetas, caption, izquierda, derecha)
-
-
-
-def dashboard_kpi_clientes_clave():
-    st.subheader(MENU_KPI_CLIENTES_CLAVE)
-    vista = st.radio(
-        "Vista",
-        ["Dashboard actual", "Comparativo casos clientes clave"],
-        horizontal=True,
-        key="kpi_clientes_clave_vista",
-    )
-    if vista == "Comparativo casos clientes clave":
-        dashboard_casos_clientes_clave_comparativo()
+    st.markdown("#### Actividad del período")
+    sla = resumen_sla_casos(casos)
+    cumplimiento = formato_porcentaje_presentacion(sla["porcentaje"])
+    st.caption(f"SLA de casos cerrados: {cumplimiento} · {sla['evaluados']} casos evaluables. "
+               "Los abiertos conservan la prioridad en las tablas.")
+    st.dataframe(clientes, use_container_width=True, hide_index=True)
+    tipo = st.radio("Detalle histórico", ["Casos", "Incidentes"], horizontal=True,
+                    key="clientes_clave_tipo_historico")
+    base = casos if tipo == "Casos" else incidentes
+    if base.empty:
+        st.info("No hay registros de este tipo en el período seleccionado.")
         return
-
-    anio, mes, periodo_label = selector_periodo_multi_sql(
-        ["cases", "incidents"],
-        "kpi_clientes_clave_periodo",
-    )
-    if not periodo_sql_valido(anio, "clientes clave"):
-        return
-    clientes_seleccionados = st.multiselect(
-        "Clientes",
-        CLIENTES_CLAVE,
-        default=CLIENTES_CLAVE,
-        key="kpi_clientes_clave_filtro",
-    )
-    if not clientes_seleccionados:
-        st.warning("Selecciona al menos un cliente clave.")
-        return
-
-    casos = cargar_casos_clientes_clave_filtrados_cache(anio, mes)
-    incidentes = cargar_incidentes_clientes_clave_filtrados_cache(anio, mes)
-    casos, incidentes = filtrar_clientes_seleccionados(casos, incidentes, clientes_seleccionados)
-    resumen = resumen_clientes_clave(casos, incidentes)
-    resumen = resumen[resumen[TEXT_CLIENTE].isin(clientes_seleccionados)].copy()
-    resumen_actividad = resumen[resumen[COL_TOTAL_ATENCIONES] > 0].copy()
-    metricas = metricas_dashboard_clientes(casos, incidentes, resumen_actividad)
-
-    modo_diapositiva = st.toggle("Formato diapositiva 16:9", key="slide_kpi_clientes_clave")
-    if modo_diapositiva and not resumen_actividad.empty:
-        render_slide_kpi_clientes_clave(metricas, resumen_actividad, periodo_label, clientes_seleccionados)
-        return
-
-    render_tarjetas_kpi_clientes_clave(metricas)
-    st.caption(
-        f"{TEXT_PERIODO}{periodo_label} | Clientes seleccionados: {len(clientes_seleccionados)} | "
-        f"Casos: {metricas[TEXT_TOTAL_CASOS]} | Incidentes: {metricas[TEXT_TOTAL_INCIDENTES]}"
-    )
-    render_clientes_sin_actividad(resumen)
-
-    if resumen_actividad.empty:
-        st.info("No hay casos o incidentes asociados a los clientes seleccionados en el periodo.")
-        return
-
-    col_grafico, col_lectura = st.columns([2.15, 1])
-    with col_grafico:
-        render_grafico_atenciones_cliente(resumen_actividad, color_estado=False)
-    with col_lectura:
-        render_lectura_kpi_clientes_clave(metricas, resumen_actividad)
-
-    render_detalle_kpi_clientes_clave(resumen)
-
-
-def resumen_por_grupos_clientes_clave(casos, incidentes):
-    filas = []
-    for grupo, clientes in GRUPOS_CLIENTES_CLAVE.items():
-        casos_grupo, incidentes_grupo = filtrar_clientes_seleccionados(casos, incidentes, clientes)
-        resumen = resumen_clientes_clave(casos_grupo, incidentes_grupo)
-        resumen = resumen[resumen[TEXT_CLIENTE].isin(clientes)].copy()
-        actividad = resumen[resumen[COL_TOTAL_ATENCIONES] > 0].copy()
-        metricas = metricas_dashboard_clientes(casos_grupo, incidentes_grupo, actividad)
-        filas.append(
-            {
-                "Grupo": grupo,
-                "Clientes configurados": len(clientes),
-                "Clientes activos": metricas["clientes_activos"],
-                TEXT_CASOS: metricas[TEXT_TOTAL_CASOS],
-                TEXT_INCIDENTES: metricas[TEXT_TOTAL_INCIDENTES],
-                TEXT_ATENCIONES: metricas[TEXT_TOTAL_CASOS] + metricas[TEXT_TOTAL_INCIDENTES],
-                TEXT_ABIERTOS: metricas["abiertos"],
-                "ANS casos %": metricas["sla_casos"],
-                "ANS incidentes %": metricas["sla_incidentes"],
-            }
-        )
-    return pd.DataFrame(filas)
-
-
-def render_resumen_grupos_clientes_clave(casos, incidentes, periodo_label):
-    st.markdown("### Resumen general")
-    st.caption(f"{TEXT_PERIODO}{periodo_label} | Comparativo de los cuatro grupos de clientes clave.")
-    tabla = resumen_por_grupos_clientes_clave(casos, incidentes)
-    total_atenciones = int(tabla[TEXT_ATENCIONES].sum())
-    total_abiertos = int(tabla[TEXT_ABIERTOS].sum())
-    total_activos = int(tabla["Clientes activos"].sum())
-    render_tarjetas(
-        [
-            ("Grupos", len(tabla)),
-            ("Clientes configurados", len(CLIENTES_CLAVE)),
-            ("Clientes activos", total_activos),
-            (TEXT_ATENCIONES, total_atenciones),
-            (TEXT_ABIERTOS, total_abiertos),
-        ]
-    )
-
-    col_volumen, col_ans = st.columns(2)
-    with col_volumen:
-        volumen = tabla.sort_values(TEXT_ATENCIONES, ascending=True)
-        fig_volumen = px.bar(
-            volumen,
-            x=TEXT_ATENCIONES,
-            y="Grupo",
-            orientation="h",
-            text=TEXT_ATENCIONES,
-            color="Grupo",
-            color_discrete_sequence=[
-                UI_PALETTE[TEXT_PRIMARY],
-                UI_PALETTE[TEXT_PURPLE],
-                UI_PALETTE[TEXT_YELLOW],
-                UI_PALETTE["blue"],
-            ],
-        )
-        fig_volumen.update_traces(textposition=TEXT_OUTSIDE)
-        st.plotly_chart(
-            aplicar_estilo_figura(fig_volumen, "Atenciones por grupo"),
-            use_container_width=True,
-            config={"displayModeBar": False},
-        )
-    with col_ans:
-        ans = tabla.melt(
-            id_vars=["Grupo"],
-            value_vars=["ANS casos %", "ANS incidentes %"],
-            var_name="Indicador",
-            value_name="Cumplimiento",
-        )
-        fig_ans = px.bar(
-            ans,
-            x="Grupo",
-            y="Cumplimiento",
-            color="Indicador",
-            barmode="group",
-            text="Cumplimiento",
-            range_y=[0, 105],
-            color_discrete_sequence=[UI_PALETTE[TEXT_PRIMARY], UI_PALETTE[TEXT_PURPLE]],
-        )
-        fig_ans.update_traces(texttemplate="%{text:.0f}%", textposition=TEXT_OUTSIDE)
-        st.plotly_chart(
-            aplicar_estilo_figura(fig_ans, "Cumplimiento de ANS por grupo"),
-            use_container_width=True,
-            config={"displayModeBar": False},
-        )
-
-    st.markdown("#### Detalle comparativo")
-    st.dataframe(tabla, use_container_width=True, hide_index=True)
-    st.info("Selecciona una pestaña de grupo arriba para consultar sus gráficas o el ANS de un solo cliente.")
+    columnas = {
+        "cliente_clave": "Cliente", "numero": "Número", "estado": "Estado", "prioridad": "Prioridad",
+        "asignado": "Responsable", "asignado_a": "Responsable", "descripcion": "Descripción",
+        "breve_descripcion": "Breve descripción", "producto": "Producto", "servicio_negocio": "Servicio",
+        "creado": "Creado", "cerrado": "Cerrado", "fecha_vencimiento_sla": "Vencimiento SLA",
+        "causa": "Causa documentada", "causa_raiz_original": "Causa documentada",
+    }
+    tabla = base[[col for col in columnas if col in base]].rename(columns=columnas)
+    dataframe_liviano(tabla)
+    render_descarga_dataframe(tabla, "clientes_clave_descarga_historico", f"clientes_clave_{tipo.lower()}", periodo_label)
 
 
 def dashboard_clientes_clave():
     st.subheader(MENU_CLIENTES_CLAVE)
-    st.caption("Seguimiento de volumen, estado y cumplimiento de ANS por grupo o cliente.")
+    st.caption("Experiencia del cliente · Primero los casos e incidentes que necesitan atención.")
 
     anio, mes, periodo_label = selector_periodo_multi_sql(
         ["cases", "incidents"],
@@ -11348,12 +10932,11 @@ def dashboard_clientes_clave():
     )
 
     if vista == "Resumen general":
-        render_resumen_grupos_clientes_clave(casos_base, incidentes_base, periodo_label)
+        render_seguimiento_experiencia(casos_base, incidentes_base, periodo_label)
         return
 
     clientes_grupo = GRUPOS_CLIENTES_CLAVE[vista]
     st.markdown(f"### {vista}")
-    st.caption(f"{len(clientes_grupo)} clientes configurados en este grupo.")
     alcance = st.radio(
         "Alcance del análisis",
         ["Todo el grupo", "Un solo cliente", "Selección personalizada"],
@@ -11362,7 +10945,7 @@ def dashboard_clientes_clave():
     )
     if alcance == "Un solo cliente":
         cliente = st.selectbox(
-            "Cliente para consultar su ANS",
+            "Cliente",
             clientes_grupo,
             key=f"clientes_clave_individual_{normalizar_texto(vista)}",
         )
@@ -11371,7 +10954,7 @@ def dashboard_clientes_clave():
         clientes_seleccionados = st.multiselect(
             "Clientes",
             clientes_grupo,
-            default=clientes_grupo,
+            default=[],
             key=f"clientes_clave_personalizado_{normalizar_texto(vista)}",
         )
     else:
@@ -11386,20 +10969,7 @@ def dashboard_clientes_clave():
         incidentes_base,
         clientes_seleccionados,
     )
-    resumen = resumen_clientes_clave(casos, incidentes)
-    resumen = resumen[resumen[TEXT_CLIENTE].isin(clientes_seleccionados)].copy()
-    resumen_actividad = resumen[resumen[COL_TOTAL_ATENCIONES] > 0].copy()
-
-    metricas = metricas_dashboard_clientes(casos, incidentes, resumen_actividad)
-    render_kpis_clientes_clave(metricas, periodo_label)
-    render_clientes_sin_actividad(resumen)
-
-    if resumen_actividad.empty:
-        st.info("No hay casos o incidentes asociados a los clientes seleccionados en el periodo.")
-        return
-
-    render_graficas_clientes_clave(casos, incidentes, resumen_actividad)
-    render_tabs_clientes_clave(resumen, casos, incidentes, resumen_actividad)
+    render_seguimiento_experiencia(casos, incidentes, periodo_label)
 
 def mensaje_carga_casos(cargados, reemplazados, duplicados_archivo, reemplazar_meses, meses_reemplazados, eliminados):
     detalle_reemplazo = ""
@@ -12365,7 +11935,6 @@ VIEW_CATALOG = (
     (VIEW_REINCIDENCIAS_PROBLEMAS, MENU_REINCIDENCIAS_PROBLEMAS, CATEGORY_INCIDENTS, 60, dashboard_reincidencias_problemas),
     (VIEW_SEGUIMIENTO_PROVEEDORES, "Seguimiento de proveedores", CATEGORY_INCIDENTS, 70, dashboard_seguimiento_proveedores),
     (VIEW_SEGUIMIENTO_INCIDENTES, MENU_SEGUIMIENTO_INCIDENTES_ADMIN, CATEGORY_INCIDENTS, 90, vista_seguimiento_incidentes),
-    (VIEW_KPI_CLIENTES_CLAVE, MENU_KPI_CLIENTES_CLAVE, CATEGORY_KEY_CLIENTS, 10, dashboard_kpi_clientes_clave),
     (VIEW_CLIENTES_CLAVE, "Clientes Clave", CATEGORY_KEY_CLIENTS, 20, dashboard_clientes_clave),
     (VIEW_ADMINISTRAR_USUARIOS, "Administrar Usuarios", CATEGORY_ADMIN, 10, vista_administrar_usuarios),
 )
@@ -12381,6 +11950,8 @@ def categorias_permitidas(rol):
 
 
 def resolver_vista_permitida(rol, vista_solicitada):
+    if vista_solicitada == "kpi_clientes_clave":
+        vista_solicitada = VIEW_CLIENTES_CLAVE
     if vista_solicitada in {VIEW_SEGUIMIENTO_RPOST, VIEW_SEGUIMIENTO_AUTENTIC}:
         vista_solicitada = VIEW_SEGUIMIENTO_PROVEEDORES
     catalogo = catalogo_permitido(rol)
