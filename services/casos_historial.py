@@ -498,3 +498,26 @@ def resumen_clasificacion_casos(df):
     resumen = base.groupby(COL_CLASIFICACION).size().rename("Casos").reset_index()
     resumen["% casos"] = (resumen["Casos"] * 100 / len(base)).round(2)
     return resumen.sort_values(["Casos", COL_CLASIFICACION], ascending=[False, True])[columnas]
+
+
+def analisis_token_fisico(df):
+    """Motivos iniciales y causas documentadas de la misma cohorte de token físico."""
+    base = df.drop_duplicates("numero", keep="last") if "numero" in df else df.copy()
+    base = agregar_analisis_historial(base)
+    base = base[base[COL_FISICO].eq(True)].copy()
+    columnas = ["Motivo de contacto", "Casos", "% token físico", "Con causa documentada",
+                "Enviados a otros canales", "Ejemplos"]
+    documentados = base[COL_ESTADO_CAUSA].ne("Pendiente de validar")
+    enviados = base[COL_CLASIFICACION].eq(ENVIADO_OTROS_CANALES)
+    filas = []
+    for motivo, grupo in base.groupby(COL_MOTIVO_INICIAL, sort=True):
+        filas.append({"Motivo de contacto": motivo, "Casos": len(grupo),
+                      "% token físico": round(100 * len(grupo) / len(base), 2),
+                      "Con causa documentada": int(grupo[COL_ESTADO_CAUSA].ne("Pendiente de validar").sum()),
+                      "Enviados a otros canales": int(grupo[COL_CLASIFICACION].eq(ENVIADO_OTROS_CANALES).sum()),
+                      "Ejemplos": ", ".join(grupo["numero"].astype(str).head(3)) if "numero" in grupo else ""})
+    motivos = pd.DataFrame(filas, columns=columnas).sort_values(
+        ["Casos", "Motivo de contacto"], ascending=[False, True])
+    return {"casos": base, "motivos": motivos, "causas": detalle_causas_documentadas(base),
+            "metricas": {"total": len(base), "con_causa": int(documentados.sum()),
+                         "sin_causa": int((~documentados).sum()), "enviados": int(enviados.sum())}}

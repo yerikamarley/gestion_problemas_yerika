@@ -50,6 +50,8 @@ with patch.object(ui, "selector_periodo_sql", return_value=(2026, 9, "Septiembre
         self.assertFalse(app.exception)
         self.assertEqual(2, len(app.get("plotly_chart")))
         self.assertTrue(any("Token físico explícito" in item.value for item in app.markdown))
+        self.assertTrue(any("¿Por qué contactan por token físico?" == item.label for item in app.expander))
+        self.assertEqual("Motivos de contacto", app.radio(key="vista_analisis_token_fisico").value)
         self.assertFalse(any(button.key == "revisar_evidencias_casos" for button in app.button))
         self.assertEqual(["Resumen", "Detalle y evidencia", "Operación"],
                          app.radio(key="vista_dashboard_soporte").options)

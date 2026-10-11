@@ -46,7 +46,7 @@ from services.casos_sla import (
 from services.servicenow import ServiceNowError
 from services.casos_historial import (
     analizar_caso, agregar_analisis_historial, analizar_evidencias_completas, texto_util_caso, resumen_causas_historial,
-    detalle_causas_documentadas,
+    detalle_causas_documentadas, analisis_token_fisico,
     COL_TOKEN, COL_MOTIVO, COL_CAUSA, COL_ESTADO_CAUSA, COL_ATENCION, COL_DESTINO,
     COL_EVIDENCIA_TOKEN, COL_EVIDENCIA_MOTIVO, COL_EVIDENCIA_CAUSA, COL_EVIDENCIA_ATENCION,
     COL_FISICO, COL_VIRTUAL, REDIRIGIDO_SIN_ATENCION, SIN_ATENCION, VERSION_ANALISIS,
@@ -57,11 +57,6 @@ from services.casos_campos import ampliar_columnas_casos, tabla_casos_portal
 from services.servicenow_worker import CaseSyncWorker
 from services.resumen_ejecutivo_casos import periodos_corte, construir_resumen_ejecutivo, agrupar_causas, causas_para_lamina
 from components.resumen_ejecutivo_casos import lamina_resumen_casos
-from services.migracion_pki import (
-    GRUPO_PKI_TODOS,
-    agregar_grupo_migracion,
-    filtrar_grupo_migracion,
-)
 from dashboards.riesgos_materializados import render_riesgos_materializados
 from app_logic import (
     AutorizacionError,
@@ -7620,6 +7615,54 @@ def render_evolucion_diaria_casos(df, solo_token=False, inicio=None, fin=None):
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
 
+def render_analisis_token_fisico(df, periodo_label):
+    analisis = analisis_token_fisico(df)
+    base, motivos, metricas = analisis["casos"], analisis["motivos"], analisis["metricas"]
+    if base.empty:
+        st.info("No hay casos con mención explícita de token físico en este período.")
+        return
+    st.caption(
+        f"{metricas['total']} casos únicos · {metricas['con_causa']} con causa documentada · "
+        f"{metricas['sin_causa']} sin causa documentada · {metricas['enviados']} enviados a otros canales. "
+        "Incluye los casos que mencionan ambos tipos de token."
+    )
+    principales = "; ".join(f"{row['Motivo de contacto']} ({int(row['Casos'])} casos)"
+                            for _, row in motivos.head(2).iterrows())
+    st.markdown(f"**Principales motivos de contacto:** {principales}.")
+    vista = st.radio("Análisis de token físico", ["Motivos de contacto", "Causas documentadas", "Casos y evidencia"],
+                     horizontal=True, key="vista_analisis_token_fisico")
+    if vista == "Motivos de contacto":
+        st.caption("La solicitud inicial explica por qué contactó el cliente, aunque después se derive a agenda. "
+                   "Cada caso cuenta una vez; las columnas de causa y derivación son parte de esos mismos casos.")
+        st.dataframe(motivos, use_container_width=True, hide_index=True,
+                     column_config={"% token físico": st.column_config.ProgressColumn(
+                         "% token físico", min_value=0, max_value=100, format="%.2f %%")})
+        render_descarga_dataframe(motivos, "descarga_motivos_token_fisico", "motivos_token_fisico", periodo_label)
+    elif vista == "Causas documentadas":
+        st.caption(f"{metricas['con_causa']} de {metricas['total']} casos tienen una explicación registrada "
+                   "en la causa, las notas o la conversación. Los porcentajes usan solo esos casos. "
+                   "Una solicitud de instalación o una derivación no confirma una causa técnica.")
+        causas = analisis["causas"].copy()
+        if causas.empty:
+            st.info("Estos casos tienen motivos de contacto, pero todavía no hay causas técnicas documentadas.")
+            return
+        causas["Grupo de causa"] = causas["Grupo de causa"].replace("Otras causas documentadas", "Sin agrupación técnica")
+        dataframe_paginado(causas, "causas_token_fisico", height=340, reset_token=(periodo_label, len(causas)))
+        render_descarga_dataframe(causas, "descarga_causas_token_fisico", "causas_token_fisico", periodo_label)
+    else:
+        motivo = st.selectbox("Motivo de contacto del token físico", [TEXT_TODOS] + motivos["Motivo de contacto"].tolist(),
+                              key="motivo_token_fisico")
+        if motivo != TEXT_TODOS:
+            base = base[base[COL_MOTIVO_INICIAL].eq(motivo)]
+        columnas = ["numero", "descripcion", COL_TOKEN, COL_MOTIVO_INICIAL, COL_CLASIFICACION, COL_ATENCION,
+                    COL_DESTINO, COL_CAUSA, COL_ESTADO_CAUSA, COL_EVIDENCIA_TOKEN, COL_EVIDENCIA_MOTIVO,
+                    COL_EVIDENCIA_CAUSA, COL_EVIDENCIA_ATENCION]
+        detalle = base.reindex(columns=columnas).rename(columns={"numero": "Número", "descripcion": "Solicitud del cliente"})
+        dataframe_paginado(detalle, "evidencia_token_fisico", height=340,
+                          reset_token=(periodo_label, motivo, len(detalle)))
+        render_descarga_dataframe(detalle, "descarga_evidencia_token_fisico", "evidencia_token_fisico", periodo_label)
+
+
 def render_control_asignacion_casos(segmentos):
     render_tarjetas(
         [
@@ -7783,6 +7826,8 @@ def dashboard_casos():
             with st.container(border=True):
                 render_evolucion_diaria_casos(df, solo_token=True, inicio=inicio, fin=fin)
         st.caption("Token físico es un seguimiento del producto, con mención explícita; puede formar parte de cualquier clasificación.")
+        with st.expander("¿Por qué contactan por token físico?", expanded=True):
+            render_analisis_token_fisico(df, periodo_label)
         st.markdown("#### ¿Qué casos recibimos?")
         st.caption("Siete grupos como máximo, con una sola clasificación por caso. Las derivaciones conservan el motivo inicial en el detalle.")
         st.dataframe(resumen_clasificacion_casos(df), use_container_width=True, hide_index=True,
@@ -11653,7 +11698,6 @@ def vista_casos():
         filtro_col4, filtro_col5, filtro_col6 = st.columns([1.4, 1.6, 1.3])
         with filtro_col4:
             grupos_disponibles = [TEXT_TODOS, *GRUPOS_CLIENTES_CLAVE.keys()]
-            grupos_disponibles.append(GRUPO_PKI_TODOS)
             if st.session_state.get("grupo_cliente_clave_casos", TEXT_TODOS) not in grupos_disponibles:
                 st.session_state["grupo_cliente_clave_casos"] = TEXT_TODOS
             filtro_grupo_cliente = st.selectbox(
@@ -11693,18 +11737,13 @@ def vista_casos():
                 filtro_cuenta,
             )
         if filtro_grupo_cliente != TEXT_TODOS:
-            if filtro_grupo_cliente == GRUPO_PKI_TODOS:
-                df = filtrar_grupo_migracion(df, grupo=GRUPO_PKI_TODOS)
-            else:
-                df = filtrar_por_grupo_cliente_clave(df, [TEXT_CUENTA, "creado_por"], filtro_grupo_cliente)
+            df = filtrar_por_grupo_cliente_clave(df, [TEXT_CUENTA, "creado_por"], filtro_grupo_cliente)
         if filtro_texto:
             df = filtrar_por_cliente_o_texto(df, CASE_FIELDS_BUSQUEDA_GLOBAL, filtro_texto)
         df["Grupo cliente clave"] = serie_grupo_cliente_clave(
             df,
             [TEXT_CUENTA, "creado_por"],
         ).replace("", "No es cliente clave")
-        df = agregar_grupo_migracion(df)
-        df["Grupo migración PKI"] = df["grupo_migracion_pki"].replace("", "No identificado")
         if not df.empty:
             detecciones_cliente = df.apply(
                 lambda row: detectar_cliente_en_fila(row, [TEXT_CUENTA, "creado_por"]),

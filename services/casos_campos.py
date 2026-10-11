@@ -49,7 +49,7 @@ COLUMNAS_CASOS_PORTAL = (
     "Notas del trabajo", "Causa Raiz*", "Escalado a proveedor", "Nombre del proveedor", "Actualizado",
     "Estado SLA", "Horas restantes / margen al cierre", "mes", "Grupo cliente clave",
     "Cliente clave detectado", "Fuente identificación VIP", "Segmento de asignación", "Tipologia caso",
-    "tipificacion", "tiempo_respuesta", "Grupo migración PKI", "Activo", "Abierto", "Abierto por",
+    "tipificacion", "tiempo_respuesta", "Activo", "Abierto", "Abierto por",
     "Asignado el", "Informe de caso", "Descripción", "Escalado a proveedor (u_boolean_3)",
     "Actualizaciones", "Actualizado por", "SLA 1 · Estado", "SLA 1 · Inicio", "SLA 1 · Vencimiento",
     "Historial de la conversación",

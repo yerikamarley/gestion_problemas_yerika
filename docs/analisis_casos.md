@@ -108,3 +108,18 @@ para sumar al total. Los porcentajes de clasificación usan los casos únicos;
 los porcentajes de causas documentadas usan únicamente los casos con explicación.
 El resumen usa soporte y casos sin asignación. El detalle permite revisar todos
 los responsables con el alcance indicado en pantalla.
+
+En **Resumen → ¿Por qué contactan por token físico?**, la cohorte coincide
+con la gráfica de token físico: mismo período, soporte y sin asignación,
+casos únicos y mención explícita positiva. Incluye casos que mencionan ambos
+tipos de token. Las tres vistas muestran motivos de contacto, causas
+documentadas y casos con evidencia. El motivo corresponde a la solicitud
+inicial, incluso si después se redirige a agenda, ventas u otro canal.
+Los motivos cuentan cada caso una vez y sus porcentajes usan toda la cohorte
+de token físico. Las causas conservan la explicación registrada y sus
+porcentajes usan solo los casos con causa documentada; se indica también
+cuántos todavía no tienen diagnóstico. Las causas de casos que mencionan
+ambos tokens se presentan como causas del caso, sin atribuirlas exclusivamente
+al dispositivo físico. Cada vista permite descargar sus datos completos.
+Este análisis reutiliza las notas y la conversación ya cargadas, sin nuevas
+consultas a ServiceNow o a la base de datos.

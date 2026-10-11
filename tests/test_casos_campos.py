@@ -134,6 +134,9 @@ from tests.test_casos_campos import campos_ejemplo, slas_ejemplo
 df = ui.agregar_tipologia_soporte_casos(IntegracionSlaCasosTest().base())
 df.loc[0, "numero"] = "CS0215905"
 df["historial_conversacion"] = "Preocupacion del cliente por fallas recurrentes del portal"
+df["Grupo migraci\\u00f3n PKI"] = "Clasificacion temporal anterior"
+df["grupo_migracion_pki"] = "Clasificacion temporal anterior"
+st.session_state["grupo_cliente_clave_casos"] = "Migraci\\u00f3n PKI"
 def captura(df, *args):
     st.session_state["descarga_completa"] = df
 with patch.object(ui, "selector_fechas_casos", return_value=(date(2026, 8, 1), date(2026, 8, 31), "Agosto 2026")), \\
@@ -146,6 +149,12 @@ with patch.object(ui, "selector_fechas_casos", return_value=(date(2026, 8, 1), d
         tabla = app.dataframe[0].value
         self.assertEqual(2, len(tabla))
         self.assertEqual(list(COLUMNAS_CASOS_PORTAL), tabla.columns.tolist())
+        self.assertNotIn("Grupo migración PKI", tabla.columns)
+        self.assertNotIn("grupo_migracion_pki", tabla.columns)
+        filtro = app.selectbox(key="grupo_cliente_clave_casos")
+        self.assertNotIn("Migración PKI", filtro.options)
+        self.assertEqual("Todos", filtro.value)
+        self.assertIn("Asobancaria", filtro.options)
         for columna in ["Caso", "Categoría", "Grupo de asignación", "SLA 2 · Nombre", "u_campo_nuevo"]:
             self.assertNotIn(columna, tabla.columns)
         self.assertEqual("En curso", tabla.iloc[0]["SLA 1 · Estado"])
