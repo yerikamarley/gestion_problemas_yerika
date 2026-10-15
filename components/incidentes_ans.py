@@ -201,35 +201,91 @@ def _render_leyenda(base):
     st.markdown('<div class="inc-ans-legend">' + "".join(items) + '</div>', unsafe_allow_html=True)
 
 
-def _render_tendencia(tendencia, key_prefix):
-    if tendencia.empty or tendencia["Cumplimiento %"].notna().sum() == 0:
-        st.info("No hay tiempos evaluables para graficar cumplimiento mensual.")
-        return
+MESES = ("enero", "febrero", "marzo", "abril", "mayo", "junio",
+         "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre")
+
+
+def nombre_mes(mes):
+    fecha = pd.Timestamp(f"{mes}-01")
+    return f"{MESES[fecha.month - 1].capitalize()} {fecha.year}"
+
+
+def grafica_mensual(tendencia):
+    datos = tendencia.sort_values(["Mes", "Categoría"]).copy()
+    meses = sorted(datos["Mes"].unique())
+    un_mes = len(meses) == 1
+    tipos = [tipo for tipo in (*CATEGORIAS, SIN_CATEGORIA) if datos["Categoría"].eq(tipo).any()]
+    datos["Período"] = datos["Mes"].map(nombre_mes)
+    datos["Porcentaje"] = datos["Cumplimiento %"].map(lambda valor: f"{valor:.2f}%" if pd.notna(valor) else "")
     colores = {CATEGORIAS[0]: "#f35b04", CATEGORIAS[1]: "#9683ec", CATEGORIAS[2]: "#d6a21a", SIN_CATEGORIA: "#c5c0cb"}
-    for etapa in ("Resolución",):
-        datos = tendencia[tendencia["Etapa"].eq(etapa)]
-        with st.container(border=True, key=f"incidentes_chart_{key_prefix}_tendencia_{etapa}"):
-            st.markdown(f"**Evolución de {etapa.lower()}**")
-            if datos["Cumplimiento %"].notna().sum() == 0:
-                st.info("No hay registros evaluables para calcular este porcentaje. Consulta el motivo en «Detalle de registros».")
-                continue
-            fig = px.line(datos, x="Mes", y="Cumplimiento %", color="Categoría", markers=True,
-                          hover_data=["Evaluados", "Cumplen", "No cumplen", "Sin datos", "Pendientes"],
-                          color_discrete_map=colores)
-            fig.update_traces(connectgaps=False, line=dict(width=2.5), marker=dict(size=8))
-            fig.update_layout(height=290, font=dict(family="Arial, sans-serif", size=12, color="#6c6570"),
-                              paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-                              margin=dict(l=38, r=12, t=12, b=40),
-                              legend=dict(title=None, orientation="h", y=-.25, font=dict(size=10)))
-            fig.update_yaxes(range=[0, 105], title=None, ticksuffix="%", dtick=25,
-                             gridcolor="#eee9f0", zeroline=False, fixedrange=True,
-                             showticklabels=True, automargin=True, tickfont=dict(color="#6c6570", size=11))
-            fig.update_xaxes(title=None, type="category", showgrid=False, fixedrange=True)
-            st.plotly_chart(fig, use_container_width=True, theme=None, config={"displayModeBar": False},
-                            key=f"{key_prefix}_tendencia_{etapa}")
-    st.caption("Los meses sin tiempos evaluables quedan sin porcentaje. Selecciona todos los meses del año para comparar la evolución.")
-    with st.expander("Ver cifras mensuales"):
-        st.dataframe(tendencia, hide_index=True, use_container_width=True)
+    fig = px.bar(datos, x="Cumplimiento %" if un_mes else "Período",
+                 y="Categoría" if un_mes else "Cumplimiento %", color="Categoría",
+                 orientation="h" if un_mes else "v", barmode="relative" if un_mes else "group", text="Porcentaje",
+                 custom_data=["Período", "Evaluados", "Cumplen", "No cumplen", "Pendientes", "Sin datos"],
+                 category_orders={"Categoría": tipos,
+                                  "Período": [nombre_mes(mes) for mes in meses]},
+                 color_discrete_map=colores)
+    fig.update_traces(textposition="outside", cliponaxis=False, marker_line_width=0,
+                      textfont=dict(size=12, color="#302936"),
+                      hovertemplate="%{customdata[0]}<br>%{fullData.name}<br>%{text} dentro del plazo"
+                                    "<br>%{customdata[2]} de %{customdata[1]} evaluados cumplen"
+                                    "<br>%{customdata[3]} fuera del plazo · %{customdata[4]} abiertos"
+                                    "<br>%{customdata[5]} no evaluables<extra></extra>")
+    fig.update_layout(height=max(240, datos["Categoría"].nunique() * 62 + 50) if un_mes else 330,
+                      bargap=.45, showlegend=not un_mes,
+                      font=dict(family="Arial, sans-serif", size=12, color="#6c6570"),
+                      paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                      margin=dict(l=0, r=28, t=24, b=35),
+                      legend=dict(title=None, orientation="h", y=-.25, font=dict(size=11)))
+    porcentaje = dict(range=[0, 115], title="Resueltos dentro del plazo (%)", ticksuffix="%",
+                      tickvals=[0, 25, 50, 75, 100], gridcolor="#eee9f0", zeroline=False,
+                      fixedrange=True, automargin=True)
+    if un_mes:
+        fig.update_xaxes(**porcentaje)
+        fig.update_yaxes(title=None, autorange="reversed", categoryorder="array", categoryarray=tipos,
+                         showgrid=False, fixedrange=True,
+                         automargin=True, tickmode="array", tickvals=tipos,
+                         ticktext=[tipo.replace("Incidente Seguridad", "Incidente<br>Seguridad")
+                                   .replace("Consulta / Ayuda", "Consulta /<br>Ayuda") for tipo in tipos])
+    else:
+        fig.update_yaxes(**porcentaje)
+        fig.update_xaxes(title=None, type="category", showgrid=False, fixedrange=True)
+    return fig
+
+
+def _render_tendencia(tendencia, key_prefix):
+    if tendencia.empty:
+        st.info("No hay registros con fecha de creación para mostrar el resumen mensual.")
+        return
+    meses = sorted(tendencia["Mes"].unique())
+    un_mes = len(meses) == 1
+    with st.container(border=True, key=f"incidentes_chart_{key_prefix}_tendencia_resolucion"):
+        st.markdown("**" + (f"SLA de resolución · {nombre_mes(meses[0])}" if un_mes
+                             else "Comparación mensual del SLA de resolución") + "**")
+        st.caption("Cada barra muestra qué porcentaje de los registros evaluados se resolvió dentro del plazo, por tipo.")
+        if un_mes:
+            st.caption("Hay un solo mes seleccionado: se comparan los tipos. Selecciona todos los meses para ver los cambios mes a mes.")
+        if tendencia["Cumplimiento %"].notna().any():
+            st.plotly_chart(grafica_mensual(tendencia), use_container_width=True, theme=None,
+                            config={"displayModeBar": False}, key=f"{key_prefix}_tendencia_resolucion")
+        else:
+            st.info("No hay resoluciones evaluables para calcular porcentajes. La tabla muestra los registros disponibles.")
+        if un_mes:
+            for fila in tendencia.to_dict("records"):
+                tipo = html.escape(str(fila["Categoría"]))
+                st.markdown(f"**{tipo}: {porcentaje_visible(fila['Cumplimiento %']) if pd.notna(fila['Cumplimiento %']) else 'No calculable'}** — "
+                            f"{fila['Cumplen']} de {fila['Evaluados']} evaluados dentro del plazo; "
+                            f"{fila['No cumplen']} fuera del plazo; {fila['Pendientes']} abiertos.")
+    detalle = tendencia.drop(columns=["Etapa"]).copy()
+    detalle["Mes"] = detalle["Mes"].map(nombre_mes)
+    st.dataframe(detalle, hide_index=True, use_container_width=True,
+                 column_config={"Categoría": st.column_config.TextColumn("Tipo de incidente"),
+                                "Cumplimiento %": st.column_config.NumberColumn("SLA resolución", format="%.2f%%"),
+                                "Cumplen": st.column_config.NumberColumn("Dentro del plazo"),
+                                "No cumplen": st.column_config.NumberColumn("Fuera del plazo"),
+                                "Sin datos": st.column_config.NumberColumn("No evaluables"),
+                                "Pendientes": st.column_config.NumberColumn("Abiertos")})
+    st.caption("El porcentaje excluye abiertos y registros sin resolución evaluable. Un porcentaje ausente no equivale a 0 %.")
 
 
 def _render_panel(df, key_prefix, titulo, periodo, presentacion):
@@ -288,7 +344,7 @@ def _render_panel(df, key_prefix, titulo, periodo, presentacion):
         st.markdown(referencia, unsafe_allow_html=True)
     if categoria == CONSULTA:
         st.caption("Consulta / Ayuda: prioridad Moderado y resolución máxima de 4 días de soporte.")
-    resumen_tab, tendencia_tab, detalle_tab = st.tabs(["Cumplimiento", "Evolución mensual", "Detalle de registros"])
+    resumen_tab, tendencia_tab, detalle_tab = st.tabs(["Cumplimiento", "SLA mensual", "Detalle de registros"])
     with resumen_tab:
         _render_leyenda(base)
         _render_grafica(base, "resolucion", key_prefix)

@@ -110,8 +110,11 @@ requisitos del procedimiento ni elimina los datos o reglas de atención del sist
 - La gráfica de cumplimiento agrupa los registros por tipo (Incidente,
   Incidente Seguridad y Consulta / Ayuda), en lugar de prioridad. Solo aparecen
   tipos con registros en el filtro actual; los segmentos muestran resolución y estados
-  con colores consistentes. La tendencia mensual mantiene vacíos los porcentajes
-  sin datos; no representa esos períodos como 0 %.
+  con colores consistentes. En «SLA mensual», un solo mes se representa con
+  barras horizontales separadas por tipo, porcentajes visibles y una lectura
+  de cumplidos/evaluados, fuera del plazo y abiertos. Varios meses se comparan
+  con barras agrupadas. Los meses se nombran en español y la tabla de cifras
+  permanece visible. Los porcentajes sin evidencia no se representan como 0 %.
 - El detalle exportable conserva las fechas y prioridades originales, la fuente
   de inicio, objetivos, vencimientos y resultados de resolución.
 - La vista Incidentes y su descarga incluyen también las fechas de notificación,

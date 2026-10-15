@@ -5,7 +5,7 @@ import pandas as pd
 from streamlit.testing.v1 import AppTest
 
 import app_logic
-from components.incidentes_ans import grafica_cumplimiento, tabla_resumen_categorias
+from components.incidentes_ans import grafica_cumplimiento, grafica_mensual, tabla_resumen_categorias
 from services.incidentes_sla import (
     ATENCION_MINUTOS, CONSULTA, INCIDENTE, SEGURIDAD, SIN_CATEGORIA,
     agregar_evaluacion, cargar_horario, categoria_gestion, evaluar_incidente,
@@ -191,6 +191,25 @@ class IncidentesSlaTest(unittest.TestCase):
 
 
 class PanelIncidentesTest(unittest.TestCase):
+    def test_sla_mensual_separa_porcentajes_cercanos_y_no_convierte_ausencias_en_cero(self):
+        datos = pd.DataFrame([
+            {"Mes": "2026-10", "Categoría": INCIDENTE, "Cumplimiento %": 2100 / 23,
+             "Evaluados": 23, "Cumplen": 21, "No cumplen": 2, "Pendientes": 3, "Sin datos": 0},
+            {"Mes": "2026-10", "Categoría": CONSULTA, "Cumplimiento %": 1000 / 11,
+             "Evaluados": 11, "Cumplen": 10, "No cumplen": 1, "Pendientes": 0, "Sin datos": 0},
+        ])
+        fig = grafica_mensual(datos)
+        self.assertTrue(all(traza.type == "bar" and traza.orientation == "h" for traza in fig.data))
+        self.assertEqual({INCIDENTE, CONSULTA}, {tipo for traza in fig.data for tipo in traza.y})
+        self.assertEqual({"91.30%", "90.91%"}, {texto for traza in fig.data for texto in traza.text})
+        self.assertFalse(fig.layout.showlegend)
+        anterior = datos.iloc[[0]].assign(Mes="2026-09", **{"Cumplimiento %": float("nan"), "Evaluados": 0, "Cumplen": 0})
+        comparacion = grafica_mensual(pd.concat([datos, anterior], ignore_index=True))
+        self.assertTrue(all(traza.type == "bar" and traza.orientation == "v" for traza in comparacion.data))
+        self.assertEqual(["Septiembre 2026", "Octubre 2026"], list(comparacion.layout.xaxis.categoryarray))
+        septiembre = next(traza for traza in comparacion.data if traza.name == INCIDENTE)
+        self.assertTrue(pd.isna(septiembre.y[0]))
+
     def test_grafica_agrupa_tipos_y_conserva_totales_y_resultados_sla(self):
         base = agregar_evaluacion(muestra_sin_fecha_atencion(), AHORA)
         fig = grafica_cumplimiento(base, "resolucion")
