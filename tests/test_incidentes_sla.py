@@ -87,13 +87,16 @@ class IncidentesSlaTest(unittest.TestCase):
         for valor, esperado in [("1. Incidente", INCIDENTE), ("2 - Incidente Seguridad", SEGURIDAD),
                                 ("3. Consulta / Ayuda", CONSULTA), ("hardware", SIN_CATEGORIA)]:
             self.assertEqual(esperado, categoria_gestion(valor))
-        consulta = incidente(categoria=CONSULTA, empresa="Cliente externo", prioridad="Alto")
-        resultado = evaluar_incidente(consulta, AHORA)
-        self.assertEqual("Moderado", resultado["prioridad_gestion"])
-        self.assertEqual(36, resultado["objetivo_resolucion_horas"])
-        self.assertTrue(resultado["validacion_clasificacion"])
-        self.assertEqual("Alto", consulta["prioridad"])
-        self.assertEqual(app_logic.TIPIFICACION_ATENCION_NOC, app_logic.tipificacion_incidente(consulta))
+        for prioridad in ("Critico", "Alto", "Moderado", "Bajo", None, "", "5 - Planeado"):
+            with self.subTest(consulta_prioridad=prioridad):
+                consulta = incidente(categoria=CONSULTA, empresa="Cliente externo", prioridad=prioridad)
+                resultado = evaluar_incidente(consulta, AHORA)
+                self.assertEqual(CONSULTA, resultado["categoria_gestion"])
+                self.assertEqual("Moderado", resultado["prioridad_gestion"])
+                self.assertEqual(36, resultado["objetivo_resolucion_horas"])
+                self.assertEqual("", resultado["validacion_clasificacion"])
+                self.assertEqual(prioridad, consulta["prioridad"])
+                self.assertEqual(app_logic.TIPIFICACION_ATENCION_NOC, app_logic.tipificacion_incidente(consulta))
         for prioridad in (None, "", "5 - Planeado", "Dato erróneo"):
             sin_prioridad = evaluar_incidente(incidente(prioridad=prioridad), AHORA)
             self.assertEqual("Sin clasificación", sin_prioridad["atencion_estado"])
@@ -290,7 +293,7 @@ render_panel_incidentes_ans(pd.DataFrame(rows), "prueba", "Dashboard Incidentes"
         self.assertEqual(["INC2"], detalle["Incidente"].tolist())
         app.selectbox(key="prueba_categoria").select(CONSULTA).run()
         self.assertFalse(app.exception)
-        self.assertTrue(any("Moderado" in item.value and "4 días" in item.value for item in app.caption))
+        self.assertTrue(any("independientemente de la prioridad" in item.value and "4 días" in item.value for item in app.caption))
         self.assertEqual(["Moderado"], app.multiselect[0].options)
 
     def test_dashboard_y_kpi_usan_mismos_tiempos_y_conservan_presentacion(self):

@@ -182,9 +182,7 @@ def evaluar_incidente(row, ahora=None, horario=None):
     validacion = ""
     if categoria == SIN_CATEGORIA:
         validacion = "Categoría pendiente de validar"
-    elif categoria == CONSULTA and prioridad_original != "Moderado":
-        validacion = "Consulta / Ayuda requiere prioridad Moderado; revisar prioridad de origen"
-    elif prioridad_original == "Sin prioridad":
+    elif categoria != CONSULTA and prioridad_original == "Sin prioridad":
         validacion = "Prioridad pendiente de validar"
     salida = {"categoria_gestion": categoria, "prioridad_gestion": prioridad,
               "coordinador_gestion": COORDINADORES.get(categoria, "Pendiente de clasificación"),

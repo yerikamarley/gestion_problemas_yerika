@@ -32,9 +32,10 @@ esa lista; no se deducen ni descargan automáticamente.
 
 Cada categoría muestra el cargo coordinador definido en la tabla. Una consulta
 externa conserva Consulta / Ayuda; no se transforma en un caso de mesa de ayuda
-por pertenecer a un cliente externo. Para consultas, la prioridad de la guía es
-Moderado. Si difiere de la prioridad registrada, el dato original se conserva y
-se muestra una validación pendiente. Las categorías y prioridades desconocidas
+por pertenecer a un cliente externo. Para consultas se aplica siempre el plazo
+único de la guía (fila Moderado), sin depender de la prioridad registrada: incluso
+si falta o difiere, no genera una validación pendiente. Se conserva el dato de
+origen. Las categorías desconocidas y las prioridades no válidas de incidentes
 quedan pendientes de clasificación; no se asigna Moderado por defecto a incidentes.
 
 ## Fechas y exactitud

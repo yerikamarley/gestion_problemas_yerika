@@ -335,15 +335,12 @@ def _render_panel(df, key_prefix, titulo, periodo, presentacion):
         return base
     resolucion = resumen_etapa(base, "resolucion")
     _render_indicadores(base, resolucion, key_prefix)
-    pendientes_clasificacion = int(base["validacion_clasificacion"].ne("").sum())
-    if pendientes_clasificacion:
-        st.warning(f"{pendientes_clasificacion} registros requieren validar categoría o prioridad de origen. Consulta el detalle.")
     referencia = ('<div class="inc-ans-section"><strong>Plazos de resolución</strong>'
                   '<span>Máximos por prioridad · SER-PR-001</span></div>' + _metas_html(metas, categoria))
     if categoria in CATEGORIAS:
         st.markdown(referencia, unsafe_allow_html=True)
     if categoria == CONSULTA:
-        st.caption("Consulta / Ayuda: prioridad Moderado y resolución máxima de 4 días de soporte.")
+        st.caption("Consulta / Ayuda: resolución máxima de 4 días de soporte, independientemente de la prioridad registrada.")
     resumen_tab, tendencia_tab, detalle_tab = st.tabs(["Cumplimiento", "SLA mensual", "Detalle de registros"])
     with resumen_tab:
         _render_leyenda(base)
