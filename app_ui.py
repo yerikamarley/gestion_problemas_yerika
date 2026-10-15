@@ -58,8 +58,8 @@ from services.clientes_experiencia import seguimiento_clientes
 from services.servicenow_worker import CaseSyncWorker
 from services.resumen_ejecutivo_casos import periodos_corte, construir_resumen_ejecutivo, agrupar_causas, causas_para_lamina
 from components.resumen_ejecutivo_casos import lamina_resumen_casos
-from components.incidentes_ans import render_panel_incidentes_ans, porcentaje_visible
-from services.incidentes_sla import CATEGORIAS, CONSULTA, resumen_etapa
+from components.incidentes_ans import render_panel_incidentes_ans, porcentaje_visible, motivo_no_evaluacion
+from services.incidentes_sla import CATEGORIAS, COLUMNAS_FECHAS, CONSULTA, resumen_etapa
 from dashboards.riesgos_materializados import render_riesgos_materializados
 from app_logic import (
     AutorizacionError,
@@ -6464,23 +6464,21 @@ def render_slide_kpi_incidentes(metricas, causas, mes_dashboard):
 
 
 def render_slide_ans_incidentes(base, metas, periodo):
-    atencion = resumen_etapa(base, "atencion")
     resolucion = resumen_etapa(base, "resolucion")
     tarjetas = [
         ("Registros", len(base)),
         ("Abiertos", int((~base["finalizado_gestion"].astype(bool)).sum())),
-        ("Atención", porcentaje_visible(atencion["porcentaje"])),
-        ("Resolución", porcentaje_visible(resolucion["porcentaje"])),
+        ("SLA de resolución", porcentaje_visible(resolucion["porcentaje"])),
+        ("Abiertos vencidos", resolucion["vencidos"]),
     ]
-    objetivos = metas[["Categoría", "Prioridad", "Atención máxima", "Resolución máxima"]]
+    objetivos = metas[["Categoría", "Prioridad", "Resolución máxima"]]
     tabla_html = objetivos.to_html(index=False, border=0, classes="slide-cause-table slide-ans-table")
-    tabla_html = tabla_html.replace("<thead>", '<colgroup><col style="width:34%"><col style="width:18%">'
-                                    '<col style="width:24%"><col style="width:24%"></colgroup><thead>')
+    tabla_html = tabla_html.replace("<thead>", '<colgroup><col style="width:42%"><col style="width:26%">'
+                                    '<col style="width:32%"></colgroup><thead>')
     izquierda = ('<style>.slide-ans-table td,.slide-ans-table th{padding:5px 8px;font-size:0.78rem;line-height:1.2;}</style>'
-                 '<div class="slide-panel"><div class="slide-panel-title">Tiempos de la guía</div>' + tabla_html + '</div>')
+                 '<div class="slide-panel"><div class="slide-panel-title">Plazos de resolución</div>' + tabla_html + '</div>')
     notas = [
-        f"Atención: {atencion['evaluados']} evaluados; {atencion['sin_datos']} sin datos; {atencion['vencidos']} pendientes vencidos.",
-        f"Resolución: {resolucion['evaluados']} evaluados; {resolucion['sin_datos']} sin datos; {resolucion['vencidos']} pendientes vencidos.",
+        f"Resolución: {resolucion['evaluados']} evaluados; {resolucion['vencidos']} pendientes vencidos." + (" " + motivo_no_evaluacion(base, "resolucion") + "." if resolucion['sin_datos'] else ""),
         "Soporte de lunes a viernes de 08:00 a 17:00, Colombia. Un día equivale a nueve horas de soporte.",
     ]
     caption = "Categorías: " + ", ".join(base["categoria_gestion"].drop_duplicates())
@@ -11204,6 +11202,11 @@ def vista_incidentes():
             "nombre_proveedor",
             TEXT_SERVICIO_NEGOCIO,
             TEXT_CREADO,
+            *COLUMNAS_FECHAS,
+            "atencion_estado",
+            "atencion_motivo",
+            "resolucion_estado",
+            "resolucion_motivo",
             TEXT_OBSERVACIONES_TRABAJO,
             TEXT_OBSERVACIONES_ADICIONALES,
             "actualizaciones",

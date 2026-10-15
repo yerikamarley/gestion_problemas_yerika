@@ -1,4 +1,4 @@
-"""Panel compartido de atención y resolución para Dashboard y KPI Incidentes."""
+"""Panel compartido de SLA de resolución para Dashboard y KPI Incidentes."""
 
 import html
 from pathlib import Path
@@ -15,41 +15,55 @@ from services.incidentes_sla import (
 
 COLORES_ESTADO = {
     "Cumple": "#5d16a6", "No cumple": "#f35b04", "Dentro del plazo": "#9683ec",
-    "Vencido": "#d6a21a", "Sin datos": "#c5c0cb",
+    "Vencido": "#d6a21a", "No evaluable": "#c5c0cb",
 }
 
 
 def porcentaje_visible(valor):
-    return "Sin datos" if valor is None else f"{valor:.2f}%"
+    return "No calculable" if valor is None else f"{valor:.2f}%"
+
+
+def motivo_no_evaluacion(base, etapa):
+    estados = base[f"{etapa}_estado"]
+    sin_fecha = int(estados.eq("Sin fecha de atención" if etapa == "atencion" else "Sin fecha de resolución").sum())
+    nombre = "primera atención" if etapa == "atencion" else "resolución"
+    motivos = []
+    if sin_fecha:
+        motivos.append(f"{sin_fecha} sin fecha de {nombre}")
+    otros = int((~estados.isin(["Cumple", "No cumple", "Dentro del plazo", "Vencido", "Sin fecha de atención", "Sin fecha de resolución"])).sum())
+    if otros:
+        motivos.append(f"{otros} con fechas o clasificación por revisar")
+    return " · ".join(motivos)
 
 
 def grafica_cumplimiento(base, etapa):
     columna = f"{etapa}_estado"
-    datos = base[["prioridad_gestion", columna]].copy()
-    datos["Resultado"] = datos[columna].where(datos[columna].isin(COLORES_ESTADO), "Sin datos")
-    datos = datos.groupby(["prioridad_gestion", "Resultado"], dropna=False).size().reset_index(name="Registros")
-    prioridades = [p for p in (*PRIORIDADES, "Sin prioridad") if datos["prioridad_gestion"].eq(p).any()]
-    fig = px.bar(datos, x="Registros", y="prioridad_gestion", color="Resultado",
+    datos = base[["categoria_gestion", columna]].copy()
+    datos["Resultado"] = datos[columna].where(datos[columna].isin(COLORES_ESTADO), "No evaluable")
+    datos = datos.groupby(["categoria_gestion", "Resultado"], dropna=False).size().reset_index(name="Registros")
+    tipos = [tipo for tipo in (*CATEGORIAS, SIN_CATEGORIA) if datos["categoria_gestion"].eq(tipo).any()]
+    fig = px.bar(datos, x="Registros", y="categoria_gestion", color="Resultado",
                  orientation="h", text="Registros", barmode="stack",
-                 category_orders={"prioridad_gestion": prioridades, "Resultado": list(COLORES_ESTADO)},
+                 category_orders={"categoria_gestion": tipos, "Resultado": list(COLORES_ESTADO)},
                  color_discrete_map=COLORES_ESTADO,
-                 labels={"prioridad_gestion": "Prioridad"})
+                 labels={"categoria_gestion": "Tipo de incidente"})
     fig.update_traces(textposition="inside", insidetextanchor="middle", textfont=dict(size=13, color="white"),
                       marker_line_width=0, width=.45,
                       hovertemplate="%{y}<br>%{x} registros<extra>%{fullData.name}</extra>")
     for traza in fig.data:
         if traza.name != "Cumple":
             traza.textfont.color = "#302936"
-    fig.update_layout(height=max(190, len(prioridades) * 48 + 46), bargap=.44,
+    fig.update_layout(height=max(210, len(tipos) * 64 + 46), bargap=.44,
                       margin=dict(l=0, r=8, t=10, b=32), showlegend=False,
                       font=dict(family="Arial, sans-serif", size=12, color="#6c6570"),
                       uniformtext=dict(minsize=11, mode="hide"), hoverlabel=dict(bgcolor="white", font_size=13),
                       plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)" )
     fig.update_xaxes(title=dict(text="Registros", font=dict(size=11)), nticks=6, rangemode="tozero",
                      gridcolor="#eee9f0", showgrid=True, zeroline=False, fixedrange=True)
-    fig.update_yaxes(title=None, categoryorder="array", categoryarray=prioridades,
-                     autorange="reversed", tickmode="array", tickvals=prioridades,
-                     ticktext=[p.replace("Critico", "Crítico") for p in prioridades],
+    fig.update_yaxes(title=None, categoryorder="array", categoryarray=tipos,
+                     autorange="reversed", tickmode="array", tickvals=tipos,
+                     ticktext=[tipo.replace("Incidente Seguridad", "Incidente<br>Seguridad")
+                               .replace("Consulta / Ayuda", "Consulta /<br>Ayuda") for tipo in tipos],
                      showgrid=False, zeroline=False, fixedrange=True, automargin=True)
     return fig
 
@@ -57,12 +71,10 @@ def grafica_cumplimiento(base, etapa):
 def tabla_resumen_categorias(base):
     filas = []
     for categoria, grupo in base.groupby("categoria_gestion", sort=False):
-        atencion, resolucion = resumen_etapa(grupo, "atencion"), resumen_etapa(grupo, "resolucion")
+        resolucion = resumen_etapa(grupo, "resolucion")
         filas.append({"Categoría": categoria, "Registros": len(grupo),
-                      "Atención %": atencion["porcentaje"], "Evaluados atención": atencion["evaluados"],
-                      "Sin datos atención": atencion["sin_datos"], "Pendientes atención": atencion["pendientes"],
                       "Resolución %": resolucion["porcentaje"], "Evaluados resolución": resolucion["evaluados"],
-                      "Sin datos resolución": resolucion["sin_datos"], "Pendientes resolución": resolucion["pendientes"],
+                      "No evaluables resolución": resolucion["sin_datos"], "Pendientes resolución": resolucion["pendientes"],
                       "Vencidos resolución": resolucion["vencidos"]})
     return pd.DataFrame(filas)
 
@@ -72,7 +84,7 @@ def tabla_tendencia(base):
     datos["Mes"] = pd.to_datetime(datos.get("creado"), errors="coerce").dt.strftime("%Y-%m")
     filas = []
     for (mes, categoria), grupo in datos.dropna(subset=["Mes"]).groupby(["Mes", "categoria_gestion"]):
-        for etapa, etiqueta in (("atencion", "Atención"), ("resolucion", "Resolución")):
+        for etapa, etiqueta in (("resolucion", "Resolución"),):
             resumen = resumen_etapa(grupo, etapa)
             filas.append({"Mes": mes, "Categoría": categoria, "Etapa": etiqueta,
                           "Cumplimiento %": resumen["porcentaje"], "Evaluados": resumen["evaluados"],
@@ -83,20 +95,19 @@ def tabla_tendencia(base):
 
 def tabla_detalle(base):
     detalle = base.copy()
-    detalle["atencion_minutos_soporte"] = pd.to_numeric(detalle["atencion_segundos"], errors="coerce") / 60
     detalle["resolucion_horas_soporte"] = pd.to_numeric(detalle["resolucion_segundos"], errors="coerce") / 3600
     columnas = {
-        "numero": "Incidente", "categoria": "Categoría de origen", "categoria_gestion": "Categoría de gestión",
+        "numero": "Incidente", "estado": "Estado", "categoria_gestion": "Categoría de gestión",
+        "resolucion_estado": "Resultado resolución", "resolucion_motivo": "Por qué no se evalúa resolución",
+        "categoria": "Categoría de origen",
         "prioridad": "Prioridad de origen", "prioridad_gestion": "Prioridad de la guía",
         "validacion_clasificacion": "Validación pendiente", "coordinador_gestion": "Cargo que coordina",
-        "estado": "Estado", "servicio_negocio": "Servicio", "asignado_a": "Asignado a",
+        "servicio_negocio": "Servicio", "asignado_a": "Asignado a",
         "inicio_sla": "Inicio del reloj", "fuente_inicio_sla": "Fuente del inicio",
-        "fecha_atencion": "Primera atención", "objetivo_atencion_minutos": "Objetivo atención (min soporte)",
-        "atencion_minutos_soporte": "Atención (min soporte)", "atencion_vencimiento": "Vencimiento atención",
-        "atencion_estado": "Resultado atención", "fecha_resolucion": "Resolución",
+        "fecha_resolucion": "Resolución",
         "objetivo_resolucion_horas": "Objetivo resolución (h soporte)",
         "resolucion_horas_soporte": "Resolución (h soporte)", "resolucion_vencimiento": "Vencimiento resolución",
-        "resolucion_estado": "Resultado resolución", "cerrado": "Cierre administrativo",
+        "cerrado": "Cierre administrativo",
     }
     return detalle[[col for col in columnas if col in detalle]].rename(columns=columnas)
 
@@ -118,17 +129,16 @@ def _metas_html(metas, categoria):
             tarjetas.append('<div class="inc-ans-priority">'
                             f'<div class="inc-ans-priority-name">{corto(fila["Prioridad"])}</div>'
                             '<div class="inc-ans-priority-values">'
-                            f'<div><b>{corto(fila["Atención máxima"])}</b><small>Atención</small></div>'
                             f'<div><b>{corto(fila["Resolución máxima"])}</b><small>Resolución</small></div>'
                             '</div></div>')
         clase = "inc-ans-priority-goals single" if len(tarjetas) == 1 else "inc-ans-priority-goals"
         return f'<div class="{clase}">' + "".join(tarjetas) + '</div>'
     tarjetas = []
     for indice, (nombre, grupo) in enumerate(metas.groupby("Categoría", sort=False), 1):
-        filas = ['<div class="inc-ans-goal-row header"><span>Prioridad</span><span>Atención</span><span>Resolución</span></div>']
+        filas = ['<div class="inc-ans-goal-row header"><span>Prioridad</span><span>Resolución</span></div>']
         for fila in grupo.to_dict("records"):
             filas.append('<div class="inc-ans-goal-row">'
-                         f'<span>{corto(fila["Prioridad"])}</span><span>{corto(fila["Atención máxima"])}</span>'
+                         f'<span>{corto(fila["Prioridad"])}</span>'
                          f'<span>{corto(fila["Resolución máxima"])}</span></div>')
         tarjetas.append('<div class="inc-ans-goal-category"><div class="inc-ans-goal-name">'
                         f'<span class="inc-ans-goal-index">{indice:02}</span>{html.escape(nombre)}</div>'
@@ -136,17 +146,15 @@ def _metas_html(metas, categoria):
     return '<div class="inc-ans-goals">' + "".join(tarjetas) + '</div>'
 
 
-def _render_indicadores(base, atencion, resolucion, key_prefix):
+def _render_indicadores(base, resolucion, key_prefix):
     indicadores = [
         ("registros", "Registros", len(base), "En la categoría y período seleccionados"),
         ("abiertos", "Abiertos", int((~base["finalizado_gestion"].astype(bool)).sum()),
          f"{resolucion['vencidos']} con plazo de resolución vencido"),
-        ("atencion", "Cumplimiento de atención", porcentaje_visible(atencion["porcentaje"]),
-         f"{atencion['evaluados']} evaluados · {atencion['sin_datos']} sin datos evaluables"),
-        ("resolucion", "Cumplimiento de resolución", porcentaje_visible(resolucion["porcentaje"]),
-         f"{resolucion['evaluados']} evaluados · {resolucion['sin_datos']} sin datos evaluables"),
+        ("resolucion", "SLA de resolución", porcentaje_visible(resolucion["porcentaje"]),
+         f"{resolucion['evaluados']} evaluados" + (" · " + motivo_no_evaluacion(base, "resolucion") if resolucion["sin_datos"] else "")),
     ]
-    for col, (clave, etiqueta, valor, nota) in zip(st.columns(4, gap="small"), indicadores):
+    for col, (clave, etiqueta, valor, nota) in zip(st.columns(len(indicadores), gap="small"), indicadores):
         with col.container(border=True, key=f"incidentes_stat_{key_prefix}_{clave}"):
             st.metric(etiqueta, valor)
             st.caption(nota)
@@ -154,25 +162,40 @@ def _render_indicadores(base, atencion, resolucion, key_prefix):
 
 def _render_grafica(base, etapa, key_prefix):
     resumen = resumen_etapa(base, etapa)
-    titulo, subtitulo = (("Atención", "Primer contacto según la prioridad") if etapa == "atencion"
-                         else ("Resolución", "Solución según la prioridad"))
+    titulo, subtitulo = (("Atención por tipo de incidente", "Primer contacto por categoría") if etapa == "atencion"
+                         else ("Resolución por tipo de incidente", "Cumplimiento del SLA y pendientes por categoría"))
     with st.container(border=True, key=f"incidentes_chart_{key_prefix}_{etapa}"):
         st.markdown('<div class="inc-ans-chart-heading"><div>'
                     f'<strong>{titulo}</strong><small>{subtitulo}</small></div>'
                     f'<span class="inc-ans-chart-result">{porcentaje_visible(resumen["porcentaje"])}</span></div>',
                     unsafe_allow_html=True)
-        st.plotly_chart(grafica_cumplimiento(base, etapa), use_container_width=True,
-                        theme=None, config={"displayModeBar": False, "scrollZoom": False},
-                        key=f"{key_prefix}_grafica_{etapa}")
+        if resumen["evaluados"] == 0 and resumen["sin_datos"] == len(base):
+            faltantes = html.escape(motivo_no_evaluacion(base, etapa))
+            explicacion = ("Se necesita saber cuándo comenzó la primera atención. La creación, el cierre y los correos automáticos no indican esa fecha."
+                           if etapa == "atencion" else "Se necesita la fecha de resolución para comparar el tiempo con el plazo de la guía.")
+            if not base[f"{etapa}_estado"].isin(["Sin fecha de atención", "Sin fecha de resolución"]).all():
+                explicacion = "Hay fechas o clasificaciones que deben revisarse. El detalle indica el motivo específico por caso."
+            st.markdown('<div class="inc-ans-unavailable">'
+                        '<strong>Este porcentaje todavía no se puede calcular</strong>'
+                        f'<p>{faltantes}.</p><p>{explicacion}</p>'
+                        '<small>Los incidentes sí tienen información. En «Detalle de registros» puedes ver el motivo por caso.</small></div>',
+                        unsafe_allow_html=True)
+            return
+        else:
+            st.plotly_chart(grafica_cumplimiento(base, etapa), use_container_width=True,
+                            theme=None, config={"displayModeBar": False, "scrollZoom": False},
+                            key=f"{key_prefix}_grafica_{etapa}")
+        causa = motivo_no_evaluacion(base, etapa)
+        pendientes = (f'<br>{resumen["pendientes"]} pendientes, de los cuales {resumen["vencidos"]} están vencidos'
+                      if etapa == "resolucion" else '')
         st.markdown(f'<div class="inc-ans-chart-footer">{resumen["cumple"]} cumplen · '
-                    f'{resumen["no_cumple"]} no cumplen · {resumen["sin_datos"]} sin datos<br>'
-                    f'{resumen["pendientes"]} pendientes, de los cuales {resumen["vencidos"]} están vencidos</div>',
+                    f'{resumen["no_cumple"]} no cumplen' + (f' · {html.escape(causa)}' if causa else '') + pendientes + '</div>',
                     unsafe_allow_html=True)
 
 
 def _render_leyenda(base):
-    estados = set(base["atencion_estado"]) | set(base["resolucion_estado"])
-    resultados = {e if e in COLORES_ESTADO else "Sin datos" for e in estados}
+    estados = set(base["resolucion_estado"])
+    resultados = {e if e in COLORES_ESTADO else "No evaluable" for e in estados}
     items = [f'<span class="inc-ans-legend-item"><i style="background:{color}"></i>{estado}</span>'
              for estado, color in COLORES_ESTADO.items() if estado in resultados]
     st.markdown('<div class="inc-ans-legend">' + "".join(items) + '</div>', unsafe_allow_html=True)
@@ -183,10 +206,13 @@ def _render_tendencia(tendencia, key_prefix):
         st.info("No hay tiempos evaluables para graficar cumplimiento mensual.")
         return
     colores = {CATEGORIAS[0]: "#f35b04", CATEGORIAS[1]: "#9683ec", CATEGORIAS[2]: "#d6a21a", SIN_CATEGORIA: "#c5c0cb"}
-    for col, etapa in zip(st.columns(2), ("Atención", "Resolución")):
+    for etapa in ("Resolución",):
         datos = tendencia[tendencia["Etapa"].eq(etapa)]
-        with col.container(border=True, key=f"incidentes_chart_{key_prefix}_tendencia_{etapa}"):
+        with st.container(border=True, key=f"incidentes_chart_{key_prefix}_tendencia_{etapa}"):
             st.markdown(f"**Evolución de {etapa.lower()}**")
+            if datos["Cumplimiento %"].notna().sum() == 0:
+                st.info("No hay registros evaluables para calcular este porcentaje. Consulta el motivo en «Detalle de registros».")
+                continue
             fig = px.line(datos, x="Mes", y="Cumplimiento %", color="Categoría", markers=True,
                           hover_data=["Evaluados", "Cumplen", "No cumplen", "Sin datos", "Pendientes"],
                           color_discrete_map=colores)
@@ -236,7 +262,7 @@ def _render_panel(df, key_prefix, titulo, periodo, presentacion):
         if presentacion:
             with filtros[2]:
                 diapositiva = st.toggle("Formato diapositiva 16:9", key=f"{key_prefix}_diapositiva")
-    metas = tabla_objetivos(horario)
+    metas = tabla_objetivos(horario).drop(columns=["Atención máxima"])
     if categoria != categorias[0]:
         metas = metas[metas["Categoría"].eq(categoria)]
     if elegidas:
@@ -251,29 +277,33 @@ def _render_panel(df, key_prefix, titulo, periodo, presentacion):
     if presentacion is not None and diapositiva:
         presentacion(base, metas, periodo)
         return base
-    atencion, resolucion = resumen_etapa(base, "atencion"), resumen_etapa(base, "resolucion")
-    _render_indicadores(base, atencion, resolucion, key_prefix)
+    resolucion = resumen_etapa(base, "resolucion")
+    _render_indicadores(base, resolucion, key_prefix)
     pendientes_clasificacion = int(base["validacion_clasificacion"].ne("").sum())
     if pendientes_clasificacion:
         st.warning(f"{pendientes_clasificacion} registros requieren validar categoría o prioridad de origen. Consulta el detalle.")
-    referencia = ('<div class="inc-ans-section"><strong>Tiempos de la guía</strong>'
+    referencia = ('<div class="inc-ans-section"><strong>Plazos de resolución</strong>'
                   '<span>Máximos por prioridad · SER-PR-001</span></div>' + _metas_html(metas, categoria))
     if categoria in CATEGORIAS:
         st.markdown(referencia, unsafe_allow_html=True)
     if categoria == CONSULTA:
-        st.caption("Consulta / Ayuda: prioridad Moderado, atención máxima de 30 minutos y resolución máxima de 4 días de soporte.")
+        st.caption("Consulta / Ayuda: prioridad Moderado y resolución máxima de 4 días de soporte.")
     resumen_tab, tendencia_tab, detalle_tab = st.tabs(["Cumplimiento", "Evolución mensual", "Detalle de registros"])
     with resumen_tab:
         _render_leyenda(base)
-        izquierda, derecha = st.columns(2)
-        with izquierda:
-            _render_grafica(base, "atencion", key_prefix)
-        with derecha:
-            _render_grafica(base, "resolucion", key_prefix)
+        _render_grafica(base, "resolucion", key_prefix)
         if categoria not in CATEGORIAS:
             st.markdown(referencia, unsafe_allow_html=True)
-        with st.expander("Cobertura de los cálculos por categoría"):
-            st.dataframe(tabla_resumen_categorias(base), hide_index=True, use_container_width=True)
+        with st.expander("Resumen del SLA por tipo de incidente"):
+            st.dataframe(tabla_resumen_categorias(base), hide_index=True, use_container_width=True,
+                         column_config={
+                             "Categoría": st.column_config.TextColumn("Tipo de incidente"),
+                             "Resolución %": st.column_config.NumberColumn("SLA resolución", format="%.2f%%"),
+                             "Evaluados resolución": st.column_config.NumberColumn("Evaluados"),
+                             "No evaluables resolución": st.column_config.NumberColumn("No evaluables"),
+                             "Pendientes resolución": st.column_config.NumberColumn("Abiertos"),
+                             "Vencidos resolución": st.column_config.NumberColumn("Vencidos"),
+                         })
     with tendencia_tab:
         tendencia = tabla_tendencia(base)
         _render_tendencia(tendencia, key_prefix)
@@ -292,6 +322,6 @@ def _render_panel(df, key_prefix, titulo, periodo, presentacion):
         st.dataframe(metas, hide_index=True, use_container_width=True)
         st.caption("Cumplimiento = cumplidos / evaluados. Los abiertos corresponden a registros creados en el período seleccionado.")
         st.caption("Se compara el tiempo exacto en segundos de soporte con el máximo de la tabla; el límite está incluido. "
-                   "Primera atención y resolución requieren fechas explícitas. Última actualización y cierre administrativo "
-                   "no sustituyen esas evidencias. Cuando falta la notificación/apertura se identifica la creación como inicio.")
+                   "La resolución requiere una fecha explícita. Última actualización y cierre administrativo "
+                   "no sustituyen esa evidencia. Cuando falta la notificación/apertura se identifica la creación como inicio.")
     return base

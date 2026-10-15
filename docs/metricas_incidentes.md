@@ -77,7 +77,9 @@ Para una instancia con otro campo, configurar el mapa existente
 
 No debe asignarse un campo de actualización o asignación sin verificar su
 significado. Si no existe evidencia de primera atención, el resultado será
-«Sin fecha de atención» o pendiente según el estado del incidente.
+«Sin fecha de atención», incluso si el incidente está abierto. La ausencia de
+esta fecha no demuestra que el equipo no lo haya atendido y no genera por sí
+sola un incumplimiento o vencimiento de atención.
 
 Las consultas del Dashboard/KPI recuperan también estas fechas desde los JSON
 ya sincronizados en `servicenow_records`, sin nuevas llamadas API. Si esos JSON
@@ -89,23 +91,34 @@ incidentes remotos.
 
 Los filtros de categoría y prioridad afectan la tabla de objetivos, las tarjetas,
 las gráficas y la descarga. La tabla de tiempos aplicables permanece visible.
+Por decisión de presentación, el Dashboard y el KPI muestran únicamente el SLA
+de resolución: se retiraron atención de las tarjetas, gráficas, tendencia,
+detalle descargable, objetivos visibles y diapositiva. Esto no modifica los
+requisitos del procedimiento ni elimina los datos o reglas de atención del sistema.
 
-- Cumplimiento de cada etapa = cumplen / (cumplen + no cumplen).
+- Cumplimiento de resolución = cumplen / (cumplen + no cumplen).
 - Se muestran también evaluados, registros sin datos, pendientes y pendientes
   vencidos. No se convierten los faltantes en cumplidos ni en incumplidos.
-- Si no hay evaluables se presenta «Sin datos», nunca un 0 % ficticio.
+- Si no hay evaluables se presenta «No calculable», con el campo faltante o
+  el motivo de revisión por caso, nunca un 0 % ficticio. Si toda la etapa carece
+  de evidencia de tiempo, se muestra la explicación en vez de una gráfica de
+  barras completamente grises.
 - Los abiertos vencidos se controlan por separado del cumplimiento de etapas
   ya terminadas. Los resueltos sin fecha de resolución siguen sin ser evaluables.
 - El período se filtra por creación: el total de abiertos corresponde a ese
   conjunto, no al pendiente global de todos los períodos.
-- Las gráficas separan atención y resolución por prioridad y muestran estados
+- La gráfica de cumplimiento agrupa los registros por tipo (Incidente,
+  Incidente Seguridad y Consulta / Ayuda), en lugar de prioridad. Solo aparecen
+  tipos con registros en el filtro actual; los segmentos muestran resolución y estados
   con colores consistentes. La tendencia mensual mantiene vacíos los porcentajes
   sin datos; no representa esos períodos como 0 %.
 - El detalle exportable conserva las fechas y prioridades originales, la fuente
-  de inicio, objetivos, vencimientos y resultados de ambas etapas.
+  de inicio, objetivos, vencimientos y resultados de resolución.
+- La vista Incidentes y su descarga incluyen también las fechas de notificación,
+  primera atención y resolución, junto con el motivo de no evaluación de cada etapa.
 
 El KPI conserva el modo diapositiva, con los tiempos de la categoría elegida y
-la cobertura de ambas etapas. Sus análisis de temas y repeticiones son
+la cobertura de resolución. Sus análisis de temas y repeticiones son
 complementarios: se identifican como inferencias y se aclara el alcance temporal
 de las repeticiones. La taxonomía detallada de seguridad, las aprobaciones de
 cierre y las comunicaciones de escalamiento deben sustentarse con sus propias

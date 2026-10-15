@@ -197,23 +197,33 @@ def evaluar_incidente(row, ahora=None, horario=None):
         fin = fecha_plataforma(original)
         vencimiento = vencimiento_soporte(inicio, objetivo, horario)
         segundos = None
+        motivo = ""
         if objetivo is None:
             estado = "Sin clasificación"
+            motivo = "Falta una categoría o prioridad válida para definir el plazo."
         elif pd.isna(inicio) or inicio > ahora:
             estado = "Fechas inconsistentes" if texto(row.get("fecha_notificacion")) or texto(row.get("creado")) else "Sin fecha inicial"
+            motivo = "La fecha inicial es inválida o futura." if estado == "Fechas inconsistentes" else "Falta la fecha de notificación o creación."
         elif texto(original) and (pd.isna(fin) or fin < inicio or fin > ahora):
             estado = "Fechas inconsistentes"
+            motivo = f"La fecha de {'primera atención' if etapa == 'atencion' else 'resolución'} es inválida, anterior al inicio o futura."
         elif pd.notna(fin):
             segundos = segundos_soporte(inicio, fin, horario)
             estado = "Cumple" if segundos <= objetivo else "No cumple"
+        elif etapa == "atencion":
+            # Ausencia de evidencia de atención no demuestra que siga sin atenderse.
+            estado = "Sin fecha de atención"
+            motivo = "No hay fecha de primera atención disponible para medir este tiempo."
         elif finalizado:
-            estado = "Sin fecha de atención" if etapa == "atencion" else "Sin fecha de resolución"
+            estado = "Sin fecha de resolución"
+            motivo = "El caso está resuelto o cerrado, pero no hay fecha de resolución disponible."
         else:
             transcurrido = segundos_soporte(inicio, ahora, horario)
             estado = "Vencido" if transcurrido > objetivo else "Dentro del plazo"
         salida[f"{etapa}_estado"] = estado
         salida[f"{etapa}_segundos"] = segundos
         salida[f"{etapa}_vencimiento"] = vencimiento
+        salida[f"{etapa}_motivo"] = motivo
     return salida
 
 

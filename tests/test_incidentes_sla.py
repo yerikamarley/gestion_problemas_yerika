@@ -5,7 +5,7 @@ import pandas as pd
 from streamlit.testing.v1 import AppTest
 
 import app_logic
-from components.incidentes_ans import tabla_resumen_categorias
+from components.incidentes_ans import grafica_cumplimiento, tabla_resumen_categorias
 from services.incidentes_sla import (
     ATENCION_MINUTOS, CONSULTA, INCIDENTE, SEGURIDAD, SIN_CATEGORIA,
     agregar_evaluacion, cargar_horario, categoria_gestion, evaluar_incidente,
@@ -22,6 +22,26 @@ def incidente(**cambios):
             "creado": "2026-10-05 08:00:00", "fecha_notificacion": "2026-10-05 08:00:00",
             "fecha_atencion": "2026-10-05 08:15:00", "fecha_resolucion": "2026-10-05 12:00:00",
             "estado": "Resuelto", "cerrado": "2026-10-07 17:00:00", **cambios}
+
+
+def muestra_sin_fecha_atencion():
+    """Datos ficticios con la distribución 34 finalizados / 3 abiertos."""
+    filas = []
+    inicio = "2026-10-01 08:00:00"
+    for indice in range(34):
+        categoria = INCIDENTE if indice < 26 else CONSULTA
+        prioridad = "Alto" if indice < 9 else "Moderado"
+        horas = objetivos(categoria, prioridad)[1]
+        fin = vencimiento_soporte(inicio, (horas + (1 if indice in (1, 2, 33) else -1)) * 3600)
+        filas.append(incidente(numero=f"INC{100001 + indice}", categoria=categoria, prioridad=prioridad,
+                               creado=inicio, fecha_notificacion=inicio, fecha_atencion="", fecha_resolucion=fin.isoformat(),
+                               cerrado=fin.isoformat() if indice != 33 else "", estado="Cerrado" if indice != 33 else "Resuelto"))
+    for indice in range(3):
+        fecha = inicio if indice < 2 else "2026-10-15 16:50:00"
+        filas.append(incidente(numero=f"INC{100035 + indice}", categoria=CONSULTA, prioridad="Moderado",
+                               creado=fecha, fecha_notificacion=fecha, fecha_atencion="", fecha_resolucion="",
+                               cerrado="", estado="Activo"))
+    return pd.DataFrame(filas)
 
 
 class IncidentesSlaTest(unittest.TestCase):
@@ -100,13 +120,34 @@ class IncidentesSlaTest(unittest.TestCase):
 
     def test_pendientes_vencidos_y_fechas_inconsistentes(self):
         row = incidente(estado="Nuevo", cerrado="", fecha_atencion="", fecha_resolucion="")
-        self.assertEqual("Dentro del plazo", evaluar_incidente(row, "2026-10-05 08:15:00")["atencion_estado"])
-        self.assertEqual("Vencido", evaluar_incidente(row, "2026-10-05 08:15:01")["atencion_estado"])
+        self.assertEqual("Sin fecha de atención", evaluar_incidente(row, "2026-10-05 08:15:00")["atencion_estado"])
+        self.assertEqual("Sin fecha de atención", evaluar_incidente(row, "2026-10-05 08:15:01")["atencion_estado"])
+        self.assertEqual("Dentro del plazo", evaluar_incidente(row, "2026-10-05 12:00:00")["resolucion_estado"])
         self.assertEqual("Vencido", evaluar_incidente(row, "2026-10-05 12:00:01")["resolucion_estado"])
         row.update(fecha_atencion="2026-10-05 07:59:59")
         self.assertEqual("Fechas inconsistentes", evaluar_incidente(row, AHORA)["atencion_estado"])
         row.update(fecha_atencion="2026-10-20 10:00:00")
         self.assertEqual("Fechas inconsistentes", evaluar_incidente(row, AHORA)["atencion_estado"])
+
+    def test_historial_y_ausencia_de_fecha_no_prueban_que_no_se_atendio(self):
+        row = incidente(estado="Activo", cerrado="", fecha_atencion="", fecha_resolucion="",
+                        observaciones_trabajo="2026-10-05 08:10 | Nota de Trabajo | Se está revisando el servicio",
+                        actualizado="2026-10-05 08:10:00")
+        salida = evaluar_incidente(row, AHORA)
+        self.assertEqual("Sin fecha de atención", salida["atencion_estado"])
+        self.assertIn("primera atención", salida["atencion_motivo"])
+        resumen = resumen_etapa(agregar_evaluacion(pd.DataFrame([row]), AHORA), "atencion")
+        self.assertEqual(0, resumen["vencidos"])
+        self.assertEqual(0, resumen["pendientes"])
+        self.assertIsNone(resumen["porcentaje"])
+
+    def test_37_registros_sin_atencion_no_alteran_cumplimiento_resolucion(self):
+        base = agregar_evaluacion(muestra_sin_fecha_atencion(), AHORA)
+        atencion, resolucion = resumen_etapa(base, "atencion"), resumen_etapa(base, "resolucion")
+        self.assertEqual(37, atencion["sin_datos"])
+        self.assertEqual(0, atencion["vencidos"])
+        self.assertEqual((31, 3, 34, 91.18), tuple(resolucion[k] for k in ("cumple", "no_cumple", "evaluados", "porcentaje")))
+        self.assertEqual((3, 2), (resolucion["pendientes"], resolucion["vencidos"]))
 
     def test_sin_datos_y_pendientes_no_se_ocultan_en_porcentaje(self):
         df = agregar_evaluacion(pd.DataFrame([
@@ -119,7 +160,7 @@ class IncidentesSlaTest(unittest.TestCase):
         self.assertIsNone(resumen_etapa(df.iloc[1:], "resolucion")["porcentaje"])
         self.assertIsNone(resumen_etapa(df.iloc[0:0], "resolucion")["porcentaje"])
         tabla = tabla_resumen_categorias(df)
-        self.assertEqual(1, tabla.iloc[0]["Sin datos resolución"])
+        self.assertEqual(1, tabla.iloc[0]["No evaluables resolución"])
 
     def test_api_mapea_fechas_explicitas_y_respeta_mapa_personalizado(self):
         doc = {"campos_raw": {"number": "INC100001", "opened_at": "2026-10-05 13:00:00",
@@ -150,6 +191,62 @@ class IncidentesSlaTest(unittest.TestCase):
 
 
 class PanelIncidentesTest(unittest.TestCase):
+    def test_grafica_agrupa_tipos_y_conserva_totales_y_resultados_sla(self):
+        base = agregar_evaluacion(muestra_sin_fecha_atencion(), AHORA)
+        fig = grafica_cumplimiento(base, "resolucion")
+        cantidades = {}
+        resultados = {}
+        for traza in fig.data:
+            resultados[traza.name] = sum(traza.x)
+            for tipo, cantidad in zip(traza.y, traza.x):
+                cantidades[tipo] = cantidades.get(tipo, 0) + cantidad
+        self.assertEqual({INCIDENTE: 26, CONSULTA: 11}, cantidades)
+        self.assertEqual({"Cumple": 31, "No cumple": 3, "Dentro del plazo": 1, "Vencido": 2}, resultados)
+        self.assertEqual([INCIDENTE, CONSULTA], list(fig.layout.yaxis.categoryarray))
+        seguridad = agregar_evaluacion(pd.DataFrame([incidente(categoria=SEGURIDAD)]), AHORA)
+        fig_seguridad = grafica_cumplimiento(seguridad, "resolucion")
+        self.assertEqual([SEGURIDAD], list(fig_seguridad.layout.yaxis.categoryarray))
+
+    def test_panel_muestra_solo_sla_resolucion_sin_perder_registros(self):
+        codigo = '''
+from unittest.mock import patch
+from tests.test_incidentes_sla import muestra_sin_fecha_atencion, AHORA
+from services.incidentes_sla import agregar_evaluacion
+from components.incidentes_ans import render_panel_incidentes_ans
+df = muestra_sin_fecha_atencion()
+with patch("components.incidentes_ans.agregar_evaluacion", side_effect=lambda datos, horario=None: agregar_evaluacion(datos, AHORA, horario)):
+ render_panel_incidentes_ans(df, "sin_fecha", "Dashboard Incidentes")
+'''
+        app = AppTest.from_string(codigo, default_timeout=20).run()
+        self.assertFalse(app.exception)
+        self.assertEqual(["37", "3", "91.18%"], [m.value for m in app.metric])
+        self.assertEqual("SLA de resolución", app.metric[2].label)
+        textos = [x.value for x in app.markdown] + [x.value for x in app.caption]
+        self.assertFalse(any("atención" in texto.lower() or "no calculable" in texto.lower() for texto in textos))
+        self.assertEqual(2, len(app.get("plotly_chart")))
+        detalle = next(item.value for item in app.dataframe if "Incidente" in item.value.columns)
+        self.assertEqual(37, len(detalle))
+        self.assertIn("Resultado resolución", detalle)
+        for tabla in app.dataframe:
+            self.assertFalse(any("atención" in columna.lower() for columna in tabla.value.columns))
+
+    def test_vista_incidentes_conserva_fechas_y_motivos_en_la_descarga(self):
+        codigo = '''
+import streamlit as st
+from unittest.mock import patch
+import app_ui as ui
+from tests.test_incidentes_sla import muestra_sin_fecha_atencion
+from app_logic import preparar_incidentes, agregar_campos_sla_incidentes
+df = agregar_campos_sla_incidentes(preparar_incidentes(muestra_sin_fecha_atencion()))
+with patch.object(ui, "render_consulta_traza_servicenow"), patch.object(ui, "selector_periodo_sql", return_value=(2026, 10, "Octubre 2026")), patch.object(ui, "cargar_incidentes_sla_filtrados_cache", return_value=df), patch.object(ui, "render_descarga_dataframe") as descarga:
+ ui.vista_incidentes()
+ st.session_state["columnas_descarga"] = descarga.call_args.args[0].columns.tolist()
+'''
+        app = AppTest.from_string(codigo, default_timeout=20).run()
+        self.assertFalse(app.exception)
+        for columna in ("fecha_atencion", "fecha_resolucion", "atencion_motivo", "resolucion_motivo"):
+            self.assertIn(columna, app.session_state["columnas_descarga"])
+
     def test_filtra_categoria_y_muestra_objetivos_coordinador_y_datos_faltantes(self):
         app = AppTest.from_string('''
 import streamlit as st
@@ -167,15 +264,14 @@ render_panel_incidentes_ans(pd.DataFrame(rows), "prueba", "Dashboard Incidentes"
         app.selectbox(key="prueba_categoria").select(SEGURIDAD).run()
         self.assertFalse(app.exception)
         self.assertEqual("1", app.metric[0].value)
-        self.assertEqual("Sin datos", app.metric[2].value)
-        self.assertEqual("Sin datos", app.metric[3].value)
+        self.assertEqual("No calculable", app.metric[2].value)
         self.assertTrue(any("Especialista en seguridad" in item.value for item in app.markdown))
-        self.assertTrue(any("sin datos evaluables" in item.value for item in app.caption))
+        self.assertTrue(any("sin fecha de resolución" in item.value for item in app.caption))
         detalle = next(item.value for item in app.dataframe if "Incidente" in item.value.columns)
         self.assertEqual(["INC2"], detalle["Incidente"].tolist())
         app.selectbox(key="prueba_categoria").select(CONSULTA).run()
         self.assertFalse(app.exception)
-        self.assertTrue(any("30 minutos" in item.value and "4 días" in item.value for item in app.caption))
+        self.assertTrue(any("Moderado" in item.value and "4 días" in item.value for item in app.caption))
         self.assertEqual(["Moderado"], app.multiselect[0].options)
 
     def test_dashboard_y_kpi_usan_mismos_tiempos_y_conservan_presentacion(self):
@@ -197,10 +293,10 @@ else:
 '''
         app = AppTest.from_string(codigo, default_timeout=15).run()
         self.assertFalse(app.exception)
-        self.assertEqual(["0.00%", "100.00%"], [m.value for m in app.metric][-2:])
+        self.assertEqual(["1", "0", "100.00%"], [m.value for m in app.metric])
         app.radio[0].set_value("KPI").run()
         self.assertFalse(app.exception)
-        self.assertEqual(["0.00%", "100.00%"], [m.value for m in app.metric][-2:])
+        self.assertEqual(["1", "0", "100.00%"], [m.value for m in app.metric])
         app.toggle(key="kpi_incidentes_ans_diapositiva").set_value(True).run()
         self.assertFalse(app.exception)
         self.assertEqual(1, len(app.get("iframe")))
