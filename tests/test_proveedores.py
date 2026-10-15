@@ -1,7 +1,9 @@
 import unittest
+from io import BytesIO
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
+from openpyxl import load_workbook
 
 import app_logic
 from components.seguimiento_proveedores import exportar_csv, tabla_objetivos
@@ -13,6 +15,7 @@ from services.proveedores import (
     minutos_servicio, plazo_dias_habiles, prioridad_ans, registros_proveedores,
     resumen_ans_proveedores,
 )
+from utils.proveedores_excel_export import COLUMNAS_INFORME, exportar_informe_proveedores, informe_proveedores
 
 
 def fecha(valor):
@@ -221,6 +224,46 @@ class EvaluacionANSTest(unittest.TestCase):
 
 
 class ConsultaYExportacionTest(unittest.TestCase):
+    def test_informe_conserva_historial_estado_y_un_registro_por_proveedor_sin_duplicar_ciclos(self):
+        casos = pd.DataFrame([caso(estado="Resuelto", notas_trabajo="Rpost\nEscalamiento: 08/10/2026 08:00\n"
+                                  "Solución: 08/10/2026 09:00\nEscalamiento: 09/10/2026 08:00",
+                                  historial_conversacion=[{"fecha": "2026-10-09 10:00", "tipo": "Nota de Trabajo",
+                                                          "usuario": "soporte", "contenido": "Proveedor confirma revisión completa"}],
+                                  actualizaciones="Actualización posterior sin nombre del proveedor")])
+        incidentes = pd.DataFrame([{"numero": "INC1", "estado": "Activo", "creado": "2026-10-09 13:00:00Z",
+                                   "nombre_proveedor": "Autentic", "observaciones_trabajo": "Seguimiento completo del incidente"}])
+        registros = registros_proveedores(casos, incidentes)
+        self.assertEqual(3, len(registros))
+        reporte = informe_proveedores(registros)
+        self.assertEqual(COLUMNAS_INFORME, reporte.columns.tolist())
+        self.assertEqual(2, len(reporte))
+        historial = reporte.loc[reporte["Caso o incidente"] == "Caso CS1", "Historial del caso o incidente"].iloc[0]
+        self.assertIn("Proveedor confirma revisión completa", historial)
+        self.assertIn("2026-10-09 10:00 · Nota de Trabajo · soporte", historial)
+        self.assertIn("Actualización posterior sin nombre del proveedor", historial)
+        libro = load_workbook(BytesIO(exportar_informe_proveedores(registros)))
+        hoja = libro.active
+        self.assertEqual("A2", hoja.freeze_panes)
+        self.assertEqual(1, len(hoja.tables))
+        self.assertEqual("Incidente INC1", hoja["C2"].value)
+        self.assertEqual("Activo", hoja["E2"].value)
+        self.assertEqual(8, hoja["B2"].value.hour)
+        self.assertIsNone(hoja["B2"].value.tzinfo)
+        self.assertTrue(hoja["B2"].is_date)
+
+    def test_excel_no_ejecuta_formulas_ni_trunca_historiales_largos(self):
+        historial = "=HYPERLINK(x)\n" + "Seguimiento detallado\n" * 4000
+        datos = registros_proveedores(pd.DataFrame([caso(nombre_proveedor="Rpost", notas_trabajo=historial)]), pd.DataFrame())
+        texto_original = informe_proveedores(datos).iloc[0]["Historial del caso o incidente"]
+        datos.loc[:, "Proveedor"] = "=SUM(1,2)"
+        hoja = load_workbook(BytesIO(exportar_informe_proveedores(datos))).active
+        self.assertGreater(hoja.max_row, 2)
+        self.assertEqual(texto_original, "".join(hoja.cell(fila, 4).value for fila in range(2, hoja.max_row + 1)))
+        for fila in hoja.iter_rows(min_row=2):
+            self.assertEqual("=SUM(1,2)", fila[0].value)
+            self.assertEqual("s", fila[0].data_type)
+            self.assertFalse(any(celda.data_type == "f" for celda in fila))
+
     def test_pantalla_carga_resumen_filtros_e_informe_sin_excepciones(self):
         from streamlit.testing.v1 import AppTest
         script = '''import pandas as pd
@@ -233,7 +276,8 @@ render_seguimiento_proveedores(lambda: registros_proveedores(casos, pd.DataFrame
         app = AppTest.from_string(script).run(timeout=20)
         self.assertFalse(app.exception)
         self.assertEqual("1", app.metric[0].value)
-        self.assertEqual(5, len(app.dataframe))
+        self.assertEqual(6, len(app.dataframe))
+        self.assertTrue(any(boton.proto.label == "Descargar informe de proveedores (Excel)" for boton in app.get("download_button")))
         app.selectbox(key="proveedores_filtro").select("AutenTIC").run(timeout=20)
         self.assertFalse(app.exception)
         self.assertTrue(app.info)

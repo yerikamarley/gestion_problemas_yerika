@@ -98,10 +98,22 @@ limitante y sin filtrar solo por creación del mes. La detección queda en cach�
 cinco minutos por actor y vista; la invalidación de casos la limpia. Cambiar
 filtros no consulta ServiceNow ni modifica datos o credenciales.
 
-La pantalla permite descargar tres CSV que se abren en Excel: resumen mensual
-de ANS con período, corte y cobertura; clientes por proveedor; y detalle con
-fechas y evidencia. Los archivos reflejan los filtros seleccionados. Los campos
-de texto que pueden interpretarse como fórmula se escapan al exportar.
+El botón principal descarga un Excel `.xlsx` con cinco columnas: Nombre del
+proveedor, Fecha, Caso o incidente, Historial del caso o incidente y Estado del
+caso. Fecha es la creación del registro en hora de Colombia; el estado y el
+historial corresponden a lo consultado en la base, sin reconstruir un estado
+histórico que no esté disponible. El historial conserva descripción, conversación,
+notas, observaciones, actualizaciones y resolución con sus encabezados disponibles.
+Un caso con varios ciclos aparece una vez por proveedor. Un historial que supera
+el límite de una celda continúa en filas con el mismo identificador sin truncarse.
+La hoja tiene fechas nativas de Excel, filtros, encabezados fijos y texto ajustado;
+los textos se escriben como texto, nunca como fórmulas.
+
+Se mantienen las descargas CSV de resumen mensual ANS, clientes y detalle técnico.
+Todos los archivos reflejan los filtros seleccionados. La pestaña Casos e
+incidentes presenta las cinco columnas del informe, permite consultar el
+historial completo por registro y deja ANS/evidencia en otro desplegable. El
+texto que puede interpretarse como fórmula se escapa en los CSV.
 
 El corte sobre datos almacenados no reconstruye ediciones históricas eliminadas
 de las notas ni incorpora información que aún no se haya sincronizado.

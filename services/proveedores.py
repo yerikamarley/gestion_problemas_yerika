@@ -46,7 +46,34 @@ NEGACION = re.compile(r"\b(?:no|sin|pendiente(?: de)?|por|debe|deberia|solicita|
 COLUMNAS = ["Tipo", "Número", "Proveedor", "Cliente", "Relación", "Estado", "Prioridad",
             "Descripción", "Creado", "Cerrado", "Escalamiento", "Primera respuesta",
             "Diagnóstico", "Mitigación", "Solución", "Ciclo", "Fuente", "Evidencia",
-            "Evidencia de fechas", "Datos de fechas", "Referencia externa"]
+            "Evidencia de fechas", "Datos de fechas", "Referencia externa", "Historial"]
+
+
+def historial_registro(row):
+    """Conserva el historial consultado, separado de la evidencia de escalamiento."""
+    bloques, vistos = [], set()
+    campos = (("descripcion", "Descripción"), ("breve_descripcion", "Descripción breve"),
+              ("descripcion_detallada", "Descripción detallada"), ("sn__description", "Descripción detallada"),
+              ("historial_conversacion", "Historial de conversación"), ("notas_trabajo", "Notas de trabajo"),
+              ("observaciones_trabajo", "Observaciones de trabajo"), ("lista_notas_trabajo", "Notas de trabajo"),
+              ("observaciones_adicionales", "Observaciones adicionales"), ("actualizaciones", "Actualizaciones"),
+              ("notas_resolucion", "Notas de resolución"))
+    for campo, etiqueta in campos:
+        valor = row.get(campo)
+        if isinstance(valor, list):
+            eventos = []
+            for evento in eventos_historial(valor):
+                encabezado = " · ".join(texto(evento.get(c)) for c in ("fecha", "tipo", "usuario", "asunto") if texto(evento.get(c)))
+                contenido = texto(evento.get("contenido"))
+                if encabezado or contenido:
+                    eventos.append("\n".join(v for v in (encabezado, contenido) if v))
+            contenido = "\n\n".join(eventos)
+        else:
+            contenido = texto(valor)
+        if contenido and contenido not in vistos:
+            vistos.add(contenido)
+            bloques.append(f"{etiqueta}\n{contenido}")
+    return "\n\n".join(bloques)
 
 
 @lru_cache(maxsize=1)
@@ -184,6 +211,7 @@ def registros_proveedores(casos, incidentes):
             numero = texto(row.get("numero"))
             if not numero:
                 continue
+            historial = historial_registro(row)
             fragmentos = fragmentos_proveedor(row, tipo)
             evidencia, confirmados = {}, set()
             campo = texto(row.get("nombre_proveedor"))
@@ -234,7 +262,7 @@ def registros_proveedores(casos, incidentes):
                                   "Ciclo": ciclo, "Fuente": fuente, "Evidencia": detalle,
                                   "Evidencia de fechas": "\n".join(ev_fechas[proveedor]),
                                   "Datos de fechas": "Fechas inconsistentes" if proveedor in invalidos or anterior else "",
-                                  "Referencia externa": texto(row.get("numero_caso_externo"))})
+                                  "Referencia externa": texto(row.get("numero_caso_externo")), "Historial": historial})
     return pd.DataFrame(filas, columns=COLUMNAS).drop_duplicates(["Tipo", "Número", "Proveedor", "Ciclo"], keep="last")
 
 

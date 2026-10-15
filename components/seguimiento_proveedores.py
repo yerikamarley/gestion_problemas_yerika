@@ -9,6 +9,7 @@ from services.proveedores import (
     CONFIRMADO, ETAPAS, MENCION, SIN_CLIENTE, catalogo_ans,
     evaluar_ans_proveedores, filtrar_periodo_proveedores, resumen_ans_proveedores,
 )
+from utils.proveedores_excel_export import exportar_informe_proveedores, informe_proveedores
 
 
 MESES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto",
@@ -36,7 +37,7 @@ def exportar_csv(df):
 def tabla_fechas(df):
     salida = df.copy()
     for columna in salida.columns:
-        if isinstance(salida[columna].dtype, pd.DatetimeTZDtype):
+        if pd.api.types.is_datetime64_any_dtype(salida[columna]):
             salida[columna] = salida[columna].dt.strftime("%d/%m/%Y %H:%M").fillna("")
     return salida
 
@@ -86,6 +87,12 @@ def render_seguimiento_proveedores(cargar_datos):
         tarjetas[1].metric("Incidentes", int((unicos["Tipo"] == "Incidente").sum()))
         tarjetas[2].metric("Clientes identificados", unicos.loc[unicos["Cliente"] != SIN_CLIENTE, "Cliente"].nunique())
         tarjetas[3].metric("Escalados", len(datos[datos["Relación"] == CONFIRMADO].drop_duplicates(["Tipo", "Número"])))
+        st.download_button("Descargar informe de proveedores (Excel)", exportar_informe_proveedores(datos),
+                           file_name=f"informe_proveedores_{anio:04d}_{mes:02d}.xlsx",
+                           mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                           key="proveedores_informe_excel")
+        st.caption("El informe incluye proveedor, fecha de creación en Colombia, caso o incidente, historial y estado registrado. "
+                   "Respeta los filtros seleccionados. Los historiales largos continúan en filas adicionales del mismo registro.")
         resumen = resumen_ans_proveedores(datos)
         tabs = st.tabs(["Resumen mensual ANS", "Clientes", "Casos e incidentes"])
         with tabs[0]:
@@ -120,9 +127,18 @@ def render_seguimiento_proveedores(cargar_datos):
             st.download_button("Descargar clientes por proveedor", exportar_csv(tabla),
                                file_name=f"clientes_proveedores_{anio:04d}_{mes:02d}.csv", mime="text/csv", key="proveedores_clientes_csv")
         with tabs[2]:
+            informe = informe_proveedores(datos)
+            mostrar_tabla(tabla_fechas(informe))
+            with st.expander("Ver historial completo"):
+                elegido = st.selectbox("Caso o incidente", list(range(len(informe))),
+                                       format_func=lambda i: f"{informe.iloc[i]['Caso o incidente']} · {informe.iloc[i]['Nombre del proveedor']}",
+                                       key="proveedores_historial_registro")
+                st.text_area("Historial disponible", informe.iloc[elegido]["Historial del caso o incidente"],
+                             height=300, disabled=True, key="proveedores_historial_texto")
             columnas = ["Tipo", "Número", "Proveedor", "Cliente", "Relación", "Estado", "Prioridad", "Descripción",
                         "Escalamiento", "Primera respuesta", "Solución", "ANS Atención", "ANS Solución", "Período del registro", "Fuente", "Evidencia"]
-            mostrar_tabla(tabla_fechas(datos[columnas]))
+            with st.expander("Ver detalle de ANS y evidencia"):
+                mostrar_tabla(tabla_fechas(datos[columnas]))
             st.download_button("Descargar detalle y evidencia", exportar_csv(datos),
                                file_name=f"detalle_proveedores_{anio:04d}_{mes:02d}.csv", mime="text/csv", key="proveedores_detalle_csv")
     with st.expander("ANS y horarios por proveedor"):

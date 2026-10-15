@@ -445,6 +445,7 @@ def cargar_casos_cache():
 
 @st.cache_data(ttl=CACHE_TTL_SEGUNDOS, show_spinner=False, max_entries=4)
 def cargar_casos_proveedores_cache(actor_email, vista):
+    """Casos e incidentes con historial para el informe de proveedores."""
     return load_seguimiento_proveedores()
 
 
