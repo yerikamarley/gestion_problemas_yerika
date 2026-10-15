@@ -666,8 +666,12 @@ INCIDENT_FIELDS = {
     "servicio_negocio": ("business_service",), "impacto": ("impact",),
     "escalado_proveedor": ("u_escalado_a_proveedor",), "nombre_proveedor": ("u_nombre_del_proveedor",),
     "tipo_falla": ("u_tipo_de_falla",),
+    "fecha_notificacion": ("u_fecha_notificacion", "opened_at"),
+    "fecha_atencion": ("u_fecha_primera_atencion", "u_first_response_at", "first_response_at", "u_fecha_atencion"),
+    "fecha_resolucion": ("resolved_at",),
 }
-DATE_COLUMNS = {"creado", "cerrado", "actualizado", "fecha_vencimiento_sla"}
+DATE_COLUMNS = {"creado", "cerrado", "actualizado", "fecha_vencimiento_sla",
+                "fecha_notificacion", "fecha_atencion", "fecha_resolucion"}
 
 
 def mapear_documento(documento, tipo="casos"):

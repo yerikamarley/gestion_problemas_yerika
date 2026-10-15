@@ -1,0 +1,297 @@
+"""Panel compartido de atención y resolución para Dashboard y KPI Incidentes."""
+
+import html
+from pathlib import Path
+
+import pandas as pd
+import plotly.express as px
+import streamlit as st
+
+from services.incidentes_sla import (
+    CATEGORIAS, CONSULTA, PRIORIDADES, SIN_CATEGORIA,
+    agregar_evaluacion, cargar_horario, resumen_etapa, tabla_objetivos,
+)
+
+
+COLORES_ESTADO = {
+    "Cumple": "#5d16a6", "No cumple": "#f35b04", "Dentro del plazo": "#9683ec",
+    "Vencido": "#d6a21a", "Sin datos": "#c5c0cb",
+}
+
+
+def porcentaje_visible(valor):
+    return "Sin datos" if valor is None else f"{valor:.2f}%"
+
+
+def grafica_cumplimiento(base, etapa):
+    columna = f"{etapa}_estado"
+    datos = base[["prioridad_gestion", columna]].copy()
+    datos["Resultado"] = datos[columna].where(datos[columna].isin(COLORES_ESTADO), "Sin datos")
+    datos = datos.groupby(["prioridad_gestion", "Resultado"], dropna=False).size().reset_index(name="Registros")
+    prioridades = [p for p in (*PRIORIDADES, "Sin prioridad") if datos["prioridad_gestion"].eq(p).any()]
+    fig = px.bar(datos, x="Registros", y="prioridad_gestion", color="Resultado",
+                 orientation="h", text="Registros", barmode="stack",
+                 category_orders={"prioridad_gestion": prioridades, "Resultado": list(COLORES_ESTADO)},
+                 color_discrete_map=COLORES_ESTADO,
+                 labels={"prioridad_gestion": "Prioridad"})
+    fig.update_traces(textposition="inside", insidetextanchor="middle", textfont=dict(size=13, color="white"),
+                      marker_line_width=0, width=.45,
+                      hovertemplate="%{y}<br>%{x} registros<extra>%{fullData.name}</extra>")
+    for traza in fig.data:
+        if traza.name != "Cumple":
+            traza.textfont.color = "#302936"
+    fig.update_layout(height=max(190, len(prioridades) * 48 + 46), bargap=.44,
+                      margin=dict(l=0, r=8, t=10, b=32), showlegend=False,
+                      font=dict(family="Arial, sans-serif", size=12, color="#6c6570"),
+                      uniformtext=dict(minsize=11, mode="hide"), hoverlabel=dict(bgcolor="white", font_size=13),
+                      plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)" )
+    fig.update_xaxes(title=dict(text="Registros", font=dict(size=11)), nticks=6, rangemode="tozero",
+                     gridcolor="#eee9f0", showgrid=True, zeroline=False, fixedrange=True)
+    fig.update_yaxes(title=None, categoryorder="array", categoryarray=prioridades,
+                     autorange="reversed", tickmode="array", tickvals=prioridades,
+                     ticktext=[p.replace("Critico", "Crítico") for p in prioridades],
+                     showgrid=False, zeroline=False, fixedrange=True, automargin=True)
+    return fig
+
+
+def tabla_resumen_categorias(base):
+    filas = []
+    for categoria, grupo in base.groupby("categoria_gestion", sort=False):
+        atencion, resolucion = resumen_etapa(grupo, "atencion"), resumen_etapa(grupo, "resolucion")
+        filas.append({"Categoría": categoria, "Registros": len(grupo),
+                      "Atención %": atencion["porcentaje"], "Evaluados atención": atencion["evaluados"],
+                      "Sin datos atención": atencion["sin_datos"], "Pendientes atención": atencion["pendientes"],
+                      "Resolución %": resolucion["porcentaje"], "Evaluados resolución": resolucion["evaluados"],
+                      "Sin datos resolución": resolucion["sin_datos"], "Pendientes resolución": resolucion["pendientes"],
+                      "Vencidos resolución": resolucion["vencidos"]})
+    return pd.DataFrame(filas)
+
+
+def tabla_tendencia(base):
+    datos = base.copy()
+    datos["Mes"] = pd.to_datetime(datos.get("creado"), errors="coerce").dt.strftime("%Y-%m")
+    filas = []
+    for (mes, categoria), grupo in datos.dropna(subset=["Mes"]).groupby(["Mes", "categoria_gestion"]):
+        for etapa, etiqueta in (("atencion", "Atención"), ("resolucion", "Resolución")):
+            resumen = resumen_etapa(grupo, etapa)
+            filas.append({"Mes": mes, "Categoría": categoria, "Etapa": etiqueta,
+                          "Cumplimiento %": resumen["porcentaje"], "Evaluados": resumen["evaluados"],
+                          "Cumplen": resumen["cumple"], "No cumplen": resumen["no_cumple"],
+                          "Sin datos": resumen["sin_datos"], "Pendientes": resumen["pendientes"]})
+    return pd.DataFrame(filas)
+
+
+def tabla_detalle(base):
+    detalle = base.copy()
+    detalle["atencion_minutos_soporte"] = pd.to_numeric(detalle["atencion_segundos"], errors="coerce") / 60
+    detalle["resolucion_horas_soporte"] = pd.to_numeric(detalle["resolucion_segundos"], errors="coerce") / 3600
+    columnas = {
+        "numero": "Incidente", "categoria": "Categoría de origen", "categoria_gestion": "Categoría de gestión",
+        "prioridad": "Prioridad de origen", "prioridad_gestion": "Prioridad de la guía",
+        "validacion_clasificacion": "Validación pendiente", "coordinador_gestion": "Cargo que coordina",
+        "estado": "Estado", "servicio_negocio": "Servicio", "asignado_a": "Asignado a",
+        "inicio_sla": "Inicio del reloj", "fuente_inicio_sla": "Fuente del inicio",
+        "fecha_atencion": "Primera atención", "objetivo_atencion_minutos": "Objetivo atención (min soporte)",
+        "atencion_minutos_soporte": "Atención (min soporte)", "atencion_vencimiento": "Vencimiento atención",
+        "atencion_estado": "Resultado atención", "fecha_resolucion": "Resolución",
+        "objetivo_resolucion_horas": "Objetivo resolución (h soporte)",
+        "resolucion_horas_soporte": "Resolución (h soporte)", "resolucion_vencimiento": "Vencimiento resolución",
+        "resolucion_estado": "Resultado resolución", "cerrado": "Cierre administrativo",
+    }
+    return detalle[[col for col in columnas if col in detalle]].rename(columns=columnas)
+
+
+def render_panel_incidentes_ans(df, key_prefix, titulo, periodo=None, presentacion=None):
+    css = (Path(__file__).resolve().parents[1] / "assets" / "incidentes.css").read_text(encoding="utf-8")
+    st.markdown(f"<style>{css}</style>", unsafe_allow_html=True)
+    with st.container(key=f"incidentes_panel_{key_prefix}"):
+        return _render_panel(df, key_prefix, titulo, periodo, presentacion)
+
+
+def _metas_html(metas, categoria):
+    def corto(valor):
+        return html.escape(str(valor).replace("minutos", "min"))
+
+    if categoria in CATEGORIAS:
+        tarjetas = []
+        for fila in metas.to_dict("records"):
+            tarjetas.append('<div class="inc-ans-priority">'
+                            f'<div class="inc-ans-priority-name">{corto(fila["Prioridad"])}</div>'
+                            '<div class="inc-ans-priority-values">'
+                            f'<div><b>{corto(fila["Atención máxima"])}</b><small>Atención</small></div>'
+                            f'<div><b>{corto(fila["Resolución máxima"])}</b><small>Resolución</small></div>'
+                            '</div></div>')
+        clase = "inc-ans-priority-goals single" if len(tarjetas) == 1 else "inc-ans-priority-goals"
+        return f'<div class="{clase}">' + "".join(tarjetas) + '</div>'
+    tarjetas = []
+    for indice, (nombre, grupo) in enumerate(metas.groupby("Categoría", sort=False), 1):
+        filas = ['<div class="inc-ans-goal-row header"><span>Prioridad</span><span>Atención</span><span>Resolución</span></div>']
+        for fila in grupo.to_dict("records"):
+            filas.append('<div class="inc-ans-goal-row">'
+                         f'<span>{corto(fila["Prioridad"])}</span><span>{corto(fila["Atención máxima"])}</span>'
+                         f'<span>{corto(fila["Resolución máxima"])}</span></div>')
+        tarjetas.append('<div class="inc-ans-goal-category"><div class="inc-ans-goal-name">'
+                        f'<span class="inc-ans-goal-index">{indice:02}</span>{html.escape(nombre)}</div>'
+                        + "".join(filas) + '</div>')
+    return '<div class="inc-ans-goals">' + "".join(tarjetas) + '</div>'
+
+
+def _render_indicadores(base, atencion, resolucion, key_prefix):
+    indicadores = [
+        ("registros", "Registros", len(base), "En la categoría y período seleccionados"),
+        ("abiertos", "Abiertos", int((~base["finalizado_gestion"].astype(bool)).sum()),
+         f"{resolucion['vencidos']} con plazo de resolución vencido"),
+        ("atencion", "Cumplimiento de atención", porcentaje_visible(atencion["porcentaje"]),
+         f"{atencion['evaluados']} evaluados · {atencion['sin_datos']} sin datos evaluables"),
+        ("resolucion", "Cumplimiento de resolución", porcentaje_visible(resolucion["porcentaje"]),
+         f"{resolucion['evaluados']} evaluados · {resolucion['sin_datos']} sin datos evaluables"),
+    ]
+    for col, (clave, etiqueta, valor, nota) in zip(st.columns(4, gap="small"), indicadores):
+        with col.container(border=True, key=f"incidentes_stat_{key_prefix}_{clave}"):
+            st.metric(etiqueta, valor)
+            st.caption(nota)
+
+
+def _render_grafica(base, etapa, key_prefix):
+    resumen = resumen_etapa(base, etapa)
+    titulo, subtitulo = (("Atención", "Primer contacto según la prioridad") if etapa == "atencion"
+                         else ("Resolución", "Solución según la prioridad"))
+    with st.container(border=True, key=f"incidentes_chart_{key_prefix}_{etapa}"):
+        st.markdown('<div class="inc-ans-chart-heading"><div>'
+                    f'<strong>{titulo}</strong><small>{subtitulo}</small></div>'
+                    f'<span class="inc-ans-chart-result">{porcentaje_visible(resumen["porcentaje"])}</span></div>',
+                    unsafe_allow_html=True)
+        st.plotly_chart(grafica_cumplimiento(base, etapa), use_container_width=True,
+                        theme=None, config={"displayModeBar": False, "scrollZoom": False},
+                        key=f"{key_prefix}_grafica_{etapa}")
+        st.markdown(f'<div class="inc-ans-chart-footer">{resumen["cumple"]} cumplen · '
+                    f'{resumen["no_cumple"]} no cumplen · {resumen["sin_datos"]} sin datos<br>'
+                    f'{resumen["pendientes"]} pendientes, de los cuales {resumen["vencidos"]} están vencidos</div>',
+                    unsafe_allow_html=True)
+
+
+def _render_leyenda(base):
+    estados = set(base["atencion_estado"]) | set(base["resolucion_estado"])
+    resultados = {e if e in COLORES_ESTADO else "Sin datos" for e in estados}
+    items = [f'<span class="inc-ans-legend-item"><i style="background:{color}"></i>{estado}</span>'
+             for estado, color in COLORES_ESTADO.items() if estado in resultados]
+    st.markdown('<div class="inc-ans-legend">' + "".join(items) + '</div>', unsafe_allow_html=True)
+
+
+def _render_tendencia(tendencia, key_prefix):
+    if tendencia.empty or tendencia["Cumplimiento %"].notna().sum() == 0:
+        st.info("No hay tiempos evaluables para graficar cumplimiento mensual.")
+        return
+    colores = {CATEGORIAS[0]: "#f35b04", CATEGORIAS[1]: "#9683ec", CATEGORIAS[2]: "#d6a21a", SIN_CATEGORIA: "#c5c0cb"}
+    for col, etapa in zip(st.columns(2), ("Atención", "Resolución")):
+        datos = tendencia[tendencia["Etapa"].eq(etapa)]
+        with col.container(border=True, key=f"incidentes_chart_{key_prefix}_tendencia_{etapa}"):
+            st.markdown(f"**Evolución de {etapa.lower()}**")
+            fig = px.line(datos, x="Mes", y="Cumplimiento %", color="Categoría", markers=True,
+                          hover_data=["Evaluados", "Cumplen", "No cumplen", "Sin datos", "Pendientes"],
+                          color_discrete_map=colores)
+            fig.update_traces(connectgaps=False, line=dict(width=2.5), marker=dict(size=8))
+            fig.update_layout(height=290, font=dict(family="Arial, sans-serif", size=12, color="#6c6570"),
+                              paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                              margin=dict(l=38, r=12, t=12, b=40),
+                              legend=dict(title=None, orientation="h", y=-.25, font=dict(size=10)))
+            fig.update_yaxes(range=[0, 105], title=None, ticksuffix="%", dtick=25,
+                             gridcolor="#eee9f0", zeroline=False, fixedrange=True,
+                             showticklabels=True, automargin=True, tickfont=dict(color="#6c6570", size=11))
+            fig.update_xaxes(title=None, type="category", showgrid=False, fixedrange=True)
+            st.plotly_chart(fig, use_container_width=True, theme=None, config={"displayModeBar": False},
+                            key=f"{key_prefix}_tendencia_{etapa}")
+    st.caption("Los meses sin tiempos evaluables quedan sin porcentaje. Selecciona todos los meses del año para comparar la evolución.")
+    with st.expander("Ver cifras mensuales"):
+        st.dataframe(tendencia, hide_index=True, use_container_width=True)
+
+
+def _render_panel(df, key_prefix, titulo, periodo, presentacion):
+    horario = cargar_horario()
+    base = agregar_evaluacion(df, horario=horario)
+    cabecera, horario_col = st.columns([2, 1], vertical_alignment="center")
+    with cabecera:
+        st.markdown('<div class="inc-ans-eyebrow">GESTIÓN DE INCIDENTES</div>', unsafe_allow_html=True)
+        st.subheader(titulo)
+        if periodo:
+            st.markdown(f'<div class="inc-ans-period">Período por creación · {html.escape(str(periodo))}</div>', unsafe_allow_html=True)
+    with horario_col:
+        st.markdown('<div class="inc-ans-schedule"><span class="inc-ans-badge">L–V · 08:00–17:00</span>'
+                    '<span class="inc-ans-badge soft">1 día = 9 h de soporte</span></div>', unsafe_allow_html=True)
+    categorias = ["Todas las categorías", *CATEGORIAS]
+    if base["categoria_gestion"].eq(SIN_CATEGORIA).any():
+        categorias.append(SIN_CATEGORIA)
+    diapositiva = False
+    with st.container(border=True, key=f"incidentes_filters_{key_prefix}"):
+        filtros = st.columns([1.45, 1, .75] if presentacion else [1.45, 1], vertical_alignment="center")
+        with filtros[0]:
+            categoria = st.selectbox("Categoría de gestión", categorias, key=f"{key_prefix}_categoria")
+        if categoria != categorias[0]:
+            base = base[base["categoria_gestion"].eq(categoria)].copy()
+        prioridades = [p for p in (*PRIORIDADES, "Sin prioridad") if base["prioridad_gestion"].eq(p).any()]
+        with filtros[1]:
+            elegidas = st.multiselect("Prioridad", prioridades, key=f"{key_prefix}_prioridades", placeholder="Todas las prioridades")
+        if elegidas:
+            base = base[base["prioridad_gestion"].isin(elegidas)].copy()
+        if presentacion:
+            with filtros[2]:
+                diapositiva = st.toggle("Formato diapositiva 16:9", key=f"{key_prefix}_diapositiva")
+    metas = tabla_objetivos(horario)
+    if categoria != categorias[0]:
+        metas = metas[metas["Categoría"].eq(categoria)]
+    if elegidas:
+        metas = metas[metas["Prioridad"].replace({"Crítico": "Critico"}).isin(elegidas)]
+    if categoria in CATEGORIAS:
+        coordinador = metas["Cargo que coordina"].iloc[0] if not metas.empty else "Consultar tabla de tiempos"
+        st.markdown(f'<div class="inc-ans-coordinator"><b>Coordina:</b> {html.escape(coordinador)}</div>', unsafe_allow_html=True)
+    if base.empty:
+        st.info("No hay registros para esta categoría y prioridad en el período seleccionado.")
+        st.dataframe(metas, hide_index=True, use_container_width=True)
+        return base
+    if presentacion is not None and diapositiva:
+        presentacion(base, metas, periodo)
+        return base
+    atencion, resolucion = resumen_etapa(base, "atencion"), resumen_etapa(base, "resolucion")
+    _render_indicadores(base, atencion, resolucion, key_prefix)
+    pendientes_clasificacion = int(base["validacion_clasificacion"].ne("").sum())
+    if pendientes_clasificacion:
+        st.warning(f"{pendientes_clasificacion} registros requieren validar categoría o prioridad de origen. Consulta el detalle.")
+    referencia = ('<div class="inc-ans-section"><strong>Tiempos de la guía</strong>'
+                  '<span>Máximos por prioridad · SER-PR-001</span></div>' + _metas_html(metas, categoria))
+    if categoria in CATEGORIAS:
+        st.markdown(referencia, unsafe_allow_html=True)
+    if categoria == CONSULTA:
+        st.caption("Consulta / Ayuda: prioridad Moderado, atención máxima de 30 minutos y resolución máxima de 4 días de soporte.")
+    resumen_tab, tendencia_tab, detalle_tab = st.tabs(["Cumplimiento", "Evolución mensual", "Detalle de registros"])
+    with resumen_tab:
+        _render_leyenda(base)
+        izquierda, derecha = st.columns(2)
+        with izquierda:
+            _render_grafica(base, "atencion", key_prefix)
+        with derecha:
+            _render_grafica(base, "resolucion", key_prefix)
+        if categoria not in CATEGORIAS:
+            st.markdown(referencia, unsafe_allow_html=True)
+        with st.expander("Cobertura de los cálculos por categoría"):
+            st.dataframe(tabla_resumen_categorias(base), hide_index=True, use_container_width=True)
+    with tendencia_tab:
+        tendencia = tabla_tendencia(base)
+        _render_tendencia(tendencia, key_prefix)
+    with detalle_tab:
+        detalle = tabla_detalle(base)
+        st.dataframe(detalle, height=420, hide_index=True, use_container_width=True)
+        # Neutralizar fórmulas en los valores textuales de la exportación.
+        exportacion = detalle.map(lambda valor: "'" + valor if isinstance(valor, str) and valor.startswith(("=", "+", "-", "@")) else valor)
+        st.download_button("Descargar detalle de tiempos (CSV)", exportacion.to_csv(index=False).encode("utf-8-sig"),
+                           file_name=f"{key_prefix}_tiempos.csv", mime="text/csv", key=f"{key_prefix}_descarga")
+    with st.expander("Horario y criterios de medición"):
+        st.caption("Soporte: lunes a viernes, 8:00 a. m. a 5:00 p. m. (Colombia). "
+                   "4 días = 36 horas de soporte; 8 días = 72 horas. "
+                   + (f"Festivos excluidos: {len(horario['festivos'])}." if horario["festivos"]
+                      else "Sin pausa de almuerzo ni festivos configurados."))
+        st.dataframe(metas, hide_index=True, use_container_width=True)
+        st.caption("Cumplimiento = cumplidos / evaluados. Los abiertos corresponden a registros creados en el período seleccionado.")
+        st.caption("Se compara el tiempo exacto en segundos de soporte con el máximo de la tabla; el límite está incluido. "
+                   "Primera atención y resolución requieren fechas explícitas. Última actualización y cierre administrativo "
+                   "no sustituyen esas evidencias. Cuando falta la notificación/apertura se identifica la creación como inicio.")
+    return base

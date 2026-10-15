@@ -1,0 +1,95 @@
+/* Estilos exclusivos de Dashboard y KPI de incidentes. */
+[class*="st-key-incidentes_panel_"] {
+    --inc-surface: #fffafa;
+    --inc-border: #e8e3e9;
+    --inc-text: #141414;
+    --inc-muted: #6c6570;
+    --inc-orange: #f35b04;
+    --inc-purple: #5d16a6;
+    --inc-lavender: #9683ec;
+}
+[class*="st-key-incidentes_panel_"] h3 { margin: 0; padding: 0 0 .2rem; }
+.inc-ans-eyebrow { color: #817789; font-size: .7rem; font-weight: 700; letter-spacing: .12em; margin-bottom: .35rem; }
+.inc-ans-period { color: #6c6570; font-size: .88rem; margin-top: .2rem; }
+.inc-ans-schedule { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: .4rem; padding-top: .5rem; }
+.inc-ans-badge { background: #fff0e5; border: 1px solid #f7d5bf; border-radius: 999px; padding: .35rem .65rem; color: #87421d; font-size: .75rem; white-space: nowrap; }
+.inc-ans-badge.soft { background: #f0ecfc; border-color: #e0d8f5; color: #67517d; }
+[class*="st-key-incidentes_filters_"] { gap: .3rem; }
+[data-testid="stVerticalBlockBorderWrapper"]:has(> div > [class*="st-key-incidentes_filters_"]),
+[data-testid="stVerticalBlockBorderWrapper"]:has(> div > [class*="st-key-incidentes_stat_"]),
+[data-testid="stVerticalBlockBorderWrapper"]:has(> div > [class*="st-key-incidentes_chart_"]) {
+    background: #fffafa;
+    border: 1px solid #e8e3e9 !important;
+    border-radius: 14px !important;
+    box-shadow: 0 3px 12px #14141404;
+}
+[class*="st-key-incidentes_filters_"] [data-testid="stWidgetLabel"] p { color: #625b67; font-size: .82rem; font-weight: 600; }
+[class*="st-key-incidentes_filters_"] [data-baseweb="select"] > div { border-radius: 10px !important; }
+[class*="st-key-incidentes_stat_"] { gap: .3rem; min-height: 116px; }
+[class*="st-key-incidentes_stat_"] [data-testid="stMetric"] { background: transparent !important; border: 0 !important; border-top: 0 !important; border-radius: 0 !important; box-shadow: none !important; padding: 0 !important; }
+[class*="st-key-incidentes_stat_"] [data-testid="stMetricLabel"] p { color: #625b67; font-size: .83rem; font-weight: 600; }
+[class*="st-key-incidentes_stat_"] [data-testid="stMetricValue"] { color: #141414; font-size: 2.2rem; font-weight: 750; letter-spacing: -.035em; }
+[class*="st-key-incidentes_stat_"] [data-testid="stCaptionContainer"] p { font-size: .75rem !important; margin: 0; line-height: 1.35 !important; }
+[class*="st-key-incidentes_stat_"]::before { content: ""; height: 3px; width: 30px; border-radius: 2px; background: #9683ec; margin-bottom: .15rem; }
+[class*="st-key-incidentes_stat_"][class*="_registros"]::before { background: #f35b04; }
+[class*="st-key-incidentes_stat_"][class*="_abiertos"]::before { background: #f7b801; }
+.inc-ans-section { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: .4rem 1rem; margin: .1rem 0 .65rem; }
+.inc-ans-section strong { color: #302936; font-size: .94rem; font-weight: 650; }
+.inc-ans-section span { color: #817789; font-size: .76rem; }
+.inc-ans-coordinator { color: #6c6570; font-size: .82rem; line-height: 1.45; margin: -.2rem 0 .2rem; }
+.inc-ans-coordinator b { color: #3d3543; font-weight: 600; }
+.inc-ans-goals { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .8rem; }
+.inc-ans-goal-category { background: #fffafa; border: 1px solid #e8e3e9; border-radius: 13px; padding: .85rem 1rem; }
+.inc-ans-goal-name { color: #302936; font-size: .85rem; font-weight: 650; display: flex; align-items: center; gap: .5rem; margin-bottom: .6rem; }
+.inc-ans-goal-index { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 7px; background: #fff0e5; color: #b64b10; font-size: .66rem; }
+.inc-ans-goal-category:nth-child(2) .inc-ans-goal-index { background: #f0ecfc; color: #70548f; }
+.inc-ans-goal-category:nth-child(3) .inc-ans-goal-index { background: #fff5d5; color: #8b6b10; }
+.inc-ans-goal-row { display: grid; grid-template-columns: 1.05fr .9fr 1fr; gap: .3rem; align-items: center; padding: .28rem 0; border-top: 1px solid #f0ecf1; font-size: .76rem; color: #514959; }
+.inc-ans-goal-row > :not(:first-child) { text-align: right; font-variant-numeric: tabular-nums; }
+.inc-ans-goal-row.header { border: 0; padding-top: 0; color: #746a7b; font-size: .65rem; }
+.inc-ans-priority-goals { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .7rem; }
+.inc-ans-priority-goals.single { grid-template-columns: minmax(0, 340px); }
+.inc-ans-priority { background: #fffafa; border: 1px solid #e8e3e9; border-radius: 12px; padding: .7rem .9rem; }
+.inc-ans-priority-name { color: #6c6570; font-size: .72rem; font-weight: 650; margin-bottom: .4rem; }
+.inc-ans-priority-values { display: grid; grid-template-columns: 1fr 1fr; gap: .65rem; }
+.inc-ans-priority-values > div + div { border-left: 1px solid #e8e3e9; padding-left: .7rem; }
+.inc-ans-priority-values b { display: block; color: #302936; font-size: 1rem; font-weight: 650; white-space: nowrap; }
+.inc-ans-priority-values small { display: block; color: #746a7b; font-size: .65rem; margin-top: .12rem; }
+.inc-ans-legend { display: flex; gap: .55rem 1rem; flex-wrap: wrap; padding: .15rem 0 .7rem; }
+.inc-ans-legend-item { display: inline-flex; gap: .4rem; align-items: center; color: #6c6570; font-size: .75rem; }
+.inc-ans-legend-item i { display: inline-block; width: 8px; height: 8px; border-radius: 3px; }
+.inc-ans-chart-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: .5rem; }
+.inc-ans-chart-heading strong { display: block; color: #302936; font-size: 1rem; font-weight: 650; }
+.inc-ans-chart-heading small { display: block; color: #746a7b; font-size: .73rem; margin-top: .2rem; }
+.inc-ans-chart-result { background: #f0ecfc; color: #5d16a6; font-size: .8rem; font-weight: 650; border-radius: 8px; padding: .35rem .6rem; white-space: nowrap; }
+.inc-ans-chart-footer { color: #817789; font-size: .74rem; line-height: 1.5; border-top: 1px solid #eee9f0; padding-top: .6rem; }
+[class*="st-key-incidentes_chart_"] { gap: .35rem; }
+[class*="st-key-incidentes_panel_"] [data-testid="stTabs"] div[role="tablist"] { gap: 1.3rem; border-bottom: 1px solid #e8e3e9; padding-bottom: 0; }
+[class*="st-key-incidentes_panel_"] [data-testid="stTabs"] button[role="tab"] { background: transparent !important; border: 0 !important; border-radius: 0 !important; padding: .55rem 0 !important; color: #817789 !important; min-height: 38px; }
+[class*="st-key-incidentes_panel_"] [data-testid="stTabs"] button[role="tab"] p { font-size: .83rem; font-weight: 600; }
+[class*="st-key-incidentes_panel_"] [data-testid="stTabs"] button[aria-selected="true"] { color: #f35b04 !important; border-bottom: 2px solid #f35b04 !important; }
+[class*="st-key-incidentes_panel_"] [data-testid="stTabs"] [data-baseweb="tab-highlight"] { display: none !important; }
+[class*="st-key-incidentes_panel_"] [data-testid="stDataFrame"] { box-shadow: none !important; border-radius: 10px !important; }
+[class*="st-key-incidentes_panel_"] [data-testid="stExpander"] { background: transparent; box-shadow: none; border-color: #e8e3e9; }
+@media (max-width: 760px) {
+    .inc-ans-schedule { justify-content: flex-start; padding: 0; }
+    .inc-ans-goals { grid-template-columns: 1fr; }
+    .inc-ans-priority-goals { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    [class*="st-key-incidentes_panel_"] [data-testid="stTabs"] div[role="tablist"] { gap: 1rem; }
+    [class*="st-key-incidentes_stat_"] { min-height: 100px; }
+    [class*="st-key-incidentes_stat_"] [data-testid="stMetricValue"] { font-size: 2rem; }
+    [class*="st-key-incidentes_panel_"] [data-testid="stHorizontalBlock"]:has(> [data-testid="column"] [class*="st-key-incidentes_stat_"]),
+    [class*="st-key-incidentes_panel_"] [data-testid="stHorizontalBlock"]:has(> [data-testid="stColumn"] [class*="st-key-incidentes_stat_"]) {
+        display: grid !important;
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+        gap: .7rem !important;
+    }
+    [class*="st-key-incidentes_panel_"] [data-testid="stHorizontalBlock"]:has([class*="st-key-incidentes_stat_"]) > [data-testid="column"],
+    [class*="st-key-incidentes_panel_"] [data-testid="stHorizontalBlock"]:has([class*="st-key-incidentes_stat_"]) > [data-testid="stColumn"] {
+        width: 100% !important;
+        min-width: 0 !important;
+    }
+    [class*="st-key-incidentes_stat_"] [data-testid="stMetricValue"] { font-size: 1.65rem; }
+    [class*="st-key-incidentes_stat_"] [data-testid="stMetricLabel"] p { font-size: .73rem; }
+    [class*="st-key-incidentes_stat_"] [data-testid="stCaptionContainer"] p { font-size: .68rem !important; }
+}

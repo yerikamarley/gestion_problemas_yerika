@@ -58,6 +58,8 @@ from services.clientes_experiencia import seguimiento_clientes
 from services.servicenow_worker import CaseSyncWorker
 from services.resumen_ejecutivo_casos import periodos_corte, construir_resumen_ejecutivo, agrupar_causas, causas_para_lamina
 from components.resumen_ejecutivo_casos import lamina_resumen_casos
+from components.incidentes_ans import render_panel_incidentes_ans, porcentaje_visible
+from services.incidentes_sla import CATEGORIAS, CONSULTA, resumen_etapa
 from dashboards.riesgos_materializados import render_riesgos_materializados
 from app_logic import (
     AutorizacionError,
@@ -3520,8 +3522,7 @@ def render_slide_component_kpi(titulo, periodo, tarjetas, caption, izquierda_htm
             </svg>
         `;
 
-        const blob = new Blob([svg], {{ type: "image/svg+xml;charset=utf-8" }});
-        const url = URL.createObjectURL(blob);
+        const url = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
         try {{
             const image = new Image();
             await new Promise((resolve, reject) => {{
@@ -3548,7 +3549,7 @@ def render_slide_component_kpi(titulo, periodo, tarjetas, caption, izquierda_htm
             link.click();
             link.remove();
         }} finally {{
-            URL.revokeObjectURL(url);
+            wrapper.replaceChildren();
         }}
     }}
 
@@ -6147,12 +6148,12 @@ def preparar_kpi_incidentes(df):
         "cerrados_internos": int((internos_mask & trabajo[TEXT_CERRADO_2]).sum()),
         "reincidentes": reincidentes,
         "tasa_reincidencia": porcentaje(reincidentes, len(trabajo)),
-        "cumplimiento_sla": porcentaje(cumplen, cumplen + no_cumplen),
+        "cumplimiento_sla": porcentaje(cumplen, cumplen + no_cumplen) if cumplen + no_cumplen else None,
         "cumple_sla": cumplen,
         "no_cumple_sla": no_cumplen,
-        "promedio": round(trabajo[TEXT_DURACION_HORAS_NUM].dropna().mean(), 2)
-        if trabajo[TEXT_DURACION_HORAS_NUM].notna().any()
-        else 0,
+        "promedio": round(cerrados_sla[TEXT_DURACION_HORAS_NUM].dropna().mean(), 2)
+        if cerrados_sla[TEXT_DURACION_HORAS_NUM].notna().any()
+        else None,
     }
     return trabajo, metricas
 
@@ -6462,100 +6463,50 @@ def render_slide_kpi_incidentes(metricas, causas, mes_dashboard):
     render_slide_component_kpi(MENU_KPI_INCIDENTES, mes_dashboard, tarjetas, caption, izquierda, derecha)
 
 
+def render_slide_ans_incidentes(base, metas, periodo):
+    atencion = resumen_etapa(base, "atencion")
+    resolucion = resumen_etapa(base, "resolucion")
+    tarjetas = [
+        ("Registros", len(base)),
+        ("Abiertos", int((~base["finalizado_gestion"].astype(bool)).sum())),
+        ("Atención", porcentaje_visible(atencion["porcentaje"])),
+        ("Resolución", porcentaje_visible(resolucion["porcentaje"])),
+    ]
+    objetivos = metas[["Categoría", "Prioridad", "Atención máxima", "Resolución máxima"]]
+    tabla_html = objetivos.to_html(index=False, border=0, classes="slide-cause-table slide-ans-table")
+    tabla_html = tabla_html.replace("<thead>", '<colgroup><col style="width:34%"><col style="width:18%">'
+                                    '<col style="width:24%"><col style="width:24%"></colgroup><thead>')
+    izquierda = ('<style>.slide-ans-table td,.slide-ans-table th{padding:5px 8px;font-size:0.78rem;line-height:1.2;}</style>'
+                 '<div class="slide-panel"><div class="slide-panel-title">Tiempos de la guía</div>' + tabla_html + '</div>')
+    notas = [
+        f"Atención: {atencion['evaluados']} evaluados; {atencion['sin_datos']} sin datos; {atencion['vencidos']} pendientes vencidos.",
+        f"Resolución: {resolucion['evaluados']} evaluados; {resolucion['sin_datos']} sin datos; {resolucion['vencidos']} pendientes vencidos.",
+        "Soporte de lunes a viernes de 08:00 a 17:00, Colombia. Un día equivale a nueve horas de soporte.",
+    ]
+    caption = "Categorías: " + ", ".join(base["categoria_gestion"].drop_duplicates())
+    render_slide_component_kpi(MENU_KPI_INCIDENTES, periodo, tarjetas, caption, izquierda, slide_note_html("Cobertura y tiempos", notas))
+
+
 def render_kpi_incidentes(df, mes_dashboard=None):
-    base, metricas = preparar_kpi_incidentes(df)
-    if base.empty:
-        st.info("No hay incidentes cliente interno o externo para el periodo seleccionado.")
+    base = render_panel_incidentes_ans(df, "kpi_incidentes_ans", MENU_KPI_INCIDENTES, mes_dashboard,
+                                       presentacion=render_slide_ans_incidentes)
+    if base.empty or st.session_state.get("kpi_incidentes_ans_diapositiva", False):
         return
-
-    causas = resumen_causas_kpi_incidentes(base)
-
-    modo_diapositiva = st.toggle("Formato diapositiva 16:9", key="slide_kpi_incidentes")
-    if modo_diapositiva:
-        render_slide_kpi_incidentes(metricas, causas, mes_dashboard)
+    # Las consultas conservan su propia categoría; los temas y repeticiones
+    # complementarios se analizan únicamente sobre incidentes.
+    incidentes = base[base["categoria_gestion"].isin(CATEGORIAS[:2])].copy()
+    if incidentes.empty:
         return
-
-    if mes_dashboard:
-        st.caption(f"{TEXT_PERIODO}{mes_dashboard}")
-    st.subheader(MENU_KPI_INCIDENTES)
-    st.caption(
-        "Base KPI: solo incidentes reales cliente externo e incidentes reales cliente interno. "
-        "No incluye Alertas y Consultas NOC ni Casos cliente externo."
-    )
-    render_tarjetas(
-        [
-            ("Incidentes cliente externo", metricas["externos"]),
-            ("Incidentes cliente interno", metricas["internos"]),
-            ("Abiertos cliente externo", metricas["abiertos_externos"]),
-            ("Abiertos cliente interno", metricas["abiertos_internos"]),
-            ("Reincidencia", f"{metricas['tasa_reincidencia']}%"),
-            ("SLA incidentes", f"{metricas['cumplimiento_sla']}%"),
-        ]
-    )
-    st.caption(
-        f"Cerrados cliente externo: {metricas['cerrados_externos']} | "
-        f"Cerrados cliente interno: {metricas['cerrados_internos']} | "
-        f"Reincidentes: {metricas['reincidentes']} | "
-        f"Promedio: {metricas['promedio']} h | "
-        f"Cumplen SLA: {metricas['cumple_sla']} | No cumplen: {metricas['no_cumple_sla']}"
-    )
-
-    render_tablas_temas_kpi_incidentes(causas)
-    render_lectura_kpi_incidentes(causas)
-
-    tab_resumen, tab_externo, tab_interno, tab_reincidencia, tab_detalle = st.tabs(
-        [TEXT_RESUMEN, "Cliente externo", "Cliente interno", "Reincidencia", "Detalle"]
-    )
-    with tab_resumen:
-        dataframe_liviano(causas, height=360)
-    with tab_externo:
-        dataframe_liviano(
-            causas[causas[TEXT_SEGMENTO] == "Cliente externo"],
-            height=360,
-        )
-    with tab_interno:
-        dataframe_liviano(
-            causas[causas[TEXT_SEGMENTO] == "Cliente interno"],
-            height=360,
-        )
-    with tab_reincidencia:
-        render_reincidencia_kpi_incidentes(base, metricas)
-    with tab_detalle:
-        temas_detalle = base.apply(clasificacion_tema_incidente, axis=1)
-        columnas_temas = [
-            COL_CAUSA_RAIZ,
-            COL_FAMILIA_INCIDENTE,
-            COL_LECTURA_EJECUTIVA,
-            COL_ACCION_SUGERIDA,
-            COL_EVIDENCIA_INCIDENTE,
-        ]
-        base = base.copy()
-        base[columnas_temas] = pd.DataFrame(temas_detalle.tolist(), index=base.index)
-        columnas = [
-            TEXT_NUMERO,
-            TEXT_SEGMENTO,
-            TEXT_ESTADO,
-            TEXT_PRIORIDAD,
-            TEXT_SERVICIO_NEGOCIO,
-            TEXT_CAUSA_RAIZ_AUTO,
-            COL_CAUSA_RAIZ,
-            COL_FAMILIA_INCIDENTE,
-            COL_EVIDENCIA_INCIDENTE,
-            TEXT_TIPO_INCIDENTE_AUTO,
-            TEXT_DURACION_SLA_HORAS,
-            TEXT_ESTADO_SLA,
-            COL_REINCIDENTE,
-            COL_FIRMA_REINCIDENCIA,
-            TEXT_EMPRESA,
-            TEXT_SOLICITANTE,
-            TEXT_CREADO,
-            TEXT_CERRADO,
-            TEXT_BREVE_DESCRIPCION,
-        ]
-        dataframe_liviano(
-            base[[col for col in columnas if col in base.columns]],
-            height=420,
-        )
+    with st.expander("Análisis complementario: temas técnicos y repeticiones"):
+        preparados, metricas = preparar_kpi_incidentes(incidentes)
+        causas = resumen_causas_kpi_incidentes(preparados)
+        st.caption("Los temas derivados del texto son sugerencias de análisis y requieren validación técnica. "
+                   "La clasificación oficial y los resultados de tiempo se muestran en el panel superior.")
+        st.dataframe(causas.rename(columns={COL_CAUSA_RAIZ: "Tema técnico (inferencia)"}),
+                     use_container_width=True, hide_index=True)
+        st.caption("Las repeticiones se calculan con los registros del período seleccionado; "
+                   "un antecedente fuera del período puede requerir revisión del histórico.")
+        render_reincidencia_kpi_incidentes(preparados, metricas)
 
 
 def canal_agrupado_agendamiento(canal):
@@ -7081,7 +7032,7 @@ COLUMNAS_RESUMEN_TIPOLOGIAS = [
     TEXT_CERRADOS,
     TEXT_ABIERTOS,
     "SLA aplica",
-    "Objetivo atencion",
+    "Objetivo resolucion",
     COL_CUMPLE_SLA,
     COL_NO_CUMPLE_SLA,
     "SLA %",
@@ -7159,7 +7110,7 @@ def fila_resumen_tipologia(trabajo, tipologia):
         TEXT_CERRADOS: len(cerrados),
         TEXT_ABIERTOS: len(grupo) - len(cerrados),
         "SLA aplica": "Si" if sla_aplica else "No aplica",
-        "Objetivo atencion": objetivo_atencion_tipologia(objetivos),
+        "Objetivo resolucion": objetivo_atencion_tipologia(objetivos),
         COL_CUMPLE_SLA: cumple if sla_aplica else pd.NA,
         COL_NO_CUMPLE_SLA: no_cumple if sla_aplica else pd.NA,
         "SLA %": sla_porcentaje,
@@ -9411,261 +9362,12 @@ def dashboard_incidentes():
     anio, mes, periodo_label = selector_periodo_sql("incidents", "dashboard_incidentes_periodo")
     if not periodo_sql_valido(anio, "incidentes"):
         return
-    df = cargar_incidentes_sla_filtrados_cache(anio, mes)
+    df = cargar_incidentes_filtrados_cache(anio, mes)
     if df.empty:
         st.info(f"No hay incidentes cargados para {periodo_label}.")
         return
-
     df = preparar_fechas_dashboard(df)
-    if df.empty:
-        st.info(f"No hay incidentes cargados para {periodo_label}.")
-        return
-
-    total = len(df)
-    cerrados_mask = mascara_cerrados(df)
-    cerrados = len(df[cerrados_mask])
-    abiertos = total - cerrados
-
-    incidentes_reales = df[df[TEXT_APLICA_SLA_INCIDENTE]].copy()
-    atenciones_noc = df[df[TEXT_TIPIFICACION_AUTO].fillna("") == NOC_TIPIFICATION].copy()
-    incidentes_externos = df[df[TEXT_TIPIFICACION_AUTO].fillna("") == TIPIFICACION_INCIDENTE_CLIENTE_EXTERNO].copy()
-    incidentes_internos = df[df[TEXT_TIPIFICACION_AUTO].fillna("") == TIPIFICACION_INCIDENTE_INTERNO].copy()
-    casos_cliente_externo = df[df[TEXT_TIPIFICACION_AUTO].fillna("") == TIPIFICACION_CASO_CLIENTE_EXTERNO].copy()
-
-    duraciones = pd.to_numeric(incidentes_reales[TEXT_DURACION_SLA_HORAS], errors=TEXT_COERCE).dropna()
-    promedio = round(duraciones.mean(), 2) if len(duraciones) > 0 else 0
-
-    df_cerrados = incidentes_reales[mascara_cerrados(incidentes_reales)].copy()
-    df_cerrados = df_cerrados[df_cerrados[TEXT_ESTADO_SLA].isin([ESTADO_SLA_CUMPLE, ESTADO_SLA_NO_CUMPLE])]
-    total_cerrados = len(df_cerrados)
-    cumplen = len(df_cerrados[df_cerrados[TEXT_ESTADO_SLA] == ESTADO_SLA_CUMPLE])
-    porcentaje_sla = round((cumplen / total_cerrados) * 100, 2) if total_cerrados > 0 else 0
-    incumplen = total_cerrados - cumplen
-    sla_base = df_cerrados.copy()
-    if not sla_base.empty:
-        sla_base[TEXT_DURACION_HORAS_NUM] = pd.to_numeric(sla_base[TEXT_DURACION_SLA_HORAS], errors=TEXT_COERCE)
-        sla_base[TEXT_DURACION_DIAS_NUM] = (sla_base[TEXT_DURACION_HORAS_NUM] / 24).round(2)
-        sla_base["sla_objetivo_dias"] = (pd.to_numeric(sla_base[TEXT_SLA_OBJETIVO_HORAS], errors=TEXT_COERCE) / 24).round(2)
-        sla_base[COL_SLA_OBJETIVO] = sla_base[TEXT_SLA_OBJETIVO_HORAS].apply(formato_horas_dias)
-        sla_base["Rango resolucion"] = sla_base[TEXT_DURACION_HORAS_NUM].apply(clasificar_rango_resolucion)
-
-    casos_cerrados = casos_cliente_externo[mascara_cerrados(casos_cliente_externo)].copy()
-    casos_cerrados = casos_cerrados[casos_cerrados[TEXT_ESTADO_SLA].isin([ESTADO_SLA_CUMPLE, ESTADO_SLA_NO_CUMPLE])]
-    casos_cumplen = int((casos_cerrados[TEXT_ESTADO_SLA] == ESTADO_SLA_CUMPLE).sum())
-    casos_total_sla = len(casos_cerrados)
-    casos_sla = round((casos_cumplen / casos_total_sla) * 100, 2) if casos_total_sla else 0
-
-    render_tarjetas(
-        [
-            (TEXT_ATENCIONES, total),
-            ("Incidentes reales", len(incidentes_reales)),
-            ("Alertas y Consultas NOC", len(atenciones_noc)),
-            (LABEL_CASOS_CLIENTE_EXTERNO, len(casos_cliente_externo)),
-            ("SLA incidentes", f"{porcentaje_sla}%"),
-        ]
-    )
-    st.caption(
-        f"{TEXT_PERIODO}{periodo_label} | Cerrados: {cerrados} | Abiertos: {abiertos} | "
-        f"Promedio incidentes: {promedio}h | Cumplen: {cumplen}{TEXT_NO_CUMPLEN}{incumplen} | "
-        f"Externos: {len(incidentes_externos)} | Internos: {len(incidentes_internos)} | "
-        f"SLA casos cliente externo: {casos_sla}%"
-    )
-
-    st.divider()
-    render_carga_agentes(df, TEXT_ASIGNADO_A, "Carga por agente - incidentes", TEXT_INCIDENTES)
-
-    st.divider()
-    st.subheader("Clasificacion de atenciones")
-    st.caption(
-        "Vista consolidada de lo recibido: NOC, casos cliente externo e incidentes reales internos o externos."
-    )
-    st.dataframe(
-        tabla_resumen_tipologias_incidentes(df),
-        use_container_width=True,
-        hide_index=True,
-    )
-
-    st.divider()
-    fila1_col1, fila1_col2 = st.columns(2)
-
-    with fila1_col1:
-        tip = df[TEXT_TIPIFICACION_AUTO].fillna("Sin clasificacion").value_counts().reset_index()
-        tip.columns = [TEXT_TIPOLOGIA, TEXT_CANTIDAD]
-        tip = tip.sort_values(by=TEXT_CANTIDAD, ascending=True)
-        fig = px.bar(
-            tip,
-            x=TEXT_CANTIDAD,
-            y=TEXT_TIPOLOGIA,
-            orientation="h",
-            text=TEXT_CANTIDAD,
-            color=TEXT_TIPOLOGIA,
-            color_discrete_sequence=CHART_COLORS,
-        )
-        fig.update_traces(textposition=TEXT_OUTSIDE)
-        fig.update_layout(showlegend=False)
-        st.plotly_chart(aplicar_estilo_figura(fig, "Clasificacion general"), use_container_width=True)
-
-    with fila1_col2:
-        serie = df.copy()
-        atenciones_dia = serie.groupby(serie[TEXT_CREADO_DT_DASHBOARD].dt.date).size().reset_index(name=TEXT_ATENCIONES)
-        atenciones_dia.columns = [TEXT_FECHA, TEXT_ATENCIONES]
-        fig = px.bar(
-            atenciones_dia,
-            x=TEXT_FECHA,
-            y=TEXT_ATENCIONES,
-            color_discrete_sequence=[UI_PALETTE[TEXT_PURPLE]],
-        )
-        fig.update_traces(marker_color=UI_PALETTE[TEXT_PURPLE])
-        st.plotly_chart(aplicar_estilo_figura(fig, "Atenciones por dia"), use_container_width=True)
-
-    st.divider()
-    st.subheader("SLA de incidentes reales")
-    if sla_base.empty:
-        st.info("No hay incidentes cerrados con objetivo SLA para el periodo seleccionado.")
-        diagnostico_sla = pd.DataFrame(
-            [
-                ("Incidentes reales", len(incidentes_reales)),
-                ("Incidentes reales cerrados", len(incidentes_reales[mascara_cerrados(incidentes_reales)])),
-                (
-                    "Con objetivo SLA",
-                    int(pd.to_numeric(incidentes_reales[TEXT_SLA_OBJETIVO_HORAS], errors=TEXT_COERCE).notna().sum())
-                    if TEXT_SLA_OBJETIVO_HORAS in incidentes_reales.columns
-                    else 0,
-                ),
-                (
-                    "Con duracion SLA",
-                    int(pd.to_numeric(incidentes_reales[TEXT_DURACION_SLA_HORAS], errors=TEXT_COERCE).notna().sum())
-                    if TEXT_DURACION_SLA_HORAS in incidentes_reales.columns
-                    else 0,
-                ),
-            ],
-            columns=["Validacion", TEXT_CANTIDAD],
-        )
-        st.dataframe(diagnostico_sla, use_container_width=True, hide_index=True)
-    else:
-        st.caption(
-            "Solo incluye incidentes reales. Seguridad se muestra como tipo de incidente dentro de cliente externo o interno."
-        )
-        sla_base[TEXT_SEGMENTO] = sla_base[TEXT_TIPIFICACION_AUTO] + " - " + sla_base[TEXT_TIPO_INCIDENTE_AUTO]
-        cumplimiento_segmento = (
-            sla_base.groupby([TEXT_SEGMENTO, TEXT_ESTADO_SLA])
-            .size()
-            .reset_index(name=TEXT_CANTIDAD)
-            .sort_values(by=TEXT_CANTIDAD, ascending=True)
-        )
-        fig = px.bar(
-            cumplimiento_segmento,
-            x=TEXT_CANTIDAD,
-            y=TEXT_SEGMENTO,
-            orientation="h",
-            text=TEXT_CANTIDAD,
-            color=TEXT_ESTADO_SLA,
-            barmode="stack",
-            color_discrete_map={
-                ESTADO_SLA_CUMPLE: UI_PALETTE[TEXT_LAVENDER],
-                ESTADO_SLA_NO_CUMPLE: UI_PALETTE[TEXT_PRIMARY],
-            },
-            labels={TEXT_ESTADO_SLA: "Estado SLA"},
-        )
-        fig.update_traces(textposition="inside")
-        st.plotly_chart(aplicar_estilo_figura(fig, "SLA por tipo de incidente"), use_container_width=True)
-
-        sla_resumen = (
-            sla_base.groupby(
-                [TEXT_TIPIFICACION_AUTO, TEXT_TIPO_INCIDENTE_AUTO, TEXT_PRIORIDAD_NORMALIZADA, TEXT_SLA_OBJETIVO_HORAS, COL_SLA_OBJETIVO],
-                dropna=False,
-            )
-            .agg(
-                Total=(TEXT_NUMERO, TEXT_COUNT),
-                Cumple=(TEXT_ESTADO_SLA, lambda serie: int((serie == ESTADO_SLA_CUMPLE).sum())),
-                No_cumple=(TEXT_ESTADO_SLA, lambda serie: int((serie == ESTADO_SLA_NO_CUMPLE).sum())),
-                Prom_horas=(TEXT_DURACION_HORAS_NUM, "mean"),
-                Prom_dias=(TEXT_DURACION_DIAS_NUM, "mean"),
-                Max_horas=(TEXT_DURACION_HORAS_NUM, "max"),
-                Max_dias=(TEXT_DURACION_DIAS_NUM, "max"),
-            )
-            .reset_index()
-        )
-        sla_resumen["Cumplimiento %"] = sla_resumen.apply(
-            lambda row: porcentaje(row[ESTADO_SLA_CUMPLE], row[TEXT_TOTAL]),
-            axis=1,
-        )
-        sla_resumen = sla_resumen.rename(
-            columns={
-                TEXT_TIPIFICACION_AUTO: TEXT_TIPIFICACION,
-                TEXT_TIPO_INCIDENTE_AUTO: "Tipo incidente",
-                TEXT_PRIORIDAD_NORMALIZADA: TEXT_PRIORIDAD_2,
-                TEXT_SLA_OBJETIVO_HORAS: COL_SLA_OBJETIVO_H,
-                "No_cumple": ESTADO_SLA_NO_CUMPLE,
-                "Prom_horas": COL_PROM_HORAS,
-                "Prom_dias": COL_PROM_DIAS,
-                "Max_horas": COL_MAX_HORAS,
-                "Max_dias": COL_MAX_DIAS,
-            }
-        )
-        columnas_numericas = [COL_PROM_HORAS, COL_PROM_DIAS, COL_MAX_HORAS, COL_MAX_DIAS, COL_SLA_OBJETIVO_H]
-        for columna in columnas_numericas:
-            sla_resumen[columna] = pd.to_numeric(sla_resumen[columna], errors=TEXT_COERCE).round(2)
-        st.dataframe(
-            sla_resumen[
-                [
-                    TEXT_TIPIFICACION,
-                    "Tipo incidente",
-                    TEXT_PRIORIDAD_2,
-                    COL_SLA_OBJETIVO,
-                    COL_SLA_OBJETIVO_H,
-                    COL_PROM_HORAS,
-                    COL_PROM_DIAS,
-                    COL_MAX_HORAS,
-                    COL_MAX_DIAS,
-                    ESTADO_SLA_CUMPLE,
-                    ESTADO_SLA_NO_CUMPLE,
-                    TEXT_TOTAL,
-                    "Cumplimiento %",
-                ]
-            ],
-            use_container_width=True,
-            hide_index=True,
-        )
-
-    st.divider()
-    st.subheader("Causas raiz de incidentes")
-    causa_col1, causa_col2 = st.columns(2)
-    with causa_col1:
-        render_causas_incidentes(incidentes_externos, "Causas cliente externo", "% cliente externo")
-    with causa_col2:
-        render_causas_incidentes(incidentes_internos, "Causas cliente interno", "% cliente interno")
-
-    st.divider()
-    st.subheader(LABEL_CASOS_CLIENTE_EXTERNO)
-    if casos_cliente_externo.empty:
-        st.info("No hay casos cliente externo para el periodo seleccionado.")
-        return
-
-    caso_col1, caso_col2 = st.columns(2)
-    with caso_col1:
-        st.markdown(tarjeta(LABEL_CASOS_CLIENTE_EXTERNO, len(casos_cliente_externo)), unsafe_allow_html=True)
-        st.caption("SLA propio de mesa de ayuda: 36 horas habiles.")
-    with caso_col2:
-        st.markdown(tarjeta("SLA casos", f"{casos_sla}%"), unsafe_allow_html=True)
-        st.caption(f"Cumplen: {casos_cumplen}{TEXT_NO_CUMPLEN}{casos_total_sla - casos_cumplen}")
-
-    motivos = resumen_motivos_caso_cliente_externo(casos_cliente_externo)
-    if motivos.empty:
-        st.info("No hay motivos suficientes para graficar casos cliente externo.")
-    else:
-        grafico_motivos = motivos.sort_values(by=TEXT_CANTIDAD, ascending=True)
-        fig = px.bar(
-            grafico_motivos,
-            x=TEXT_CANTIDAD,
-            y=COL_MOTIVO_CASO,
-            orientation="h",
-            text=TEXT_CANTIDAD,
-            color_discrete_sequence=[UI_PALETTE[TEXT_YELLOW]],
-        )
-        fig.update_traces(textposition=TEXT_OUTSIDE)
-        st.plotly_chart(aplicar_estilo_figura(fig, "Motivos de casos cliente externo"), use_container_width=True)
-        st.dataframe(motivos, use_container_width=True, hide_index=True)
+    render_panel_incidentes_ans(df, "dashboard_incidentes_ans", "Dashboard Incidentes", periodo_label)
 
 
 def texto_normalizado_campos(row, campos):

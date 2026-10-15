@@ -1,0 +1,8 @@
+{
+  "procedimiento": "SER-PR-001 v003",
+  "zona_horaria": "America/Bogota",
+  "dias_semana": [0, 1, 2, 3, 4],
+  "franjas": [["08:00", "17:00"]],
+  "horas_por_dia": 9,
+  "festivos": []
+}

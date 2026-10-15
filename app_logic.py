@@ -7,6 +7,11 @@ from time import monotonic, sleep
 
 import pandas as pd
 from services.casos_sla import guardar_fecha_plataforma
+from services.incidentes_sla import (
+    ATENCION_MINUTOS, CATEGORIAS, COLUMNAS_FECHAS, CONSULTA, INCIDENTE, SEGURIDAD,
+    agregar_evaluacion, evaluar_incidente, categoria_gestion, objetivos as objetivos_incidente,
+    prioridad_gestion, segundos_soporte,
+)
 from services.servicenow_diagnostico import diagnosticar_fallo, cerrar_control
 from services.casos_historial import texto_util_caso, limpiar_mensaje
 from services.servicenow import (
@@ -18,6 +23,7 @@ from repositories.servicenow import (
     leer_estado_sincronizacion, guardar_estado_sincronizacion,
     activar_sincronizacion_casos, leer_activacion_casos, leer_historial_conversacion,
     leer_campos_casos, leer_evidencia_casos,
+    leer_fechas_incidentes,
     guardar_estado_sincronizacion_manual,
 )
 from core.servicenow_config import guardar_conexion_servidor, conexion_configurada, sincronizacion_habilitada
@@ -173,6 +179,9 @@ INCIDENT_ALIASES = {
     "lista_notas_trabajo": ["lista de notas de trabajo"],
     "tipificacion_original": ["tipificacion", "tipificacion original"],
     "causa_raiz_original": ["causa raiz", "causa raiz original"],
+    "fecha_notificacion": ["fecha notificacion", "fecha de notificación", "abierto el", "opened_at"],
+    "fecha_atencion": ["fecha atencion", "fecha de atención", "primera atencion", "primera respuesta", "first_response_at"],
+    "fecha_resolucion": ["fecha resolucion", "fecha de resolución", "resuelto el", "resolved_at"],
 }
 
 INCIDENT_TEXT_FIELDS = [
@@ -420,10 +429,8 @@ TIPIFICACIONES_NOC = {
 
 SLA_RESOLUCION_HORAS = {
     "Operativo": {
-        "Critico": 4,
-        "Alto": 8,
-        "Moderado": 96,
-        "Bajo": 192,
+        prioridad: objetivos_incidente(INCIDENTE, prioridad)[1]
+        for prioridad in ATENCION_MINUTOS
     },
     "Seguridad": {
         "Critico": 4,
@@ -432,16 +439,10 @@ SLA_RESOLUCION_HORAS = {
         "Bajo": 48,
     },
     "Consulta": {
-        "Critico": 96,
-        "Alto": 96,
-        "Moderado": 96,
-        "Bajo": 96,
+        "Moderado": objetivos_incidente(CONSULTA, "Moderado")[1],
     },
     "NOC": {
-        "Critico": 96,
-        "Alto": 96,
-        "Moderado": 96,
-        "Bajo": 96,
+        "Moderado": objetivos_incidente(CONSULTA, "Moderado")[1],
     },
     TIPIFICACION_CASO_CLIENTE_EXTERNO: {
         "Critico": 36,
@@ -453,10 +454,7 @@ SLA_RESOLUCION_HORAS = {
 
 # SLAs de Tiempo de Respuesta por Prioridad (en minutos)
 SLA_TIEMPO_RESPUESTA_MINUTOS = {
-    "Critico": 30,      # 30 minutos
-    "Alto": 45,         # 45 minutos
-    "Moderado": 60,     # 1 hora
-    "Bajo": 120,        # 2 horas
+    **ATENCION_MINUTOS,
 }
 
 # SLAs de Disponibilidad
@@ -1728,6 +1726,7 @@ def init_db():
             "causa_raiz_auto": "TEXT",
             "es_alerta_auto": "TEXT",
             "duracion_horas": "REAL",
+            **{columna: "TEXT" for columna in COLUMNAS_FECHAS},
         },
     )
     ensure_table_columns(conn, "cases", {columna: "TEXT" for columna in CASE_ALIASES})
@@ -2588,6 +2587,13 @@ def tipificacion_incidente(row):
     es_externo = es_cliente_externo_incidente(row, texto, texto_resolucion)
     incidente_real = es_incidente_real(row, texto, texto_resolucion)
 
+    # La categoría registrada prevalece sobre inferencias y segmento comercial.
+    categoria = categoria_gestion(valor_fila(row, "categoria"))
+    if categoria == CONSULTA:
+        return TIPIFICACION_ATENCION_NOC
+    if categoria in (INCIDENTE, SEGURIDAD):
+        return TIPIFICACION_INCIDENTE_CLIENTE_EXTERNO if es_externo else TIPIFICACION_INCIDENTE_INTERNO
+
     if origen_noc and not incidente_real:
         return TIPIFICACION_ATENCION_NOC
     if categoria_es_consulta(row):
@@ -2622,6 +2628,11 @@ def tipo_incidente_auto(row, tipificacion=None):
     tipificacion = tipificacion or tipificacion_incidente(row)
     if tipificacion not in TIPIFICACIONES_INCIDENTE_REAL:
         return "No aplica"
+    categoria = categoria_gestion(valor_fila(row, "categoria"))
+    if categoria == SEGURIDAD:
+        return TIPO_INCIDENTE_SEGURIDAD
+    if categoria == INCIDENTE:
+        return TIPO_INCIDENTE_OPERATIVO
     if categoria_es_seguridad(row):
         return TIPO_INCIDENTE_SEGURIDAD
     return TIPO_INCIDENTE_OPERATIVO
@@ -2711,16 +2722,7 @@ def inferir_componente_incidente(texto, tipificacion=None, es_alerta=None):
 
 
 def normalizar_prioridad_incidente(valor):
-    texto = normalizar_texto(valor)
-    if re.search(r"(?<!\d)1(?!\d)", texto) or "crit" in texto:
-        return "Critico"
-    if re.search(r"(?<!\d)2(?!\d)", texto) or "alta" in texto or "alto" in texto:
-        return "Alto"
-    if re.search(r"(?<!\d)3(?!\d)", texto) or "moderad" in texto or "media" in texto:
-        return "Moderado"
-    if re.search(r"(?<!\d)4(?!\d)", texto) or "baja" in texto or "bajo" in texto:
-        return "Bajo"
-    return "Moderado"
+    return prioridad_gestion(valor)
 
 
 def familia_sla_incidente(tipificacion, tipo_incidente=None):
@@ -2736,6 +2738,10 @@ def familia_sla_incidente(tipificacion, tipo_incidente=None):
 
 
 def sla_objetivo_horas_incidente(row):
+    categoria = categoria_gestion(valor_fila(row, "categoria"))
+    if categoria in CATEGORIAS:
+        prioridad = "Moderado" if categoria == CONSULTA else normalizar_prioridad_incidente(valor_fila(row, "prioridad"))
+        return objetivos_incidente(categoria, prioridad)[1]
     tipificacion = valor_fila(row, "tipificacion_auto") or tipificacion_incidente(row)
     tipo_incidente = valor_fila(row, "tipo_incidente_auto") or tipo_incidente_auto(row, tipificacion)
     familia = familia_sla_incidente(tipificacion, tipo_incidente)
@@ -2756,6 +2762,10 @@ def aplica_sla_atencion_noc(tipificacion):
 
 
 def duracion_sla_horas_incidente(row):
+    if categoria_gestion(valor_fila(row, "categoria")) in CATEGORIAS:
+        inicio = valor_fila(row, "fecha_notificacion") or valor_fila(row, "creado")
+        segundos = segundos_soporte(inicio, valor_fila(row, "fecha_resolucion"))
+        return None if segundos is None else segundos / 3600
     tipificacion = valor_fila(row, "tipificacion_auto") or tipificacion_incidente(row)
     if tipificacion == TIPIFICACION_CASO_CLIENTE_EXTERNO:
         horas = tiempo(normalizar_fecha(valor_fila(row, "creado")), normalizar_fecha(valor_fila(row, "cerrado")))
@@ -2774,6 +2784,8 @@ def duracion_sla_horas_incidente(row):
 
 
 def estado_sla_incidente(row):
+    if categoria_gestion(valor_fila(row, "categoria")) in CATEGORIAS:
+        return evaluar_incidente(row)["resolucion_estado"]
     objetivo = safe_float(valor_fila(row, "sla_objetivo_horas"))
     duracion = safe_float(valor_fila(row, "duracion_sla_horas"))
     if duracion is None:
@@ -2802,23 +2814,34 @@ def agregar_campos_sla_incidentes(df):
     if trabajo.empty:
         for columna, serie in columnas_default.items():
             trabajo[columna] = serie
-        return trabajo
+        return agregar_evaluacion(trabajo)
 
     clasificaciones = trabajo.apply(clasificacion_incidente_detallada, axis=1, result_type="expand")
     for columna in ["origen_auto", "tipificacion_auto", "tipo_incidente_auto", "es_alerta_auto", "causa_raiz_auto"]:
         trabajo[columna] = clasificaciones[columna]
 
-    trabajo["prioridad_normalizada"] = trabajo["prioridad"].apply(normalizar_prioridad_incidente)
+    trabajo["prioridad_normalizada"] = trabajo.get("prioridad", pd.Series(index=trabajo.index, dtype="object")).apply(normalizar_prioridad_incidente)
     trabajo["familia_sla"] = trabajo.apply(
         lambda row: familia_sla_incidente(row["tipificacion_auto"], row["tipo_incidente_auto"]),
         axis=1,
     )
-    trabajo["sla_objetivo_horas"] = trabajo.apply(sla_objetivo_horas_incidente, axis=1)
-    trabajo["duracion_sla_horas"] = trabajo.apply(duracion_sla_horas_incidente, axis=1)
     trabajo["aplica_sla_incidente"] = trabajo["tipificacion_auto"].apply(aplica_sla_incidente)
     trabajo["aplica_sla_caso_cliente_externo"] = trabajo["tipificacion_auto"].apply(aplica_sla_caso_cliente_externo)
     trabajo["aplica_sla_atencion_noc"] = trabajo["tipificacion_auto"].apply(aplica_sla_atencion_noc)
-    trabajo["estado_sla"] = trabajo.apply(estado_sla_incidente, axis=1)
+    trabajo = agregar_evaluacion(trabajo)
+    normativos = trabajo["categoria_gestion"].isin(CATEGORIAS)
+    trabajo["sla_objetivo_horas"] = pd.to_numeric(trabajo["objetivo_resolucion_horas"], errors="coerce")
+    trabajo["duracion_sla_horas"] = pd.to_numeric(trabajo["resolucion_segundos"], errors="coerce") / 3600
+    trabajo["estado_sla"] = trabajo["resolucion_estado"]
+    trabajo.loc[normativos, "prioridad_normalizada"] = trabajo.loc[normativos, "prioridad_gestion"]
+    # Compatibilidad de análisis de mesa de ayuda fuera de las tres categorías.
+    if (~normativos).any():
+        anteriores = trabajo.loc[~normativos].copy()
+        anteriores["sla_objetivo_horas"] = anteriores.apply(sla_objetivo_horas_incidente, axis=1)
+        anteriores["duracion_sla_horas"] = anteriores.apply(duracion_sla_horas_incidente, axis=1)
+        anteriores["estado_sla"] = anteriores.apply(estado_sla_incidente, axis=1)
+        for columna in ("sla_objetivo_horas", "duracion_sla_horas", "estado_sla"):
+            trabajo.loc[~normativos, columna] = anteriores[columna]
     return trabajo
 
 
@@ -3035,6 +3058,7 @@ INCIDENT_DB_COLUMNS = [
     "causa_raiz_auto",
     "es_alerta_auto",
     "duracion_horas",
+    *COLUMNAS_FECHAS,
 ]
 
 
@@ -3100,6 +3124,7 @@ def guardar_incidentes(df, progress_callback=None, actor_email=None):
                 clasificacion["causa_raiz_auto"],
                 clasificacion["es_alerta_auto"],
                 duracion_horas,
+                *(normalizar_fecha(valor_fila(row, columna)) for columna in COLUMNAS_FECHAS),
             )
         )
         if indice % DB_BATCH_SIZE == 0 or indice == total_filas:
@@ -3136,9 +3161,47 @@ def aplicar_clasificacion_incidentes(df):
     return df
 
 
+def completar_fechas_incidentes(df):
+    """Recupera fechas ya importadas en JSON, sin volver a consultar la API."""
+    if df.empty:
+        return df
+    df = df.copy()
+    for columna in COLUMNAS_FECHAS:
+        if columna not in df.columns:
+            df[columna] = ""
+    pendientes = df[list(COLUMNAS_FECHAS)].fillna("").eq("").any(axis=1)
+    if not pendientes.any():
+        return df
+    from services.servicenow import INCIDENT_FIELDS
+    import json
+
+    campos = {c for columna in COLUMNAS_FECHAS for c in INCIDENT_FIELDS[columna]}
+    try:
+        overrides = json.loads(config_value("SERVICENOW_INCIDENT_FIELD_MAP", "{}"))
+        campos.update(v for k, v in overrides.items() if k in COLUMNAS_FECHAS and isinstance(v, str))
+    except (ValueError, AttributeError):
+        raise ServiceNowError("SERVICENOW_INCIDENT_FIELD_MAP debe contener un objeto JSON de nombres de campos.") from None
+    conn = get_conn()
+    try:
+        filas = leer_fechas_incidentes(conn, df.loc[pendientes, "numero"].tolist(), sorted(campos))
+    finally:
+        conn.close()
+    fechas = {}
+    for numero, raw in filas:
+        if raw:
+            mapped = mapear_documento({"campos_raw": {**raw, "number": numero}}, "incidentes")
+            fechas[numero] = {k: mapped[k] for k in COLUMNAS_FECHAS if k in mapped}
+    resultado = df.copy()
+    for columna in COLUMNAS_FECHAS:
+        vacios = resultado[columna].fillna("").eq("")
+        resultado.loc[vacios, columna] = resultado.loc[vacios, "numero"].map(
+            lambda numero: fechas.get(numero, {}).get(columna, ""))
+    return resultado
+
+
 def load_incidentes():
     exigir_contexto_lectura()
-    return aplicar_clasificacion_incidentes(read_table("incidents"))
+    return aplicar_clasificacion_incidentes(completar_fechas_incidentes(read_table("incidents")))
 
 
 def load_incidentes_filtrados(
@@ -3168,7 +3231,7 @@ def load_incidentes_filtrados(
         },
         limit=limit,
     )
-    return aplicar_clasificacion_incidentes(df)
+    return aplicar_clasificacion_incidentes(completar_fechas_incidentes(df))
 
 
 def umbral_alerta_por_volumen(total, proporcion=0.08, minimo=2):
@@ -4389,35 +4452,29 @@ def construir_analisis_anual_reincidencias_incidentes(incidentes_df):
 # ============================================================================
 
 def calcular_tiempo_respuesta_minutos(row):
-    """Calcula el tiempo de respuesta en minutos desde creación hasta primera respuesta."""
-    creado = pd.to_datetime(normalizar_fecha(valor_fila(row, "creado")), errors="coerce")
-    
-    # Intentar obtener fecha de respuesta de varios campos posibles
-    fecha_respuesta = pd.to_datetime(
-        normalizar_fecha(valor_fila(row, "tiempo_respuesta") or 
-                        valor_fila(row, "fecha_respuesta") or 
-                        valor_fila(row, "actualizado")), 
-        errors="coerce"
-    )
-    
-    if pd.isna(creado) or pd.isna(fecha_respuesta) or fecha_respuesta < creado:
-        return None
-    
-    return round((fecha_respuesta - creado).total_seconds() / 60, 2)
+    """Solo una fecha explícita de atención acredita la primera respuesta."""
+    inicio = valor_fila(row, "fecha_notificacion") or valor_fila(row, "creado")
+    segundos = segundos_soporte(inicio, valor_fila(row, "fecha_atencion"))
+    return None if segundos is None else segundos / 60
 
 
 def obtener_sla_respuesta_minutos(row):
     """Obtiene el SLA de tiempo de respuesta según la prioridad."""
     prioridad = normalizar_prioridad_incidente(valor_fila(row, "prioridad"))
-    return SLA_TIEMPO_RESPUESTA_MINUTOS.get(prioridad, 120)
+    if categoria_gestion(valor_fila(row, "categoria")) == CONSULTA:
+        prioridad = "Moderado"
+    return SLA_TIEMPO_RESPUESTA_MINUTOS.get(prioridad)
 
 
 def evaluar_cumplimiento_sla_respuesta(row):
     """Evalúa si se cumple el SLA de tiempo de respuesta."""
+    if categoria_gestion(valor_fila(row, "categoria")) in CATEGORIAS:
+        estado = evaluar_incidente(row)["atencion_estado"]
+        return estado if estado in {"Cumple", "No cumple"} else None
     tiempo_respuesta = calcular_tiempo_respuesta_minutos(row)
     sla_objetivo = obtener_sla_respuesta_minutos(row)
     
-    if tiempo_respuesta is None:
+    if tiempo_respuesta is None or sla_objetivo is None:
         return None
     
     return "Cumple" if tiempo_respuesta <= sla_objetivo else "No cumple"
@@ -4425,6 +4482,9 @@ def evaluar_cumplimiento_sla_respuesta(row):
 
 def evaluar_cumplimiento_sla_solucion(row):
     """Evalúa si se cumple el SLA de tiempo de solución."""
+    if categoria_gestion(valor_fila(row, "categoria")) in CATEGORIAS:
+        estado = estado_sla_incidente(row)
+        return estado if estado in {"Cumple", "No cumple"} else None
     objetivo = safe_float(valor_fila(row, "sla_objetivo_horas"))
     duracion = safe_float(valor_fila(row, "duracion_sla_horas"))
     
@@ -4735,15 +4795,19 @@ def resumir_cumplimiento_sla_incidentes(incidentes_df, filtro_mes=None):
     cumple_solucion = (trabajo["estado_sla"] == "Cumple").sum()
     no_cumple_solucion = (trabajo["estado_sla"] == "No cumple").sum()
     
-    pct_cumple_respuesta = (cumple_respuesta / total_incidentes * 100) if total_incidentes > 0 else 0
-    pct_cumple_solucion = (cumple_solucion / total_incidentes * 100) if total_incidentes > 0 else 0
+    evaluados_respuesta = cumple_respuesta + no_cumple_respuesta
+    evaluados_solucion = cumple_solucion + no_cumple_solucion
+    pct_cumple_respuesta = (cumple_respuesta / evaluados_respuesta * 100) if evaluados_respuesta else None
+    pct_cumple_solucion = (cumple_solucion / evaluados_solucion * 100) if evaluados_solucion else None
     
     return pd.DataFrame([{
         "Total_Incidentes": total_incidentes,
         "Cumple_Respuesta": cumple_respuesta,
         "No_Cumple_Respuesta": no_cumple_respuesta,
-        "Pct_Cumple_Respuesta": round(pct_cumple_respuesta, 1),
+        "Evaluados_Respuesta": evaluados_respuesta,
+        "Pct_Cumple_Respuesta": round(pct_cumple_respuesta, 1) if pct_cumple_respuesta is not None else None,
         "Cumple_Solucion": cumple_solucion,
         "No_Cumple_Solucion": no_cumple_solucion,
-        "Pct_Cumple_Solucion": round(pct_cumple_solucion, 1),
+        "Evaluados_Solucion": evaluados_solucion,
+        "Pct_Cumple_Solucion": round(pct_cumple_solucion, 1) if pct_cumple_solucion is not None else None,
     }])

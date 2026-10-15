@@ -108,6 +108,17 @@ def leer_documento(conn, tabla, numero):
     return documento
 
 
+def leer_fechas_incidentes(conn, numeros, campos):
+    if not numeros:
+        return []
+    return db_execute(conn, """SELECT numero,
+        (SELECT jsonb_object_agg(campo.key, campo.value)
+         FROM jsonb_each(COALESCE(documento->'campos_raw', '{}'::jsonb)) campo
+         WHERE campo.key = ANY(?::text[])) AS fechas
+        FROM servicenow_records WHERE tabla = 'incident' AND numero = ANY(?::text[])""",
+        (campos, list(dict.fromkeys(numeros)))).fetchall()
+
+
 def leer_historial_conversacion(conn, tabla, numero):
     row = db_execute(conn, """SELECT COALESCE(documento->'historial_conversacion', documento->'traza_unificada', '[]'::jsonb)
         FROM servicenow_records WHERE tabla = ? AND numero = ?""", (tabla, numero)).fetchone()
