@@ -6500,7 +6500,7 @@ def render_kpi_incidentes(df, mes_dashboard=None):
         preparados, metricas = preparar_kpi_incidentes(incidentes)
         causas = resumen_causas_kpi_incidentes(preparados)
         st.caption("Los temas derivados del texto son sugerencias de análisis y requieren validación técnica. "
-                   "La clasificación oficial y los resultados de tiempo se muestran en el panel superior.")
+                   "La categoría de gestión, sus ajustes por alertamientos y los resultados de tiempo se muestran en el panel superior.")
         st.dataframe(causas.rename(columns={COL_CAUSA_RAIZ: "Tema técnico (inferencia)"}),
                      use_container_width=True, hide_index=True)
         st.caption("Las repeticiones se calculan con los registros del período seleccionado; "

@@ -38,6 +38,34 @@ si falta o difiere, no genera una validación pendiente. Se conserva el dato de
 origen. Las categorías desconocidas y las prioridades no válidas de incidentes
 quedan pendientes de clasificación; no se asigna Moderado por defecto a incidentes.
 
+## Alarmas y alertamientos
+
+La categoría de gestión distingue los alertamientos de la afectación del servicio:
+
+- Alarma o alertamiento sin evidencia de afectación: Consulta / Ayuda, con sus
+  tiempos y prioridad de gestión Moderado. Si no hay descarte explícito, queda
+  pendiente confirmar si derivó en una caída o degradación.
+- Falsa alarma, falso positivo o afectación descartada sin señales contrarias:
+  Consulta / Ayuda.
+- Alertamiento con evidencia de caída, indisponibilidad, degradación o falla:
+  conserva la categoría de origen. Si el origen es Consulta / Ayuda o está sin
+  clasificar, se pide revisar su posible reclasificación como incidente.
+- Evidencias de afectación y descarte en un mismo registro: conserva la categoría
+  de origen y señala la contradicción para revisar el historial.
+
+Las expresiones negadas o hipotéticas, como «sin indisponibilidad» o «posible
+caída», no acreditan una afectación. El prefijo INC y la pertenencia al NOC no
+demuestran por sí solos ni una alarma ni una caída. Las reglas se aplican al texto
+original, incluidas actualizaciones y notas de trabajo; las inferencias previas
+no se utilizan como evidencia.
+
+El panel compartido de Dashboard y KPI incluye «Revisar alarmas y alertamientos»,
+con filtro de pendientes y descarga CSV. El detalle muestra categoría de origen,
+categoría de gestión, motivo, evidencia y revisión pendiente. El ajuste es local
+al análisis: no sobrescribe los datos de origen ni envía cambios a ServiceNow.
+La ausencia de evidencia no equivale a confirmar una falsa alarma. Estas reglas
+textuales requieren validar los casos ambiguos con el historial técnico.
+
 ## Fechas y exactitud
 
 - Inicio: notificación/apertura explícita; en su ausencia, creación del registro,

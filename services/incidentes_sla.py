@@ -14,6 +14,7 @@ from pathlib import Path
 import pandas as pd
 
 from services.casos_sla import fecha_plataforma
+from services.alertamientos import analizar_alertamiento
 
 
 INCIDENTE = "Incidente"
@@ -65,6 +66,32 @@ def prioridad_gestion(valor):
                "moderado": "Moderado", "moderada": "Moderado", "media": "Moderado",
                "medio": "Moderado", "moderate": "Moderado", "bajo": "Bajo", "baja": "Bajo", "low": "Bajo"}
     return nombres.get(prioridad, "Sin prioridad")
+
+
+def clasificacion_gestion(row):
+    """Categoría analítica explicable; conserva intacta la categoría del origen."""
+    original = categoria_gestion(row.get("categoria"))
+    analisis = analizar_alertamiento(row)
+    categoria = original
+    motivo = "Se conserva la categoría de origen."
+    revision = ""
+    if analisis["es_alertamiento"]:
+        if analisis["evidencia_afectacion"]:
+            motivo = "Alertamiento con evidencia de afectación; se conserva la categoría de origen."
+            if analisis["evidencia_descarte"]:
+                revision = "Hay señales de afectación y de descarte; revisar el historial del alertamiento."
+            elif original not in (INCIDENTE, SEGURIDAD):
+                revision = "Alertamiento con afectación: validar si corresponde reclasificar como incidente."
+        else:
+            categoria = CONSULTA
+            if analisis["evidencia_descarte"]:
+                motivo = "Falsa alarma o afectación descartada: corresponde Consulta / Ayuda."
+            else:
+                motivo = "Alertamiento sin evidencia documentada de afectación: corresponde Consulta / Ayuda."
+                revision = "Confirmar si el alertamiento derivó en caída o degradación del servicio."
+    return {"categoria_gestion": categoria, "categoria_origen_normalizada": original,
+            "categoria_ajustada": categoria != original, "motivo_categoria": motivo,
+            "revision_alertamiento": revision, **analisis}
 
 
 def cargar_horario():
@@ -170,7 +197,8 @@ def es_finalizado(row):
 def evaluar_incidente(row, ahora=None, horario=None):
     horario = horario or cargar_horario()
     ahora = fecha_plataforma(ahora) if ahora is not None else pd.Timestamp.now(tz=horario["zona_horaria"])
-    categoria = categoria_gestion(row.get("categoria"))
+    clasificacion = clasificacion_gestion(row)
+    categoria = clasificacion["categoria_gestion"]
     prioridad_original = prioridad_gestion(row.get("prioridad"))
     prioridad = "Moderado" if categoria == CONSULTA else prioridad_original
     atencion, resolucion = objetivos(categoria, prioridad, horario)
@@ -184,7 +212,7 @@ def evaluar_incidente(row, ahora=None, horario=None):
         validacion = "Categoría pendiente de validar"
     elif categoria != CONSULTA and prioridad_original == "Sin prioridad":
         validacion = "Prioridad pendiente de validar"
-    salida = {"categoria_gestion": categoria, "prioridad_gestion": prioridad,
+    salida = {**clasificacion, "prioridad_gestion": prioridad,
               "coordinador_gestion": COORDINADORES.get(categoria, "Pendiente de clasificación"),
               "validacion_clasificacion": validacion, "inicio_sla": inicio,
               "fuente_inicio_sla": fuente_inicio, "finalizado_gestion": finalizado,

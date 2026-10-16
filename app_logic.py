@@ -9,7 +9,7 @@ import pandas as pd
 from services.casos_sla import guardar_fecha_plataforma
 from services.incidentes_sla import (
     ATENCION_MINUTOS, CATEGORIAS, COLUMNAS_FECHAS, CONSULTA, INCIDENTE, SEGURIDAD,
-    agregar_evaluacion, evaluar_incidente, categoria_gestion, objetivos as objetivos_incidente,
+    agregar_evaluacion, evaluar_incidente, categoria_gestion, clasificacion_gestion, objetivos as objetivos_incidente,
     prioridad_gestion, segundos_soporte,
 )
 from services.servicenow_diagnostico import diagnosticar_fallo, cerrar_control
@@ -1140,6 +1140,9 @@ def origen_incidente(row, texto=None, texto_resolucion=None):
 
 
 def es_incidente_real(row, texto=None, texto_resolucion=None):
+    clasificacion = clasificacion_gestion(row)
+    if clasificacion["es_alertamiento"]:
+        return clasificacion["categoria_gestion"] != CONSULTA and bool(clasificacion["evidencia_afectacion"])
     texto = texto or unir_textos(row, INCIDENT_TEXT_FIELDS)
     texto_resolucion = texto_resolucion or texto_resolucion_incidente(row)
     texto_completo = " ".join([texto, texto_resolucion])
@@ -2587,8 +2590,8 @@ def tipificacion_incidente(row):
     es_externo = es_cliente_externo_incidente(row, texto, texto_resolucion)
     incidente_real = es_incidente_real(row, texto, texto_resolucion)
 
-    # La categoría registrada prevalece sobre inferencias y segmento comercial.
-    categoria = categoria_gestion(valor_fila(row, "categoria"))
+    # Los alertamientos sin afectación tienen su propia categoría de gestión.
+    categoria = clasificacion_gestion(row)["categoria_gestion"]
     if categoria == CONSULTA:
         return TIPIFICACION_ATENCION_NOC
     if categoria in (INCIDENTE, SEGURIDAD):
@@ -2617,6 +2620,8 @@ def tipificacion_incidente(row):
 
 
 def es_alerta_incidente(row, tipificacion=None):
+    if clasificacion_gestion(row)["es_alertamiento"]:
+        return "Si"
     tipificacion = tipificacion or tipificacion_incidente(row)
     texto = unir_textos(row, INCIDENT_CAUSE_FIELDS + ["grupo_asignacion", "servicio_negocio", "impacto", "estado"])
     if es_origen_noc(row) and any(p in texto for p in ALERT_KEYWORDS):
@@ -2628,7 +2633,7 @@ def tipo_incidente_auto(row, tipificacion=None):
     tipificacion = tipificacion or tipificacion_incidente(row)
     if tipificacion not in TIPIFICACIONES_INCIDENTE_REAL:
         return "No aplica"
-    categoria = categoria_gestion(valor_fila(row, "categoria"))
+    categoria = clasificacion_gestion(row)["categoria_gestion"]
     if categoria == SEGURIDAD:
         return TIPO_INCIDENTE_SEGURIDAD
     if categoria == INCIDENTE:
@@ -2738,7 +2743,7 @@ def familia_sla_incidente(tipificacion, tipo_incidente=None):
 
 
 def sla_objetivo_horas_incidente(row):
-    categoria = categoria_gestion(valor_fila(row, "categoria"))
+    categoria = clasificacion_gestion(row)["categoria_gestion"]
     if categoria in CATEGORIAS:
         prioridad = "Moderado" if categoria == CONSULTA else normalizar_prioridad_incidente(valor_fila(row, "prioridad"))
         return objetivos_incidente(categoria, prioridad)[1]
@@ -2762,7 +2767,7 @@ def aplica_sla_atencion_noc(tipificacion):
 
 
 def duracion_sla_horas_incidente(row):
-    if categoria_gestion(valor_fila(row, "categoria")) in CATEGORIAS:
+    if clasificacion_gestion(row)["categoria_gestion"] in CATEGORIAS:
         inicio = valor_fila(row, "fecha_notificacion") or valor_fila(row, "creado")
         segundos = segundos_soporte(inicio, valor_fila(row, "fecha_resolucion"))
         return None if segundos is None else segundos / 3600
@@ -2784,7 +2789,7 @@ def duracion_sla_horas_incidente(row):
 
 
 def estado_sla_incidente(row):
-    if categoria_gestion(valor_fila(row, "categoria")) in CATEGORIAS:
+    if clasificacion_gestion(row)["categoria_gestion"] in CATEGORIAS:
         return evaluar_incidente(row)["resolucion_estado"]
     objetivo = safe_float(valor_fila(row, "sla_objetivo_horas"))
     duracion = safe_float(valor_fila(row, "duracion_sla_horas"))
@@ -4461,14 +4466,14 @@ def calcular_tiempo_respuesta_minutos(row):
 def obtener_sla_respuesta_minutos(row):
     """Obtiene el SLA de tiempo de respuesta según la prioridad."""
     prioridad = normalizar_prioridad_incidente(valor_fila(row, "prioridad"))
-    if categoria_gestion(valor_fila(row, "categoria")) == CONSULTA:
+    if clasificacion_gestion(row)["categoria_gestion"] == CONSULTA:
         prioridad = "Moderado"
     return SLA_TIEMPO_RESPUESTA_MINUTOS.get(prioridad)
 
 
 def evaluar_cumplimiento_sla_respuesta(row):
     """Evalúa si se cumple el SLA de tiempo de respuesta."""
-    if categoria_gestion(valor_fila(row, "categoria")) in CATEGORIAS:
+    if clasificacion_gestion(row)["categoria_gestion"] in CATEGORIAS:
         estado = evaluar_incidente(row)["atencion_estado"]
         return estado if estado in {"Cumple", "No cumple"} else None
     tiempo_respuesta = calcular_tiempo_respuesta_minutos(row)

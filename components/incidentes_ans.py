@@ -100,6 +100,9 @@ def tabla_detalle(base):
         "numero": "Incidente", "estado": "Estado", "categoria_gestion": "Categoría de gestión",
         "resolucion_estado": "Resultado resolución", "resolucion_motivo": "Por qué no se evalúa resolución",
         "categoria": "Categoría de origen",
+        "categoria_ajustada": "Categoría ajustada", "motivo_categoria": "Motivo de clasificación",
+        "revision_alertamiento": "Revisión del alertamiento",
+        "evidencia_afectacion": "Evidencia de afectación", "evidencia_descarte": "Evidencia de descarte",
         "prioridad": "Prioridad de origen", "prioridad_gestion": "Prioridad de la guía",
         "validacion_clasificacion": "Validación pendiente", "coordinador_gestion": "Cargo que coordina",
         "servicio_negocio": "Servicio", "asignado_a": "Asignado a",
@@ -117,6 +120,35 @@ def render_panel_incidentes_ans(df, key_prefix, titulo, periodo=None, presentaci
     st.markdown(f"<style>{css}</style>", unsafe_allow_html=True)
     with st.container(key=f"incidentes_panel_{key_prefix}"):
         return _render_panel(df, key_prefix, titulo, periodo, presentacion)
+
+
+def render_revision_alertamientos(base, key_prefix):
+    alertas = base[base["es_alertamiento"].eq(True)].copy()
+    if alertas.empty:
+        return
+    ajustadas = int(alertas["categoria_ajustada"].eq(True).sum())
+    pendientes = int(alertas["revision_alertamiento"].ne("").sum())
+    st.caption(f"Alertamientos: {len(alertas)} · Categorías ajustadas: {ajustadas} · Por revisar: {pendientes}. "
+               "La categoría de origen se conserva; el ajuste aplica al análisis y sus tiempos.")
+    with st.expander("Revisar alarmas y alertamientos"):
+        st.caption("Una alarma sin afectación documentada se gestiona como Consulta / Ayuda. "
+                   "Si hay evidencia de caída o degradación, se conserva la categoría de origen. "
+                   "La ausencia de evidencia no confirma que sea una falsa alarma.")
+        if st.checkbox("Solo alertamientos por revisar", key=f"{key_prefix}_alertas_pendientes"):
+            alertas = alertas[alertas["revision_alertamiento"].ne("")]
+        columnas = {
+            "numero": "Registro", "breve_descripcion": "Descripción breve", "categoria": "Categoría de origen",
+            "categoria_gestion": "Categoría de gestión", "motivo_categoria": "Motivo de clasificación",
+            "evidencia_afectacion": "Evidencia de afectación", "evidencia_descarte": "Evidencia de descarte",
+            "revision_alertamiento": "Revisión pendiente",
+        }
+        detalle = alertas[[c for c in columnas if c in alertas]].rename(columns=columnas)
+        st.dataframe(detalle, hide_index=True, use_container_width=True)
+        exportacion = detalle.map(lambda v: "'" + v if isinstance(v, str) and v.startswith(("=", "+", "-", "@")) else v)
+        st.download_button("Descargar revisión de alertamientos (CSV)",
+                           exportacion.to_csv(index=False).encode("utf-8-sig"),
+                           file_name=f"{key_prefix}_alertamientos.csv", mime="text/csv",
+                           key=f"{key_prefix}_descarga_alertamientos")
 
 
 def _metas_html(metas, categoria):
@@ -330,6 +362,7 @@ def _render_panel(df, key_prefix, titulo, periodo, presentacion):
         st.info("No hay registros para esta categoría y prioridad en el período seleccionado.")
         st.dataframe(metas, hide_index=True, use_container_width=True)
         return base
+    render_revision_alertamientos(base, key_prefix)
     if presentacion is not None and diapositiva:
         presentacion(base, metas, periodo)
         return base
