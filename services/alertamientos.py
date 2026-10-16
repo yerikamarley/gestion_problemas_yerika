@@ -11,6 +11,8 @@ CAMPOS_EVIDENCIA = (
     "observaciones_adicionales", "actualizaciones", "lista_notas_trabajo",
     "despues_aprobacion", "despues_rechazo", "tipificacion_original", "causa_raiz_original",
 )
+CAMPOS_ORIGEN_NOC = ("creado_por", "grupo_asignacion", "solicitante", "asignado_a")
+PATRON_NOC = re.compile(r"(?<![a-z0-9])noc(?![a-z0-9])")
 PATRON_ALERTA = re.compile(r"\b(?:alarmas?|alertas?|alertamientos?|fals[oa]s? positiv[oa]s?)\b")
 PATRON_DESCARTE = re.compile(
     r"\b(?:fals[oa]s? alarmas?|fals[oa]s? positiv[oa]s?|sin afectacion(?: del servicio)?|"
@@ -45,6 +47,8 @@ def normalizar(valor):
 def analizar_alertamiento(row):
     campos = [(campo, normalizar(row.get(campo))) for campo in CAMPOS_EVIDENCIA]
     alerta = any(PATRON_ALERTA.search(texto) for _, texto in campos)
+    origen_noc = any(PATRON_NOC.search(normalizar(row.get(campo))) for campo in CAMPOS_ORIGEN_NOC)
+    origen_noc = origen_noc or any(PATRON_NOC.search(texto) for _, texto in campos)
     descartes = []
     afectaciones = []
     for campo, texto in campos:
@@ -56,6 +60,7 @@ def analizar_alertamiento(row):
             afectaciones.append(f"{campo}: {evidencia.group()}")
     return {
         "es_alertamiento": alerta,
+        "alertamiento_noc": bool(alerta and origen_noc),
         "evidencia_afectacion": "; ".join(afectaciones),
         "evidencia_descarte": "; ".join(descartes),
     }

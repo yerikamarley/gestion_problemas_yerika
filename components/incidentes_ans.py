@@ -101,6 +101,7 @@ def tabla_detalle(base):
         "resolucion_estado": "Resultado resolución", "resolucion_motivo": "Por qué no se evalúa resolución",
         "categoria": "Categoría de origen",
         "categoria_ajustada": "Categoría ajustada", "motivo_categoria": "Motivo de clasificación",
+        "alertamiento_noc": "Alarma del NOC",
         "revision_alertamiento": "Revisión del alertamiento",
         "evidencia_afectacion": "Evidencia de afectación", "evidencia_descarte": "Evidencia de descarte",
         "prioridad": "Prioridad de origen", "prioridad_gestion": "Prioridad de la guía",
@@ -131,14 +132,16 @@ def render_revision_alertamientos(base, key_prefix):
     st.caption(f"Alertamientos: {len(alertas)} · Categorías ajustadas: {ajustadas} · Por revisar: {pendientes}. "
                "La categoría de origen se conserva; el ajuste aplica al análisis y sus tiempos.")
     with st.expander("Revisar alarmas y alertamientos"):
-        st.caption("Una alarma sin afectación documentada se gestiona como Consulta / Ayuda. "
-                   "Si hay evidencia de caída o degradación, se conserva la categoría de origen. "
+        st.caption("Las alarmas del NOC se gestionan como Consulta / Ayuda, incluso si reportan una posible caída. "
+                   "La afectación asociada queda señalada para revisión. "
+                   "Para otras alarmas, si hay evidencia de caída o degradación se conserva la categoría de origen. "
                    "La ausencia de evidencia no confirma que sea una falsa alarma.")
         if st.checkbox("Solo alertamientos por revisar", key=f"{key_prefix}_alertas_pendientes"):
             alertas = alertas[alertas["revision_alertamiento"].ne("")]
         columnas = {
             "numero": "Registro", "breve_descripcion": "Descripción breve", "categoria": "Categoría de origen",
             "categoria_gestion": "Categoría de gestión", "motivo_categoria": "Motivo de clasificación",
+            "alertamiento_noc": "Alarma del NOC",
             "evidencia_afectacion": "Evidencia de afectación", "evidencia_descarte": "Evidencia de descarte",
             "revision_alertamiento": "Revisión pendiente",
         }

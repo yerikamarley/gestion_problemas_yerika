@@ -76,7 +76,14 @@ def clasificacion_gestion(row):
     motivo = "Se conserva la categoría de origen."
     revision = ""
     if analisis["es_alertamiento"]:
-        if analisis["evidencia_afectacion"]:
+        if analisis["alertamiento_noc"]:
+            categoria = CONSULTA
+            motivo = "Alarma o alertamiento del NOC: corresponde Consulta / Ayuda."
+            if analisis["evidencia_afectacion"]:
+                revision = "Validar la afectación asociada; la alarma del NOC se mantiene en Consulta / Ayuda."
+            elif not analisis["evidencia_descarte"]:
+                revision = "Confirmar si el alertamiento derivó en caída o degradación del servicio."
+        elif analisis["evidencia_afectacion"]:
             motivo = "Alertamiento con evidencia de afectación; se conserva la categoría de origen."
             if analisis["evidencia_descarte"]:
                 revision = "Hay señales de afectación y de descarte; revisar el historial del alertamiento."

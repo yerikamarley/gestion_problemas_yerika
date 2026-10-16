@@ -16,6 +16,30 @@ def registro(**cambios):
 
 
 class AlertamientosTest(unittest.TestCase):
+    def test_alarmas_noc_siempre_son_consulta_incluso_con_caida_o_seguridad(self):
+        for origen in ("creado_por", "grupo_asignacion", "solicitante", "asignado_a", "descripcion"):
+            for categoria in (INCIDENTE, SEGURIDAD, CONSULTA, "Infraestructura"):
+                with self.subTest(origen=origen, categoria=categoria):
+                    row = registro(categoria=categoria, **{origen: "NOC Certicamara"},
+                                   observaciones_trabajo="Caída confirmada del servicio")
+                    resultado = evaluar_incidente(row, "2026-10-16 10:00")
+                    self.assertTrue(resultado["alertamiento_noc"])
+                    self.assertEqual(CONSULTA, resultado["categoria_gestion"])
+                    self.assertEqual(36, resultado["objetivo_resolucion_horas"])
+                    self.assertIn("se mantiene en Consulta / Ayuda", resultado["revision_alertamiento"])
+                    self.assertIn("caida", resultado["evidencia_afectacion"])
+                    self.assertFalse(app_logic.es_incidente_real(row))
+                    self.assertEqual(app_logic.TIPIFICACION_ATENCION_NOC, app_logic.tipificacion_incidente(row))
+                    self.assertEqual("No aplica", app_logic.tipo_incidente_auto(row))
+                    self.assertEqual(categoria, row["categoria"])
+
+    def test_falsa_alarma_noc_sin_afectacion_no_exige_revisar_caida(self):
+        resultado = clasificacion_gestion(registro(creado_por="noc.certicamara",
+                                                   descripcion="Falsa alarma sin afectación"))
+        self.assertEqual(CONSULTA, resultado["categoria_gestion"])
+        self.assertTrue(resultado["alertamiento_noc"])
+        self.assertEqual("", resultado["revision_alertamiento"])
+
     def test_alarma_sin_afectacion_usa_consulta_y_sus_tiempos_sin_modificar_origen(self):
         row = registro()
         resultado = evaluar_incidente(row, "2026-10-16 10:00")
@@ -77,6 +101,7 @@ class AlertamientosTest(unittest.TestCase):
                         {"breve_descripcion": "Incidente de red", "grupo_asignacion": "Alertas NOC"}):
             resultado = clasificacion_gestion(registro(**cambios))
             self.assertFalse(resultado["es_alertamiento"])
+            self.assertFalse(resultado["alertamiento_noc"])
             self.assertEqual(INCIDENTE, resultado["categoria_gestion"])
 
     def test_alerta_de_seguridad_con_evidencia_se_conserva(self):
@@ -110,22 +135,23 @@ render_panel_incidentes_ans(pd.DataFrame([
  registro(numero="INC_ALERTA"),
  registro(numero="INC_FALSA", descripcion="Falsa alarma sin afectación"),
  registro(numero="INC_CAIDA", descripcion="Caída del servicio confirmada"),
+ registro(numero="INC_NOC_CAIDA", creado_por="noc", descripcion="Caída confirmada del servicio"),
 ]), "alertas_test", "Incidentes")
 '''
         app = AppTest.from_string(codigo.encode("ascii", "backslashreplace").decode("ascii"), default_timeout=20).run()
         self.assertFalse(app.exception)
-        self.assertEqual("3", app.metric[0].value)
+        self.assertEqual("4", app.metric[0].value)
         revision = next(t.value for t in app.dataframe if "Registro" in t.value)
-        self.assertEqual(3, len(revision))
+        self.assertEqual(4, len(revision))
         app.checkbox(key="alertas_test_alertas_pendientes").check().run()
         self.assertFalse(app.exception)
         revision = next(t.value for t in app.dataframe if "Registro" in t.value)
-        self.assertEqual(["INC_ALERTA"], revision["Registro"].tolist())
+        self.assertEqual(["INC_ALERTA", "INC_NOC_CAIDA"], revision["Registro"].tolist())
         app.selectbox(key="alertas_test_categoria").select(CONSULTA).run()
         self.assertFalse(app.exception)
-        self.assertEqual("2", app.metric[0].value)
+        self.assertEqual("3", app.metric[0].value)
         detalle = next(t.value for t in app.dataframe if "Incidente" in t.value)
-        self.assertEqual({"INC_ALERTA", "INC_FALSA"}, set(detalle["Incidente"]))
+        self.assertEqual({"INC_ALERTA", "INC_FALSA", "INC_NOC_CAIDA"}, set(detalle["Incidente"]))
         self.assertEqual({INCIDENTE}, set(detalle["Categoría de origen"]))
         self.assertIn("Motivo de clasificación", detalle)
 

@@ -42,15 +42,21 @@ quedan pendientes de clasificación; no se asigna Moderado por defecto a inciden
 
 La categoría de gestión distingue los alertamientos de la afectación del servicio:
 
+- Las alarmas y alertamientos del NOC van siempre a Consulta / Ayuda. Esta regla
+  prevalece aunque el texto mencione una caída, degradación u otra afectación;
+  esa evidencia se conserva y queda señalada para revisión. Se identifica NOC en
+  los campos de origen (creador, grupo, solicitante o asignado) o en el texto
+  original de la alarma. La pertenencia al NOC sin una alarma no basta para
+  reclasificar un registro.
 - Alarma o alertamiento sin evidencia de afectación: Consulta / Ayuda, con sus
   tiempos y prioridad de gestión Moderado. Si no hay descarte explícito, queda
   pendiente confirmar si derivó en una caída o degradación.
 - Falsa alarma, falso positivo o afectación descartada sin señales contrarias:
   Consulta / Ayuda.
-- Alertamiento con evidencia de caída, indisponibilidad, degradación o falla:
+- Otros alertamientos con evidencia de caída, indisponibilidad, degradación o falla:
   conserva la categoría de origen. Si el origen es Consulta / Ayuda o está sin
   clasificar, se pide revisar su posible reclasificación como incidente.
-- Evidencias de afectación y descarte en un mismo registro: conserva la categoría
+- Otros alertamientos con evidencias de afectación y descarte: conservan la categoría
   de origen y señala la contradicción para revisar el historial.
 
 Las expresiones negadas o hipotéticas, como «sin indisponibilidad» o «posible
